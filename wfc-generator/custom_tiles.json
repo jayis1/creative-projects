@@ -1,0 +1,40 @@
+{
+  "tiles": [
+    {
+      "name": "sky",
+      "weight": 10,
+      "color": "#87ceeb",
+      "symbol": " ",
+      "constraints": {
+        "top": ["sky", "cloud"],
+        "right": ["sky", "cloud"],
+        "bottom": ["sky", "cloud", "ground"],
+        "left": ["sky", "cloud"]
+      }
+    },
+    {
+      "name": "cloud",
+      "weight": 3,
+      "color": "#ffffff",
+      "symbol": "☁",
+      "constraints": {
+        "top": ["sky"],
+        "right": ["sky", "cloud"],
+        "bottom": ["sky", "ground"],
+        "left": ["sky", "cloud"]
+      }
+    },
+    {
+      "name": "ground",
+      "weight": 8,
+      "color": "#8B4513",
+      "symbol": "█",
+      "constraints": {
+        "top": ["sky", "cloud", "ground"],
+        "right": ["ground", "sky"],
+        "bottom": ["ground"],
+        "left": ["ground", "sky"]
+      }
+    }
+  ]
+}

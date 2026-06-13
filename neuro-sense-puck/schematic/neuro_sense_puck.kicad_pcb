@@ -1,0 +1,77 @@
+// neuro_sense_puck.kicad_pcb — Layout outline for 35mm round PCB
+// This is a structural placeholder describing the PCB constraints.
+// Full layout requires KiCad PCB editor.
+
+(kicad_pcb (version 20240108) (generator "pcbnew")
+
+  (general
+    (thickness 1.6)
+    (drawings 12)
+    (tracks 0)
+    (zones 0)
+    (modules 10)
+    (nets 20)
+  )
+
+  (paper "A4")
+  (title_block
+    (title "Neuro Sense Puck")
+    (date "2026-06-12")
+    (rev "1.0")
+    (company "jayis1")
+  )
+
+  (layers
+    (0 "F.Cu" signal)
+    (31 "B.Cu" signal)
+    (32 "B.Adhes" user)
+    (33 "F.Adhes" user)
+    (34 "B.Paste" user)
+    (35 "F.Paste" user)
+    (36 "B.SilkS" user)
+    (37 "F.SilkS" user)
+    (38 "B.Mask" user)
+    (39 "F.Mask" user)
+    (40 "Dwgs.User" user)
+    (41 "Cmts.User" user)
+    (42 "Eco1.User" user)
+    (43 "Eco2.User" user)
+    (44 "Edge.Cuts" user)
+    (45 "Margin" user)
+    (46 "B.CrtYd" user)
+    (47 "F.CrtYd" user)
+    (48 "B.Fab" user)
+    (49 "F.Fab" user)
+  )
+
+  ;; Board outline: 35mm diameter circle
+  ;; Edge.Cuts layer
+  (gr_circle (center 0 0) (end 17.5 0) (layer "Edge.Cuts") (width 0.15))
+
+  ;; Layer stack:
+  ;; L1 (F.Cu): Signal — GPIO traces, I2C bus
+  ;; L2 (In1.Cu): GND plane
+  ;; L3 (In2.Cu): VDD (3.3V) plane
+  ;; L4 (B.Cu): Signal — power routing, USB traces
+
+  ;; Component placement (conceptual):
+  ;; Center: SPS30 (U4) — requires airflow, cutout beneath
+  ;; Top-right: ESP32-C6-MINI-1 (U1)
+  ;; Bottom-left: BME680 (U2) + SGP40 (U3) — environmental sensors
+  ;; Top-left: ICM-42688-P (U5) — IMU near board edge for motion sensitivity
+  ;; Bottom-right: TSL2591 (U6) — light sensor, aperture in enclosure
+  ;; Edge: MAX9814 (U7) — mic amp, port in enclosure
+  ;; Bottom center: USB-C (J1) + MCP73831 (U8) + AP2112 (U9)
+  ;; Battery pocket on B.Cu side
+
+  ;; Design rules:
+  ;; Minimum trace: 0.15mm
+  ;; Minimum via: 0.3mm drill, 0.5mm pad
+  ;; Impedance: 50Ω on USB traces (D+/D-)
+  ;; I2C: 0.2mm traces, star topology from ESP32
+  ;; Clearance: 0.15mm
+
+  ;; Keepout zones:
+  ;; - SPS30 airflow channel: 10mm circle around center, no copper on L1
+  ;; - Antenna: ESP32-C6 keepout per datasheet (15mm from PCB edge)
+)

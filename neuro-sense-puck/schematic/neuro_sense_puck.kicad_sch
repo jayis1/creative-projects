@@ -1,0 +1,213 @@
+(kicad_sch (version 20240108) (generator "eeschema")
+  (uuid "a1b2c3d4-e5f6-7890-abcd-ef0123456789")
+
+  ;; ============================================================
+  ;; Neuro Sense Puck — Top-Level Schematic
+  ;; ESP32-C6 based wearable environment sensor
+  ;; ============================================================
+
+  (paper "A4")
+  (title_block
+    (title "Neuro Sense Puck")
+    (date "2026-06-12")
+    (rev "1.0")
+    (company "jayis1")
+    (comment 1 "SoC Device Inventions")
+  )
+
+  (lib_symbols)
+
+  ;; ---- ESP32-C6-MINI-1 Module ----
+  (symbol "RF_Module:ESP32-C6-MINI-1" (in_bom yes) (on_board yes)
+    (property "Reference" "U1" (at 0 0 0))
+    (property "Value" "ESP32-C6-MINI-1" (at 0 2 0))
+    (property "Footprint" "RF_Module:ESP32-C6-MINI-1" (at 0 0 0))
+    (pin "GPIO0/SDA" input (at -15 5 0))
+    (pin "GPIO1/SCL" input (at -15 7 0))
+    (pin "GPIO2/ADC1_CH2" input (at -15 9 0))
+    (pin "GPIO6" input (at -15 11 0))
+    (pin "GPIO7" input (at -15 13 0))
+    (pin "GPIO8" input (at -15 15 0))
+    (pin "GPIO12/USB_DP" bidirectional (at 15 5 0))
+    (pin "GPIO13/USB_DM" bidirectional (at 15 7 0))
+    (pin "GPIO14" input (at 15 9 0))
+    (pin "GPIO15" input (at 15 11 0))
+    (pin "GPIO16/BOOT" input (at 15 13 0))
+    (pin "GPIO17/EN" input (at 15 15 0))
+    (pin "GPIO18/TX" output (at 15 17 0))
+    (pin "GPIO19/RX" input (at 15 19 0))
+    (pin "3V3" power_in (at 0 -15 0))
+    (pin "GND" power_in (at 0 15 0))
+  )
+
+  ;; ---- BME680 T/H/VOC Sensor ----
+  (symbol "Sensor:BME680" (in_bom yes) (on_board yes)
+    (property "Reference" "U2" (at 0 0 0))
+    (property "Value" "BME680" (at 0 2 0))
+    (property "Footprint" "Sensor:BME680_LGA-8" (at 0 0 0))
+    (pin "SDA" bidirectional (at -10 3 0))
+    (pin "SCL" input (at -10 5 0))
+    (pin "VDD" power_in (at 0 -8 0))
+    (pin "GND" power_in (at 0 8 0))
+    (pin "INT" output (at 10 3 0))
+  )
+
+  ;; ---- SGP40 VOC Index Sensor ----
+  (symbol "Sensor:SGP40" (in_bom yes) (on_board yes)
+    (property "Reference" "U3" (at 0 0 0))
+    (property "Value" "SGP40" (at 0 2 0))
+    (property "Footprint" "Sensor:SGP40_DFN-6" (at 0 0 0))
+    (pin "SDA" bidirectional (at -10 3 0))
+    (pin "SCL" input (at -10 5 0))
+    (pin "VDD" power_in (at 0 -8 0))
+    (pin "GND" power_in (at 0 8 0))
+  )
+
+  ;; ---- SPS30 Particulate Matter Sensor ----
+  (symbol "Sensor:SPS30" (in_bom yes) (on_board yes)
+    (property "Reference" "U4" (at 0 0 0))
+    (property "Value" "SPS30" (at 0 2 0))
+    (property "Footprint" "Sensor:SPS30_Custom" (at 0 0 0))
+    (pin "SDA" bidirectional (at -10 3 0))
+    (pin "SCL" input (at -10 5 0))
+    (pin "VDD" power_in (at 0 -8 0))
+    (pin "GND" power_in (at 0 8 0))
+    (pin "RESET" input (at 10 3 0))
+    (pin "INT" output (at 10 5 0))
+  )
+
+  ;; ---- ICM-42688-P 6-Axis IMU ----
+  (symbol "Sensor:ICM-42688-P" (in_bom yes) (on_board yes)
+    (property "Reference" "U5" (at 0 0 0))
+    (property "Value" "ICM-42688-P" (at 0 2 0))
+    (property "Footprint" "Sensor:ICM-42688-P_LGA-14" (at 0 0 0))
+    (pin "SDA" bidirectional (at -10 3 0))
+    (pin "SCL" input (at -10 5 0))
+    (pin "VDD" power_in (at 0 -8 0))
+    (pin "GND" power_in (at 0 8 0))
+    (pin "INT1" output (at 10 3 0))
+  )
+
+  ;; ---- TSL2591 Light Sensor ----
+  (symbol "Sensor:TSL2591" (in_bom yes) (on_board yes)
+    (property "Reference" "U6" (at 0 0 0))
+    (property "Value" "TSL2591" (at 0 2 0))
+    (property "Footprint" "Sensor:TSL2591_TMB-6" (at 0 0 0))
+    (pin "SDA" bidirectional (at -10 3 0))
+    (pin "SCL" input (at -10 5 0))
+    (pin "VDD" power_in (at 0 -8 0))
+    (pin "GND" power_in (at 0 8 0))
+    (pin "INT" output (at 10 3 0))
+  )
+
+  ;; ---- MAX9814 Microphone Amplifier ----
+  (symbol "Amplifier_Audio:MAX9814" (in_bom yes) (on_board yes)
+    (property "Reference" "U7" (at 0 0 0))
+    (property "Value" "MAX9814" (at 0 2 0))
+    (property "Footprint" "Amplifier_Audio:MAX9814_DFN-10" (at 0 0 0))
+    (pin "OUT" output (at 10 3 0))
+    (pin "GAIN" input (at -10 3 0))
+    (pin "VDD" power_in (at 0 -8 0))
+    (pin "GND" power_in (at 0 8 0))
+  )
+
+  ;; ---- MCP73831 Lipo Charger ----
+  (symbol "Power_Management:MCP73831" (in_bom yes) (on_board yes)
+    (property "Reference" "U8" (at 0 0 0))
+    (property "Value" "MCP73831-2ACHI" (at 0 2 0))
+    (property "Footprint" "Package_TO_SOT_SMD:SOT-23-5" (at 0 0 0))
+    (pin "VDD" power_in (at -10 3 0))
+    (pin "STAT" output (at 10 3 0))
+    (pin "BAT" power_out (at 10 5 0))
+    (pin "PROG" input (at -10 5 0))
+    (pin "GND" power_in (at 0 8 0))
+  )
+
+  ;; ---- AP2112-3.3 LDO ----
+  (symbol "Regulator_Linear:AP2112-3.3" (in_bom yes) (on_board yes)
+    (property "Reference" "U9" (at 0 0 0))
+    (property "Value" "AP2112-3.3" (at 0 2 0))
+    (property "Footprint" "Package_TO_SOT_SMD:SOT-223" (at 0 0 0))
+    (pin "VIN" power_in (at -10 3 0))
+    (pin "VOUT" power_out (at 10 3 0))
+    (pin "GND" power_in (at 0 8 0))
+    (pin "EN" input (at -10 5 0))
+  )
+
+  ;; ---- WS2812B Status LED ----
+  (symbol "LED:WS2812B-2020" (in_bom yes) (on_board yes)
+    (property "Reference" "D1" (at 0 0 0))
+    (property "Value" "WS2812B-2020" (at 0 2 0))
+    (property "Footprint" "LED_SMD:WS2812B-2020" (at 0 0 0))
+    (pin "DIN" input (at -10 3 0))
+    (pin "VDD" power_in (at 0 -8 0))
+    (pin "GND" power_in (at 0 8 0))
+  )
+
+  ;; ---- USB-C Receptacle ----
+  (symbol "Connector:USB_C_Receptacle_16pin" (in_bom yes) (on_board yes)
+    (property "Reference" "J1" (at 0 0 0))
+    (property "Value" "USB-C" (at 0 2 0))
+    (property "Footprint" "Connector_USB:USB_C_Receptacle_16pin_SMD" (at 0 0 0))
+    (pin "VBUS" power_out (at -10 3 0))
+    (pin "D+" bidirectional (at -10 5 0))
+    (pin "D-" bidirectional (at -10 7 0))
+    (pin "GND" power_in (at 0 8 0))
+    (pin "CC1" bidirectional (at 10 3 0))
+    (pin "CC2" bidirectional (at 10 5 0))
+  )
+
+  ;; ---- I2C Pull-ups ----
+  (symbol "Device:R" (in_bom yes) (on_board yes)
+    (property "Reference" "R1" (at 0 0 0))
+    (property "Value" "4.7k" (at 0 2 0))
+    (pin "1" passive (at -5 0 0))
+    (pin "2" passive (at 5 0 0))
+  )
+  (symbol "Device:R" (in_bom yes) (on_board yes)
+    (property "Reference" "R2" (at 0 0 0))
+    (property "Value" "4.7k" (at 0 2 0))
+    (pin "1" passive (at -5 0 0))
+    (pin "2" passive (at 5 0 0))
+  )
+
+  ;; ---- Decoupling Capacitors (100nF each) ----
+  (symbol "Device:C" (in_bom yes) (on_board yes)
+    (property "Reference" "C1" (at 0 0 0))
+    (property "Value" "100nF" (at 0 2 0))
+    (pin "1" passive (at -5 0 0))
+    (pin "2" passive (at 5 0 0))
+  )
+
+  ;; =============================================
+  ;; Net connections (schematic wiring)
+  ;; =============================================
+
+  ;; I2C Bus — all sensors share SDA/SCL
+  ;; U1.GPIO0 → U2.SDA, U3.SDA, U4.SDA, U5.SDA, U6.SDA
+  ;; U1.GPIO1 → U2.SCL, U3.SCL, U4.SCL, U5.SCL, U6.SCL
+  ;; R1 (4.7k) from VDD to SDA line
+  ;; R2 (4.7k) from VDD to SCL line
+
+  ;; Audio — MAX9814 output to ESP32 ADC
+  ;; U7.OUT → U1.GPIO2 (ADC1_CH2)
+
+  ;; Power chain:
+  ;; J1.VBUS → U8.VDD (MCP73831)
+  ;; U8.BAT → Battery+ → U9.VIN (AP2112)
+  ;; U9.VOUT → VDD (3.3V rail)
+  ;; All sensor VDD pins → VDD
+  ;; All GND pins → GND plane
+
+  ;; Control lines:
+  ;; U1.GPIO6 → U4.RESET (SPS30)
+  ;; U1.GPIO7 ← U4.INT (SPS30)
+  ;; U1.GPIO8 ← U5.INT1 (IMU)
+  ;; U1.GPIO14 ← U8.STAT (charge status)
+  ;; U1.GPIO15 → D1.DIN (NeoPixel)
+  ;; U1.GPIO20 ← U2.INT (BME680)
+  ;; U1.GPIO12 ↔ J1.D+
+  ;; U1.GPIO13 ↔ J1.D-
+
+  ;; Decoupling: C1-C6 (100nF) one per IC VDD pin
+)

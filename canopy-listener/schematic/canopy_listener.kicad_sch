@@ -1,0 +1,342 @@
+(kicad_sch (version 20240108) (generator "eeschema")
+  (uuid "b2c3d4e5-f6a7-8901-bcde-f12345678901")
+
+  ;; ============================================================
+  ;; Canopy Listener — Top-Level Schematic
+  ;; RP2040-based acoustic biodiversity monitor
+  ;; ============================================================
+
+  (paper "A4")
+  (title_block
+    (title "Canopy Listener")
+    (date "2026-06-13")
+    (rev "1.0")
+    (company "jayis1")
+    (comment 1 "SoC Device Inventions")
+  )
+
+  (lib_symbols)
+
+  ;; ---- RP2040 Dual-Core MCU ----
+  (symbol "MCU_RaspberryPi:RP2040" (in_bom yes) (on_board yes)
+    (property "Reference" "U1" (at 0 0 0))
+    (property "Value" "RP2040" (at 0 2 0))
+    (property "Footprint" "Package_DFN_QFN:QFN-56-1EP_7x7mm_P0.4mm_EP5.6x5.6mm" (at 0 0 0))
+    (pin "GP0" bidirectional (at -20 5 0))
+    (pin "GP1" bidirectional (at -20 7 0))
+    (pin "GP2" bidirectional (at -20 9 0))
+    (pin "GP3" bidirectional (at -20 11 0))
+    (pin "GP4" bidirectional (at -20 13 0))
+    (pin "GP5" bidirectional (at -20 15 0))
+    (pin "GP6" bidirectional (at -20 17 0))
+    (pin "GP7" bidirectional (at -20 19 0))
+    (pin "GP8" bidirectional (at -20 21 0))
+    (pin "GP9" bidirectional (at -20 23 0))
+    (pin "GP10" bidirectional (at -20 25 0))
+    (pin "GP11" bidirectional (at -20 27 0))
+    (pin "GP12" bidirectional (at -20 29 0))
+    (pin "GP13" bidirectional (at -20 31 0))
+    (pin "GP14" bidirectional (at 20 5 0))
+    (pin "GP15" bidirectional (at 20 7 0))
+    (pin "GP16" bidirectional (at 20 9 0))
+    (pin "GP17" bidirectional (at 20 11 0))
+    (pin "GP18" bidirectional (at 20 13 0))
+    (pin "GP19" bidirectional (at 20 15 0))
+    (pin "GP20" bidirectional (at 20 17 0))
+    (pin "GP21" bidirectional (at 20 19 0))
+    (pin "GP22" bidirectional (at 20 21 0))
+    (pin "GP23" bidirectional (at 20 23 0))
+    (pin "GP24" bidirectional (at 20 25 0))
+    (pin "GP25" bidirectional (at 20 27 0))
+    (pin "GP26_ADC0" bidirectional (at 20 29 0))
+    (pin "GP27_ADC1" bidirectional (at 20 31 0))
+    (pin "GP28_ADC2" bidirectional (at 20 33 0))
+    (pin "RUN" input (at 0 -25 0))
+    (pin "QSPI_SS" bidirectional (at -8 -25 0))
+    (pin "QSPI_SCLK" bidirectional (at -6 -25 0))
+    (pin "QSPI_SD0" bidirectional (at -4 -25 0))
+    (pin "QSPI_SD1" bidirectional (at -2 -25 0))
+    (pin "QSPI_SD2" bidirectional (at 2 -25 0))
+    (pin "QSPI_SD3" bidirectional (at 4 -25 0))
+    (pin "USB_DP" bidirectional (at -12 -25 0))
+    (pin "USB_DM" bidirectional (at -10 -25 0))
+    (pin "3V3" power_in (at 0 -20 0))
+    (pin "GND" power_in (at 0 35 0))
+  )
+
+  ;; ---- W25Q128JVSIQ QSPI Flash ----
+  (symbol "Memory_Flash:W25Q128JVSIQ" (in_bom yes) (on_board yes)
+    (property "Reference" "U2" (at 0 0 0))
+    (property "Value" "W25Q128JVSIQ" (at 0 2 0))
+    (property "Footprint" "Package_SO:SOP-8_3.9x4.9mm_P1.27mm" (at 0 0 0))
+    (pin "CS" input (at -10 3 0))
+    (pin "CLK" input (at -10 5 0))
+    (pin "DI/IO0" bidirectional (at -10 7 0))
+    (pin "WP/IO2" bidirectional (at -10 9 0))
+    (pin "DO/IO1" bidirectional (at 10 3 0))
+    (pin "HOLD/IO3" bidirectional (at 10 5 0))
+    (pin "VDD" power_in (at 0 -10 0))
+    (pin "GND" power_in (at 0 10 0))
+  )
+
+  ;; ---- ICS-43434 MEMS Microphone (Left) ----
+  (symbol "Sensor_Audio:ICS-43434" (in_bom yes) (on_board yes)
+    (property "Reference" "U3" (at 0 0 0))
+    (property "Value" "ICS-43434" (at 0 2 0))
+    (property "Footprint" "Sensor_Audio:ICS-43434_LGA-6" (at 0 0 0))
+    (pin "SCLK" input (at -10 3 0))
+    (pin "WS" input (at -10 5 0))
+    (pin "SD" output (at 10 3 0))
+    (pin "L/R" input (at -10 7 0))
+    (pin "VDD" power_in (at 0 -10 0))
+    (pin "GND" power_in (at 0 10 0))
+  )
+
+  ;; ---- ICS-43434 MEMS Microphone (Right) ----
+  (symbol "Sensor_Audio:ICS-43434" (in_bom yes) (on_board yes)
+    (property "Reference" "U4" (at 0 0 0))
+    (property "Value" "ICS-43434" (at 0 2 0))
+    (property "Footprint" "Sensor_Audio:ICS-43434_LGA-6" (at 0 0 0))
+    (pin "SCLK" input (at -10 3 0))
+    (pin "WS" input (at -10 5 0))
+    (pin "SD" output (at 10 3 0))
+    (pin "L/R" input (at -10 7 0))
+    (pin "VDD" power_in (at 0 -10 0))
+    (pin "GND" power_in (at 0 10 0))
+  )
+
+  ;; ---- SX1262 LoRa Transceiver ----
+  (symbol "RF_Module:SX1262" (in_bom yes) (on_board yes)
+    (property "Reference" "U5" (at 0 0 0))
+    (property "Value" "SX1262" (at 0 2 0))
+    (property "Footprint" "RF_Module:Semtech_SX1262_QFN-24" (at 0 0 0))
+    (pin "SCLK" input (at -15 3 0))
+    (pin "MISO" output (at -15 5 0))
+    (pin "MOSI" input (at -15 7 0))
+    (pin "NSS" input (at -15 9 0))
+    (pin "DIO1" output (at 15 3 0))
+    (pin "BUSY" output (at 15 5 0))
+    (pin "NRST" input (at 15 7 0))
+    (pin "ANT" output (at 15 9 0))
+    (pin "VDD" power_in (at 0 -15 0))
+    (pin "GND" power_in (at 0 15 0))
+  )
+
+  ;; ---- L86-Q GNSS Module ----
+  (symbol "RF_GPS:L86-Q" (in_bom yes) (on_board yes)
+    (property "Reference" "U6" (at 0 0 0))
+    (property "Value" "L86-Q" (at 0 2 0))
+    (property "Footprint" "RF_GPS:Quectel_L86-Q" (at 0 0 0))
+    (pin "TX" output (at -10 3 0))
+    (pin "RX" input (at -10 5 0))
+    (pin "PPS" output (at 10 3 0))
+    (pin "FORCE_ON" input (at 10 5 0))
+    (pin "VCC" power_in (at 0 -10 0))
+    (pin "GND" power_in (at 0 10 0))
+  )
+
+  ;; ---- BME280 Temperature/Humidity/Pressure ----
+  (symbol "Sensor:BME280" (in_bom yes) (on_board yes)
+    (property "Reference" "U7" (at 0 0 0))
+    (property "Value" "BME280" (at 0 2 0))
+    (property "Footprint" "Sensor:BME280_LGA-8" (at 0 0 0))
+    (pin "SDA" bidirectional (at -10 3 0))
+    (pin "SCL" input (at -10 5 0))
+    (pin "VDD" power_in (at 0 -8 0))
+    (pin "GND" power_in (at 0 8 0))
+  )
+
+  ;; ---- SSD1306 OLED Display ----
+  (symbol "Display:SSD1306_128x64" (in_bom yes) (on_board yes)
+    (property "Reference" "U8" (at 0 0 0))
+    (property "Value" "SSD1306" (at 0 2 0))
+    (property "Footprint" "Display:SSD1306_128x64_OLED_Module" (at 0 0 0))
+    (pin "SDA" bidirectional (at -10 3 0))
+    (pin "SCL" input (at -10 5 0))
+    (pin "VDD" power_in (at 0 -8 0))
+    (pin "GND" power_in (at 0 8 0))
+  )
+
+  ;; ---- MCP73871 Solar+USB Battery Charger ----
+  (symbol "Power_Management:MCP73871" (in_bom yes) (on_board yes)
+    (property "Reference" "U9" (at 0 0 0))
+    (property "Value" "MCP73871" (at 0 2 0))
+    (property "Footprint" "Package_DFN_QFN:DFN-10-1EP_3x3mm_P0.5mm_EP1.7x2.4mm" (at 0 0 0))
+    (pin "SOLAR_IN" power_in (at -15 3 0))
+    (pin "USB_IN" power_in (at -15 5 0))
+    (pin "BAT" power_out (at 15 3 0))
+    (pin "PG" output (at 15 5 0))
+    (pin "STAT1" output (at 15 7 0))
+    (pin "STAT2" output (at 15 9 0))
+    (pin "PROG" input (at -15 7 0))
+    (pin "EN" input (at -15 9 0))
+    (pin "GND" power_in (at 0 15 0))
+  )
+
+  ;; ---- RT9013-3.3 LDO ----
+  (symbol "Regulator_Linear:RT9013-3.3" (in_bom yes) (on_board yes)
+    (property "Reference" "U10" (at 0 0 0))
+    (property "Value" "RT9013-3.3" (at 0 2 0))
+    (property "Footprint" "Package_TO_SOT_SMD:SOT-23-5" (at 0 0 0))
+    (pin "VIN" power_in (at -10 3 0))
+    (pin "VOUT" power_out (at 10 3 0))
+    (pin "GND" power_in (at 0 8 0))
+    (pin "EN" input (at -10 5 0))
+  )
+
+  ;; ---- microSD Card Slot ----
+  (symbol "Connector:MicroSD_Card_Slot" (in_bom yes) (on_board yes)
+    (property "Reference" "J2" (at 0 0 0))
+    (property "Value" "MicroSD" (at 0 2 0))
+    (property "Footprint" "Connector_Card:microSD_Molex_504077" (at 0 0 0))
+    (pin "CLK" input (at -10 3 0))
+    (pin "DO" output (at -10 5 0))
+    (pin "DI" input (at -10 7 0))
+    (pin "CS" input (at -10 9 0))
+    (pin "VDD" power_in (at 0 -10 0))
+    (pin "GND" power_in (at 0 10 0))
+    (pin "CD" output (at 10 3 0))
+  )
+
+  ;; ---- USB-C Receptacle ----
+  (symbol "Connector:USB_C_Receptacle_16pin" (in_bom yes) (on_board yes)
+    (property "Reference" "J1" (at 0 0 0))
+    (property "Value" "USB-C" (at 0 2 0))
+    (property "Footprint" "Connector_USB:USB_C_Receptacle_16pin_SMD" (at 0 0 0))
+    (pin "VBUS" power_out (at -10 3 0))
+    (pin "D+" bidirectional (at -10 5 0))
+    (pin "D-" bidirectional (at -10 7 0))
+    (pin "GND" power_in (at 0 8 0))
+    (pin "CC1" bidirectional (at 10 3 0))
+    (pin "CC2" bidirectional (at 10 5 0))
+  )
+
+  ;; ---- WS2812B Status LED ----
+  (symbol "LED:WS2812B-2020" (in_bom yes) (on_board yes)
+    (property "Reference" "D1" (at 0 0 0))
+    (property "Value" "WS2812B-2020" (at 0 2 0))
+    (property "Footprint" "LED_SMD:WS2812B-2020" (at 0 0 0))
+    (pin "DIN" input (at -10 3 0))
+    (pin "VDD" power_in (at 0 -8 0))
+    (pin "GND" power_in (at 0 8 0))
+  )
+
+  ;; ---- SMA Antenna Connector ----
+  (symbol "Connector:SMA_Edge" (in_bom yes) (on_board yes)
+    (property "Reference" "J3" (at 0 0 0))
+    (property "Value" "SMA_Edge" (at 0 2 0))
+    (property "Footprint" "Connector_Coax:SMA_Edge_Mount" (at 0 0 0))
+    (pin "SIG" input (at -10 3 0))
+    (pin "GND" power_in (at 0 8 0))
+  )
+
+  ;; ---- Crystal 12MHz ----
+  (symbol "Device:Crystal" (in_bom yes) (on_board yes)
+    (property "Reference" "Y1" (at 0 0 0))
+    (property "Value" "12MHz" (at 0 2 0))
+    (pin "1" passive (at -5 0 0))
+    (pin "2" passive (at 5 0 0))
+  )
+
+  ;; ---- I2C Pull-ups ----
+  (symbol "Device:R" (in_bom yes) (on_board yes)
+    (property "Reference" "R3" (at 0 0 0))
+    (property "Value" "4.7k" (at 0 2 0))
+    (pin "1" passive (at -5 0 0))
+    (pin "2" passive (at 5 0 0))
+  )
+  (symbol "Device:R" (in_bom yes) (on_board yes)
+    (property "Reference" "R4" (at 0 0 0))
+    (property "Value" "4.7k" (at 0 2 0))
+    (pin "1" passive (at -5 0 0))
+    (pin "2" passive (at 5 0 0))
+  )
+
+  ;; ---- Voltage Divider Resistors ----
+  (symbol "Device:R" (in_bom yes) (on_board yes)
+    (property "Reference" "R5" (at 0 0 0))
+    (property "Value" "100k" (at 0 2 0))
+    (pin "1" passive (at -5 0 0))
+    (pin "2" passive (at 5 0 0))
+  )
+  (symbol "Device:R" (in_bom yes) (on_board yes)
+    (property "Reference" "R6" (at 0 0 0))
+    (property "Value" "100k" (at 0 2 0))
+    (pin "1" passive (at -5 0 0))
+    (pin "2" passive (at 5 0 0))
+  )
+
+  ;; =============================================
+  ;; Net connections (schematic wiring)
+  ;; =============================================
+
+  ;; I2C Bus — BME280 + SSD1306
+  ;; U1.GP18 → U7.SDA, U8.SDA, R3 pullup
+  ;; U1.GP19 → U7.SCL, U8.SCL, R4 pullup
+  ;; R3 (4.7k) from VDD to SDA line
+  ;; R4 (4.7k) from VDD to SCL line
+
+  ;; I2S Audio — dual MEMS microphones
+  ;; U1.GP8 (PIO SM0) → U3.SCLK, U4.SCLK  (I2S BCLK)
+  ;; U1.GP9 (PIO SM0) → U3.WS, U4.WS       (I2S LRCLK)
+  ;; U3.SD → U4.SD (daisy-chained)
+  ;; U4.SD → U1.GP10 (PIO SM0 input)
+  ;; U1.GP27 → U3.L/R (low=left), U4.L/R (high=right)
+
+  ;; SPI0 — SX1262 LoRa
+  ;; U1.GP2  → U5.SCLK
+  ;; U1.GP3  ← U5.MISO
+  ;; U1.GP4  → U5.MOSI
+  ;; U1.GP5  → U5.NSS (CS)
+  ;; U5.DIO1 → U1.GP6 (interrupt)
+  ;; U5.BUSY → U1.GP11
+  ;; U1.GP7  → U5.NRST (reset)
+  ;; U5.ANT  → J3.SIG (SMA → LoRa antenna)
+
+  ;; SPI1 — microSD Card
+  ;; U1.GP14 → J2.CLK
+  ;; U1.GP15 ← J2.DO
+  ;; U1.GP16 → J2.DI
+  ;; U1.GP17 → J2.CS
+
+  ;; UART0 — L86-Q GNSS
+  ;; U1.GP0 (TX) → U6.RX
+  ;; U1.GP1 (RX) ← U6.TX
+  ;; U6.PPS  → U1.GP12
+  ;; U1.GP20 → U6.FORCE_ON
+
+  ;; USB — RP2040 native USB
+  ;; U1.USB_DP ↔ J1.D+
+  ;; U1.USB_DM ↔ J1.D-
+
+  ;; QSPI Flash
+  ;; U1.QSPI_SS → U2.CS
+  ;; U1.QSPI_SCLK → U2.CLK
+  ;; U1.QSPI_SD0 → U2.DI/IO0
+  ;; U1.QSPI_SD1 ← U2.DO/IO1
+  ;; U1.QSPI_SD2 ↔ U2.WP/IO2
+  ;; U1.QSPI_SD3 ↔ U2.HOLD/IO3
+
+  ;; Power chain:
+  ;; J1.VBUS → U9.USB_IN (MCP73871)
+  ;; Solar connector → U9.SOLAR_IN
+  ;; U9.BAT → Battery+ → U10.VIN (RT9013)
+  ;; U10.VOUT → VDD (3.3V rail)
+  ;; All sensor VDD pins → VDD
+  ;; All GND pins → GND plane
+  ;; U9.PG → U1.GP23 (power good)
+  ;; U9.STAT2 → U1.GP24 (charge status)
+
+  ;; Battery/solar voltage sensing:
+  ;; Battery+ → R5 (100k) → R6 (100k) → GND  (midpoint → U1.GP25 ADC)
+  ;; Solar+ → R7 (100k) → R8 (100k) → GND  (midpoint → U1.GP26 ADC)
+
+  ;; Status LED:
+  ;; U1.GP13 (PIO SM1) → D1.DIN (WS2812B)
+
+  ;; Crystal:
+  ;; Y1 (12MHz) → U1.XIN, U1.XOUT (with 12pF load caps)
+
+  ;; Decoupling: C1-C12 (100nF) one per IC VDD pin
+  ;; Bulk: C13, C14 (10µF) on VDD rail
+)

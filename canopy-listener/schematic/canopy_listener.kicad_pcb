@@ -1,0 +1,26 @@
+{
+  "board": {
+    "design_settings": {
+      "rules": {
+        "min_clearance": "0.15mm",
+        "min_track_width": "0.2mm",
+        "min_via_annulus": "0.1mm",
+        "min_via_diameter": "0.6mm",
+        "min_via_drill": "0.3mm",
+        "min_microvia_diameter": "0.2mm",
+        "min_microvia_drill": "0.1mm"
+      },
+      "layer_presets": ["F.Cu", "In1.Cu", "In2.Cu", "B.Cu"],
+      "board_thickness": "1.6mm",
+      "copper_finish": "ENIG",
+      "solder_mask": "Dark Green",
+      "silkscreen": "White"
+    },
+    "pcb_shape": {
+      "type": "rectangle",
+      "width": "80mm",
+      "height": "50mm",
+      "corner_radius": "3mm"
+    }
+  }
+}
