@@ -12,5 +12,3 @@ A monorepo of AI-generated creative coding projects. Each project lives in its o
 | [wfc-generator](./wfc-generator) | Wave Function Collapse procedural generation |
 
 ---
-
-*New projects added automatically by AI every 7 hours.*
