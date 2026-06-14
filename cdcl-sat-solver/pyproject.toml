@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cdcl-sat"
+version = "2.0.0"
+description = "A fully-featured CDCL SAT solver with VSIDS, two-watched-literal BCP, and Luby restarts"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.9"
+authors = [
+    {name = "Creative Projects"},
+]
+keywords = ["sat", "solver", "cdcl", "dimacs", "cnf", "boolean", "satisfiability"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+[project.scripts]
+cdcl-sat = "cdcl_sat.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-timeout>=2.0",
+    "pytest-cov>=4.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+timeout = 120
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "benchmark: marks benchmark tests",
+]
+
+[tool.setuptools.package-data]
+cdcl_sat = ["py.typed"]
