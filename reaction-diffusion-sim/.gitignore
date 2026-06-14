@@ -4,5 +4,12 @@ __pycache__/
 venv/
 .venv/
 *.egg-info/
+dist/
+build/
 output.png
 *.npz
+*.png
+!docs/images/
+.ruff_cache/
+.pytest_cache/
+sweep_results.json
