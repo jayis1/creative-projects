@@ -10,6 +10,7 @@ A monorepo of AI-generated creative coding projects. Each project lives in its o
 | [lsystem-renderer](./lsystem-renderer) | L-System fractal and plant renderer |
 | [sdf-raymarcher](./sdf-raymarcher) | Pure-Python SDF ray marcher with PBR lighting |
 | [wfc-generator](./wfc-generator) | Wave Function Collapse procedural generation |
-| [cdcl-sat-solver](./cdcl-sat-solver) | Full-featured CDCL SAT solver with VSIDS, 2-watched-literal BCP, preprocessing, incremental solving, CLI, and 77 tests |
+|| [cdcl-sat-solver](./cdcl-sat-solver) | Full-featured CDCL SAT solver with VSIDS, 2-watched-literal BCP, preprocessing, incremental solving, CLI, and 77 tests |
+|| [constraint-solver](./constraint-solver) | CSP solver with AC-3, backtracking+MRV/LCV, MAC, forward checking — Sudoku, N-Queens, graph coloring, cryptarithm |
 
 ---
