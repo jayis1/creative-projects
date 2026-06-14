@@ -9,9 +9,11 @@ import math
 
 
 def euclidean_rhythm(beats: int, length: int, rotation: int = 0) -> List[bool]:
-    """Generate a Euclidean rhythm using Björklund's algorithm.
+    """Generate a Euclidean rhythm using the Bresenham-style algorithm.
 
     Distributes `beats` pulses as evenly as possible across `length` steps.
+    Uses an integer error-accumulation approach (similar to Bresenham's line
+    algorithm) which is simple, correct, and deterministic.
 
     Args:
         beats: Number of on-steps (pulses)
@@ -26,42 +28,25 @@ def euclidean_rhythm(beats: int, length: int, rotation: int = 0) -> List[bool]:
     if beats >= length:
         return [True] * length
 
-    # Björklund's algorithm
-    groups = [[True] for _ in range(beats)] + [[False] for _ in range(length - beats)]
-    while True:
-        remaining = len(groups) - 1
-        min_len = min(len(g) for g in groups)
-        # Find how many groups have min_len
-        short_count = sum(1 for g in groups if len(g) == min_len)
-        if short_count >= remaining or min_len >= 2:
-            break
-        # Distribute short groups into longer ones
-        new_groups = []
-        i = 0
-        while i < len(groups) and len(groups[i]) != min_len:
-            new_groups.append(groups[i])
-            i += 1
-        j = len(groups) - 1
-        while i < j and len(groups[j]) == min_len:
-            new_groups.append(groups[i] + groups[j])
-            i += 1
-            j -= 1
-        while i <= j:
-            new_groups.append(groups[i])
-            i += 1
-        groups = new_groups
-
+    # Bresenham-style error diffusion: place beats as evenly as possible
     result = []
-    for g in groups:
-        result.extend(g)
+    error = 0
+    for i in range(length):
+        error += beats
+        if error >= length:
+            error -= length
+            result.append(True)
+        else:
+            result.append(False)
+
+    # Verify pulse count
+    assert sum(result) == beats, f"E({beats},{length}) produced {sum(result)} pulses instead of {beats}"
 
     # Rotate
     if rotation:
         rotation = rotation % length
         result = result[-rotation:] + result[:-rotation] if rotation else result
 
-    # Pad or trim to exact length
-    result = (result * ((length // len(result)) + 1))[:length]
     return result
 
 

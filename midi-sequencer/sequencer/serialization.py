@@ -14,6 +14,7 @@ def step_to_dict(step: Step) -> Dict[str, Any]:
         "gate": step.gate,
         "probability": step.probability,
         "tie": step.tie,
+        "timing_offset": step.timing_offset,
     }
 
 
@@ -25,6 +26,7 @@ def dict_to_step(d: Dict[str, Any]) -> Step:
         gate=d.get("gate", 0.8),
         probability=d.get("probability", 1.0),
         tie=d.get("tie", False),
+        timing_offset=d.get("timing_offset", 0.0),
     )
 
 

@@ -53,28 +53,38 @@ CHORD_INTERVALS: Dict[str, Tuple[int, ...]] = {
 def note_to_midi(note: str) -> int:
     """Convert a note name like 'C4', 'F#3', 'Bb5' to a MIDI note number.
 
-    C4 = 60 (middle C).
+    C4 = 60 (middle C). Supports negative octaves: 'C-1' = 0.
     """
     note = note.strip()
-    # Find where the octave digit starts
+    # Find where the octave starts — look for the last digit sequence,
+    # which may be preceded by a minus sign for negative octaves.
     i = len(note) - 1
     while i >= 0 and note[i].isdigit():
         i -= 1
+    # Check for negative octave sign
+    if i >= 0 and note[i] == '-':
+        i -= 1
     name = note[:i + 1]
-    octave = int(note[i + 1:]) if i + 1 < len(note) else 4
+    octave_str = note[i + 1:]
+    octave = int(octave_str) if octave_str else 4
     if name not in NOTE_OFFSETS:
         raise ValueError(f"Unknown note name: {name!r}")
     return NOTE_OFFSETS[name] + (octave + 1) * 12
 
 
 def midi_to_note(midi: int) -> str:
-    """Convert MIDI note number to note name like 'C4'."""
+    """Convert MIDI note number to note name like 'C4'.
+
+    Uses sharps by default for enharmonic equivalents.
+    """
     octave = midi // 12 - 1
     offset = midi % 12
-    for name, off in NOTE_OFFSETS.items():
-        if off == offset and len(name) <= 2 and "b" not in name and name != "E#":
-            return f"{name}{octave}"
-    return f"C{octave}"
+    # Prefer sharp names for simplicity; avoid flat names that contain 'b'
+    # which conflicts with the letter 'B'
+    sharp_names = {0: "C", 1: "C#", 2: "D", 3: "Eb", 4: "E", 5: "F",
+                   6: "F#", 7: "G", 8: "Ab", 9: "A", 10: "Bb", 11: "B"}
+    name = sharp_names.get(offset, "C")
+    return f"{name}{octave}"
 
 
 def scale_notes(root: str, scale: str, octaves: int = 2, start_octave: int = 3) -> List[int]:

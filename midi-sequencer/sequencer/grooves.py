@@ -87,8 +87,8 @@ def apply_groove(pattern: Pattern, groove_name: str, intensity: float = 1.0) -> 
 
         # Apply velocity offset
         new_step.velocity = max(1, min(127, new_step.velocity + int(vel_offset * intensity)))
-        # Store timing offset in the step for the renderer
-        # (The actual timing is applied during MIDI export)
+        # Apply timing offset directly to the step (used during MIDI export)
+        new_step.timing_offset = timing_offset * intensity
         new_steps.append(new_step)
 
     return Pattern(name=f"{pattern.name}_{groove_name}", steps=new_steps, length=pattern.length)

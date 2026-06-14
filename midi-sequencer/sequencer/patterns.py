@@ -15,6 +15,7 @@ class Step:
     gate: float = 0.8            # 0.0-1.0, fraction of step length the note sounds
     probability: float = 1.0     # 0.0-1.0, chance of this step firing
     tie: bool = False            # If True, sustain into next step
+    timing_offset: float = 0.0   # Timing offset in MIDI ticks (for groove/humanize)
 
     def should_fire(self) -> bool:
         """Determine if this step triggers based on its probability."""
@@ -124,13 +125,17 @@ class Track:
 
             for note_num in step.notes:
                 shifted_note = note_num + self.octave_shift * 12
+                # Combine groove timing offset (from Step) with humanize timing (from Track)
+                total_timing_offset = step.timing_offset
+                if self.humanize_timing > 0:
+                    total_timing_offset += random.gauss(0, self.humanize_timing)
                 events.append({
                     "note": shifted_note,
                     "velocity": velocity,
                     "start_step": i,
                     "duration_steps": duration,
                     "channel": self.channel,
-                    "timing_offset": random.gauss(0, self.humanize_timing) if self.humanize_timing > 0 else 0,
+                    "timing_offset": total_timing_offset,
                 })
 
         return events

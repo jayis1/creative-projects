@@ -8,4 +8,5 @@ run_test.py
 test_basic.py
 test_enhancements.py
 test_cli.py
+euc_test.py
 tmp_test/

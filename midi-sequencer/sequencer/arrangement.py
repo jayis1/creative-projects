@@ -64,6 +64,7 @@ class Arrangement:
                             gate=step.gate,
                             probability=step.probability,
                             tie=step.tie,
+                            timing_offset=step.timing_offset,
                         ))
 
         tracks = []

@@ -186,3 +186,31 @@ arr.export_midi('arrangement.mid')
 - **`sequencer/serialization.py`** — JSON save/load for songs and patterns
 - **`sequencer/export.py`** — MIDI file export
 - **`sequencer/cli.py`** — Command-line interface
+
+## Known Issues (Resolved)
+
+The following bugs were found and fixed during the bug hunt phase:
+
+1. **Euclidean rhythm algorithm produced incorrect distributions** — The original Björklund algorithm implementation had a termination condition bug that caused `short_count >= remaining` to fire prematurely, resulting in clumped rather than evenly distributed pulses (e.g., E(8,13) produced all-then-none instead of evenly spaced). **Fix:** Replaced with a correct Bresenham-style error diffusion algorithm that guarantees even distribution and exact pulse counts.
+
+2. **`midi_to_note`/`note_to_midi` roundtrip failure for negative octaves** — `midi_to_note(0)` returned `"C-1"` but `note_to_midi("C-1")` crashed with `ValueError: Unknown note name: 'C-'` because the negative sign wasn't handled during octave parsing. **Fix:** Updated `note_to_midi` to detect and handle the `-` sign in negative octaves. Also rewrote `midi_to_note` to use an explicit mapping dict for clarity.
+
+3. **Groove timing offsets were silently discarded** — The `apply_groove()` function computed timing offsets per step but never stored them, so groove timing had no effect on the exported MIDI. **Fix:** Added a `timing_offset` field to the `Step` dataclass and updated `apply_groove()` to write timing offsets into steps. Updated `Track.render_notes()` to combine step-level groove offsets with track-level humanization.
+
+4. **`scale_notes` test expectation was wrong** — The test for `scale_notes("C", "major", 1, 4)` expected 7 notes but the function correctly returns 8 (including the octave root). **Fix:** Corrected the test expectation. The function's behavior of including the top root note is intentional and musically correct.
+
+5. **Serialization missed `timing_offset` field** — The `step_to_dict` and `dict_to_step` functions didn't include the new `timing_offset` field, causing data loss on round-trip. **Fix:** Added `timing_offset` to both serialization functions with a default of 0.0 for backward compatibility.
+
+6. **Arrangement didn't copy `timing_offset`** — The `render_to_song()` method in `arrangement.py` manually constructed `Step` objects but omitted `timing_offset`. **Fix:** Added `timing_offset` to the Step construction in arrangement.
+
+## Testing
+
+Run the comprehensive test suite:
+
+```bash
+cd midi-sequencer
+source venv/bin/activate
+python -m pytest tests/test_sequencer.py -v
+```
+
+66 tests covering scales, Euclidean rhythms, patterns, grooves, L-systems, progressions, serialization, MIDI export, arrangements, ties, and edge cases.
