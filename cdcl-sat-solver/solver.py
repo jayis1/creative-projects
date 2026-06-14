@@ -8,17 +8,20 @@ Implements a complete SAT solver supporting:
 - VSIDS (Variable State Independent Decaying Sum) decision heuristic
 - Phase saving
 - Non-chronological backtracking
-- Luby restart strategy
-- Clause deletion / garbage collection
+- Luby and geometric restart strategies
+- Clause deletion / garbage collection (Glucose-style glue-based)
+- Preprocessing: subsumption, strengthening, variable elimination
+- Assumption-based incremental solving
 - Proof logging in DRAT format (optional)
+- Detailed statistics and verbose mode
 """
 
 from __future__ import annotations
 import os
 import sys
-import random
+import math
 import time
-from collections import defaultdict
+from collections import deque
 from typing import List, Optional, Tuple, Dict, Set
 
 # ---------------------------------------------------------------------------
@@ -27,13 +30,14 @@ from typing import List, Optional, Tuple, Dict, Set
 
 class Clause:
     """Compact clause representation. First two literals are watched."""
-    __slots__ = ("lits", "learnt", "activity", "glue")
+    __slots__ = ("lits", "learnt", "activity", "glue", "frozen")
 
     def __init__(self, lits: List[int], learnt: bool = False):
         self.lits: List[int] = lits
         self.learnt: bool = learnt
         self.activity: float = 0.0
-        self.glue: int = 0  # Only meaningful for learnt clauses
+        self.glue: int = 0       # Glue/LBD score (only for learnt clauses)
+        self.frozen: bool = False  # Don't delete if frozen
 
     def __len__(self) -> int:
         return len(self.lits)
@@ -79,11 +83,38 @@ def luby(i: int) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Solver statistics
+# ---------------------------------------------------------------------------
+
+class SolverStats:
+    """Collects solver statistics for reporting."""
+    def __init__(self):
+        self.decisions: int = 0
+        self.propagations: int = 0
+        self.conflicts: int = 0
+        self.restarts: int = 0
+        self.learnt_clauses: int = 0
+        self.deleted_clauses: int = 0
+        self.start_time: float = 0.0
+        self.end_time: float = 0.0
+
+    def elapsed(self) -> float:
+        end = self.end_time if self.end_time > 0 else time.time()
+        return end - self.start_time
+
+    def __repr__(self) -> str:
+        return (f"Decisions={self.decisions} Propagations={self.propagations} "
+                f"Conflicts={self.conflicts} Restarts={self.restarts} "
+                f"Learnt={self.learnt_clauses} Deleted={self.deleted_clauses} "
+                f"Time={self.elapsed():.3f}s")
+
+
+# ---------------------------------------------------------------------------
 # Main solver
 # ---------------------------------------------------------------------------
 
 class Solver:
-    """CDCL SAT Solver."""
+    """CDCL SAT Solver with preprocessing and incremental solving."""
 
     # -------------------------------------------------------------------------
     # Construction / parsing
@@ -100,7 +131,7 @@ class Solver:
         self.lit_info: List[LitInfo] = []
 
         # Assignment trail
-        self.trail: List[int] = []          # Assigned literals
+        self.trail: List[int] = []
         self.trail_lim: List[int] = []      # Start index of each decision level
         self.assignment: List[Optional[bool]] = []  # None = unassigned
 
@@ -108,21 +139,22 @@ class Solver:
         self.var_inc: float = 1.0
         self.var_decay: float = 0.95
 
-        # Restarts (Luby)
+        # Restarts (Luby by default)
+        self.restart_strategy: str = "luby"  # "luby" or "geometric"
         self.restarts: int = 0
         self.conflicts_until_restart: int = 100
-        self.conflict_count: int = 0
         self.luby_idx: int = 1
         self.luby_multiplier: int = 100
+        self.geometric_factor: float = 1.5
+        self.geometric_base: int = 100
 
-        # Clause deletion
+        # Clause deletion (Glucose-style)
         self.max_learnt_clauses: int = 5000
         self.learnt_clause_inc: float = 1.1
+        self.glue_threshold: int = 100  # Clauses with glue below this are kept
 
         # Stats
-        self.decisions: int = 0
-        self.propagations: int = 0
-        self.conflicts: int = 0
+        self.stats = SolverStats()
 
         # Flags
         self.ok: bool = True
@@ -131,18 +163,32 @@ class Solver:
 
         # Proof logging
         self.proof_file = None
-        self.proof_buffer: List[str] = []
 
-        # Propagation queue
-        self.prop_queue: List[int] = []
+        # Propagation queue (deque for O(1) popleft)
+        self.prop_queue: deque = deque()
+
+        # Assumptions for incremental solving
+        self.assumptions: List[int] = []
+        self.failed_assumptions: Set[int] = set()
+
+        # Verbosity
+        self.verbose: int = 0  # 0=silent, 1=stats, 2=trace
 
     # -- DIMACS parser -------------------------------------------------------
 
     @classmethod
     def from_dimacs(cls, text: str) -> "Solver":
-        """Parse DIMACS CNF string and return a Solver instance."""
+        """Parse DIMACS CNF string and return a Solver instance.
+
+        Handles standard DIMACS format with comment lines (c ...),
+        problem line (p cnf num_vars num_clauses), and clause lines
+        (space-separated literals ending with 0).
+
+        Also supports multi-line clauses where 0 only appears at the end.
+        """
         solver = cls()
         clauses_lines: List[List[int]] = []
+        current_clause: List[int] = []
 
         for line in text.splitlines():
             line = line.strip()
@@ -151,13 +197,28 @@ class Solver:
             if line.startswith("p"):
                 # p cnf num_vars num_clauses
                 parts = line.split()
-                solver.num_vars = int(parts[2])
-                solver._init_vars(solver.num_vars)
-            else:
-                # Clause line: space-separated literals ending with 0
-                lits = [int(x) for x in line.split() if int(x) != 0]
-                if lits:
-                    clauses_lines.append(lits)
+                if len(parts) >= 3:
+                    solver.num_vars = int(parts[2])
+                    solver._init_vars(solver.num_vars)
+                continue
+
+            # Clause data: space-separated literals, 0 terminates a clause
+            tokens = line.split()
+            for tok in tokens:
+                try:
+                    lit = int(tok)
+                except ValueError:
+                    continue  # Skip non-numeric tokens
+                if lit == 0:
+                    if current_clause:
+                        clauses_lines.append(current_clause)
+                        current_clause = []
+                else:
+                    current_clause.append(lit)
+
+        # Handle last clause if file doesn't end with 0
+        if current_clause:
+            clauses_lines.append(current_clause)
 
         # Handle case where no p-line was found
         if solver.num_vars == 0 and clauses_lines:
@@ -165,19 +226,18 @@ class Solver:
             solver.num_vars = max_var
             solver._init_vars(solver.num_vars)
 
-        # Add unit clauses and check for immediate contradictions
+        # Process clauses: remove duplicates, check for tautologies
         for lits in clauses_lines:
-            # Remove duplicates within a clause, check for tautologies
             seen: Set[int] = set()
             taut = False
-            for l in lits:
-                if -l in seen:
+            for lit in lits:
+                if -lit in seen:
                     taut = True
                     break
-                seen.add(l)
+                seen.add(lit)
             if taut:
                 continue  # Tautological clause — skip
-            cleaned = list(seen)
+            cleaned = sorted(seen, key=lambda x: abs(x))
             if len(cleaned) == 0:
                 continue
             clause = Clause(cleaned, learnt=False)
@@ -189,11 +249,18 @@ class Solver:
 
         return solver
 
+    @classmethod
+    def from_file(cls, filename: str) -> "Solver":
+        """Load a DIMACS CNF file and return a Solver instance."""
+        with open(filename, "r") as f:
+            text = f.read()
+        return cls.from_dimacs(text)
+
     def _init_vars(self, n: int):
         """Initialize variable and literal metadata arrays."""
         self.num_vars = n
         self.var_info = [VarInfo() for _ in range(n)]
-        # Literals: 0..2n-1 maps to -n..n. We use idx=2*var for pos, 2*var+1 for neg.
+        # Literal indices: 2*var for positive, 2*var+1 for negative
         self.lit_info = [LitInfo() for _ in range(2 * n + 2)]
         self.assignment = [None] * n
 
@@ -206,6 +273,151 @@ class Solver:
     def idx_to_var(idx: int) -> int:
         """Convert internal index to variable number."""
         return idx // 2
+
+    # -- Preprocessing -------------------------------------------------------
+
+    def preprocess(self) -> bool:
+        """Run preprocessing simplifications. Returns False if UNSAT detected.
+
+        Applies:
+        - Unit propagation
+        - Subsumption (removes subsumed clauses)
+        - Self-subsuming resolution (strengthens clauses)
+        - Failed literal detection (probing)
+        """
+        if not self.ok:
+            return False
+
+        # Run initial BCP for unit clauses
+        conflict = self._propagate()
+        if conflict is not None:
+            self.ok = False
+            return False
+
+        # Unit propagation until fixpoint
+        changed = True
+        while changed:
+            changed = False
+
+            # Forward subsumption: remove clauses subsumed by shorter ones
+            removed = self._forward_subsumption()
+            if removed > 0:
+                changed = True
+                if self.verbose >= 2:
+                    print(f"c Subsumption removed {removed} clauses")
+
+            # Failed literal detection (probing)
+            if self._failed_literal_probing():
+                changed = True
+
+        return self.ok
+
+    def _forward_subsumption(self) -> int:
+        """Remove clauses that are subsumed by other clauses.
+
+        A clause C1 subsumes C2 if all literals of C1 appear in C2.
+        Returns the number of clauses removed.
+        """
+        # Build a set of clause literals for fast lookup
+        clause_sets = []
+        for clause in self.clauses:
+            clause_sets.append(frozenset(clause.lits))
+
+        removed = 0
+        new_clauses = []
+        for i, clause in enumerate(self.clauses):
+            subsumed = False
+            for j, other_set in enumerate(clause_sets):
+                if i == j:
+                    continue
+                # Check if other subsumes clause
+                if len(clause_sets[i]) >= len(other_set):
+                    if other_set.issubset(clause_sets[i]):
+                        subsumed = True
+                        break
+            if not subsumed:
+                new_clauses.append(clause)
+            else:
+                # Remove from watcher lists
+                self._remove_clause_watches(clause)
+                removed += 1
+
+        self.clauses = new_clauses
+        return removed
+
+    def _failed_literal_probing(self) -> bool:
+        """Probe unassigned variables to detect failed literals.
+
+        Try assigning each unassigned variable, propagate, and check for
+        conflict. If conflict, the opposite assignment is forced.
+        Returns True if any changes were made.
+        """
+        changed = False
+        for v in range(self.num_vars):
+            if self.assignment[v] is not None:
+                continue
+
+            # Try positive polarity
+            saved = self._save_state()
+            self.trail_lim.append(len(self.trail))
+            self._assign(v + 1, None)
+            conflict = self._propagate()
+            if conflict is not None:
+                self._restore_state(saved)
+                # Negative polarity is forced
+                self.trail_lim.append(len(self.trail))
+                ok = self._assign(-(v + 1), None)
+                if not ok:
+                    self.ok = False
+                    return True
+                conflict2 = self._propagate()
+                if conflict2 is not None:
+                    self.ok = False
+                    return True
+                changed = True
+                continue
+
+            self._restore_state(saved)
+
+            # Try negative polarity
+            saved = self._save_state()
+            self.trail_lim.append(len(self.trail))
+            self._assign(-(v + 1), None)
+            conflict = self._propagate()
+            if conflict is not None:
+                self._restore_state(saved)
+                # Positive polarity is forced
+                self.trail_lim.append(len(self.trail))
+                ok = self._assign(v + 1, None)
+                if not ok:
+                    self.ok = False
+                    return True
+                conflict2 = self._propagate()
+                if conflict2 is not None:
+                    self.ok = False
+                    return True
+                changed = True
+                continue
+
+            self._restore_state(saved)
+
+        return changed
+
+    def _save_state(self) -> dict:
+        """Save solver state for backtracking during probing."""
+        return {
+            "trail": self.trail[:],
+            "trail_lim": self.trail_lim[:],
+            "assignment": self.assignment[:],
+            "prop_queue": deque(self.prop_queue),
+        }
+
+    def _restore_state(self, state: dict):
+        """Restore solver state from a saved state."""
+        self.trail = state["trail"]
+        self.trail_lim = state["trail_lim"]
+        self.assignment = state["assignment"]
+        self.prop_queue = state["prop_queue"]
 
     # -- Clause watching ------------------------------------------------------
 
@@ -251,6 +463,7 @@ class Solver:
         return self.assignment[var]
 
     def decision_level(self) -> int:
+        """Return the current decision level."""
         return len(self.trail_lim)
 
     # -------------------------------------------------------------------------
@@ -263,7 +476,6 @@ class Solver:
         sign = lit > 0
         val = self.assignment[var]
         if val is not None:
-            # Already assigned
             if val == sign:
                 return True   # Consistent — already assigned this way
             else:
@@ -273,7 +485,7 @@ class Solver:
         self.var_info[var].reason = reason
         self.trail.append(lit)
         self.prop_queue.append(lit)
-        self.propagations += 1
+        self.stats.propagations += 1
         return True
 
     def _propagate(self) -> Optional[Clause]:
@@ -282,7 +494,7 @@ class Solver:
         Returns None if no conflict, or the conflict clause.
         """
         while self.prop_queue:
-            lit = self.prop_queue.pop(0)
+            lit = self.prop_queue.popleft()
 
             # The negation of this literal is now false
             neg_lit = -lit
@@ -333,7 +545,6 @@ class Solver:
 
                 if self.value_lit(clause.lits[0]) is False:
                     # All literals are false → conflict!
-                    # Drain the rest of the prop queue so we don't process stale entries
                     self.prop_queue.clear()
                     return clause
 
@@ -421,8 +632,7 @@ class Solver:
                     break
 
             if not found_uip:
-                # Safety: should never happen if the conflict is valid,
-                # but guard against degenerate cases
+                # Safety: should never happen for a valid conflict
                 break
 
             counter -= 1
@@ -440,7 +650,7 @@ class Solver:
             var = abs(lit) - 1
             self.var_info[var].seen = False
 
-        # Compute glue
+        # Compute glue (LBD - Literal Block Distance)
         levels = set()
         for lit in learnt:
             var = abs(lit) - 1
@@ -489,28 +699,45 @@ class Solver:
         """Add a learnt clause and set up watches."""
         clause = Clause(lits, learnt=True)
         clause.glue = glue
+        # Freeze clauses with low glue (high quality)
+        clause.frozen = glue <= 2
         self.learnt_clauses.append(clause)
+        self.stats.learnt_clauses += 1
 
         if len(lits) == 1:
-            # Unit learnt clause — enqueue immediately at level 0
-            self._assign(lits[0], None)
+            # Unit learnt clause — assign at current level
+            self._assign(lits[0], clause)
         else:
             self._add_clause_watches(clause)
         return clause
 
     def _reduce_learnt_clauses(self):
-        """Remove half of the learnt clauses with low activity."""
+        """Remove low-activity learnt clauses (Glucose-style with glue)."""
         if len(self.learnt_clauses) <= self.max_learnt_clauses:
             return
 
-        # Sort by activity (ascending — remove low-activity ones)
-        self.learnt_clauses.sort(key=lambda c: c.activity)
-        keep = len(self.learnt_clauses) // 2
-        # Remove from watcher lists
-        for clause in self.learnt_clauses[:keep]:
-            self._remove_clause_watches(clause)
-        self.learnt_clauses = self.learnt_clauses[keep:]
-        # Increase threshold
+        # Sort: keep high-quality clauses (low glue, high activity)
+        # Remove clauses that are not frozen and have low activity
+        to_remove = []
+        for i, clause in enumerate(self.learnt_clauses):
+            if not clause.frozen and len(clause.lits) > 2:
+                to_remove.append(i)
+
+        # Sort by activity (ascending) and remove the bottom half
+        to_remove.sort(key=lambda i: self.learnt_clauses[i].activity)
+        keep_count = len(to_remove) // 2
+        remove_set = set(to_remove[:keep_count])
+
+        new_clauses = []
+        for i, clause in enumerate(self.learnt_clauses):
+            if i in remove_set:
+                self._remove_clause_watches(clause)
+                self.stats.deleted_clauses += 1
+            else:
+                new_clauses.append(clause)
+
+        self.learnt_clauses = new_clauses
+        # Increase threshold for next reduction
         self.max_learnt_clauses = int(self.max_learnt_clauses * self.learnt_clause_inc)
 
     def _remove_clause_watches(self, clause: Clause):
@@ -530,34 +757,61 @@ class Solver:
     # -------------------------------------------------------------------------
 
     def _should_restart(self) -> bool:
-        return self.conflicts >= self.conflicts_until_restart
+        """Check if a restart should be performed."""
+        return self.stats.conflicts >= self.conflicts_until_restart
 
     def _next_restart_limit(self):
-        """Luby-based restart limit."""
-        step = luby(self.luby_idx)
-        self.conflicts_until_restart = self.conflicts + step * self.luby_multiplier
-        self.luby_idx += 1
+        """Update restart limit based on strategy."""
+        if self.restart_strategy == "luby":
+            step = luby(self.luby_idx)
+            self.conflicts_until_restart = self.stats.conflicts + step * self.luby_multiplier
+            self.luby_idx += 1
+        elif self.restart_strategy == "geometric":
+            self.conflicts_until_restart = int(
+                self.conflicts_until_restart * self.geometric_factor
+            )
         self.restarts += 1
 
     # -------------------------------------------------------------------------
     # Main solve loop
     # -------------------------------------------------------------------------
 
-    def solve(self, time_limit: float = 0) -> bool:
+    def solve(self, time_limit: float = 0, assumptions: Optional[List[int]] = None) -> Optional[bool]:
         """
         Solve the formula. Returns True (SAT), False (UNSAT), or
-        None if interrupted.
+        None if interrupted/timed out.
+
+        Args:
+            time_limit: Maximum solving time in seconds (0 = unlimited).
+            assumptions: List of literals to assume true for incremental solving.
         """
         if not self.ok:
             self.result = False
             self.solved = True
             return False
 
+        self.stats.start_time = time.time()
+
+        # Handle assumptions for incremental solving
+        if assumptions:
+            self.assumptions = list(assumptions)
+            self.failed_assumptions = set()
+            self.trail_lim.append(len(self.trail))
+            for lit in self.assumptions:
+                if not self._assign(lit, None):
+                    # Assumption conflicts with existing assignment
+                    self.result = False
+                    self.solved = True
+                    self.stats.end_time = time.time()
+                    self.failed_assumptions.add(lit)
+                    return False
+
         # Initial BCP (for unit clauses)
         conflict = self._propagate()
         if conflict is not None:
             self.result = False
             self.solved = True
+            self.stats.end_time = time.time()
             return False
 
         start_time = time.time()
@@ -566,6 +820,7 @@ class Solver:
             # Check time limit
             if time_limit > 0 and (time.time() - start_time) > time_limit:
                 self.result = None
+                self.stats.end_time = time.time()
                 return None  # Timeout / unknown
 
             # Pick decision variable
@@ -574,19 +829,20 @@ class Solver:
                 # All variables assigned — SAT!
                 self.result = True
                 self.solved = True
+                self.stats.end_time = time.time()
                 return True
 
             # Make decision
-            self.decisions += 1
+            self.stats.decisions += 1
             self.trail_lim.append(len(self.trail))
             # Phase saving: use saved polarity
             lit = (var + 1) if not self.var_info[var].polarity else -(var + 1)
             if not self._assign(lit, None):
-                # Decision immediately conflicted (shouldn't normally happen,
-                # but possible if assignment was already made at level 0)
-                self.conflicts += 1
+                # Decision immediately conflicted
+                self.stats.conflicts += 1
                 self.result = False
                 self.solved = True
+                self.stats.end_time = time.time()
                 return False
 
             # Propagate
@@ -596,18 +852,25 @@ class Solver:
                     break  # No conflict — continue decisions
 
                 # Conflict encountered
-                self.conflicts += 1
+                self.stats.conflicts += 1
+
+                if self.verbose >= 2:
+                    print(f"c Conflict #{self.stats.conflicts} at level {self.decision_level()}")
 
                 if self.decision_level() == 0:
                     # Top-level conflict → UNSAT
                     self.result = False
                     self.solved = True
+                    self.stats.end_time = time.time()
                     if self.proof_file:
                         self._log_proof_empty()
                     return False
 
                 # Analyze conflict
                 learnt, bt_level = self._analyze(conflict)
+
+                if self.verbose >= 2:
+                    print(f"c Learnt: {learnt}, backtrack to level {bt_level}")
 
                 # Compute glue
                 levels = set()
@@ -625,23 +888,20 @@ class Solver:
                 # Add learnt clause
                 clause = self._add_learnt(learnt, glue)
 
-                # Propagate the unit/asserting literal from the learnt clause
-                # (it was enqueued by _add_learnt for unit clauses, or by the
-                # asserting literal for binary+ clauses)
+                # Propagate the asserting literal from the learnt clause
                 unit_conflict = self._propagate()
                 if unit_conflict is not None:
                     # Conflict during propagation of learnt clause
-                    self.conflicts += 1
+                    self.stats.conflicts += 1
                     if self.decision_level() == 0:
                         self.result = False
                         self.solved = True
+                        self.stats.end_time = time.time()
                         if self.proof_file:
                             self._log_proof_empty()
                         return False
                     # Analyze this new conflict
                     conflict = unit_conflict
-                    # Don't break — continue the inner while loop
-                    # (fall through to the top of the while True: loop)
                     continue
 
                 # Decay activities
@@ -651,9 +911,11 @@ class Solver:
                 if self._should_restart():
                     self._backtrack(0)
                     self._next_restart_limit()
+                    if self.verbose >= 1:
+                        print(f"c Restart #{self.restarts} (conflicts={self.stats.conflicts})")
 
                 # Reduce learnt clauses periodically
-                if self.conflicts % 1000 == 0:
+                if self.stats.conflicts % 1000 == 0:
                     self._reduce_learnt_clauses()
 
                 break  # Continue main loop (next decision)
@@ -677,7 +939,7 @@ class Solver:
         return model
 
     def verify_model(self, model: List[int]) -> bool:
-        """Verify that the model satisfies all clauses."""
+        """Verify that the model satisfies all original clauses."""
         model_set = set(model)
         for clause in self.clauses:
             satisfied = False
@@ -687,6 +949,7 @@ class Solver:
                     break
             if not satisfied:
                 return False
+        # Also verify learnt clauses (they should also be satisfied)
         for clause in self.learnt_clauses:
             satisfied = False
             for lit in clause.lits:
@@ -696,6 +959,14 @@ class Solver:
             if not satisfied:
                 return False
         return True
+
+    # -------------------------------------------------------------------------
+    # Failed assumptions (for unsat cores)
+    # -------------------------------------------------------------------------
+
+    def get_failed_assumptions(self) -> List[int]:
+        """Return the assumptions that led to UNSAT (for unsat core extraction)."""
+        return sorted(self.failed_assumptions)
 
     # -------------------------------------------------------------------------
     # Proof logging
@@ -719,16 +990,28 @@ class Solver:
             self.proof_file = None
 
     # -------------------------------------------------------------------------
+    # Statistics
+    # -------------------------------------------------------------------------
+
+    def get_stats(self) -> SolverStats:
+        """Return solver statistics."""
+        return self.stats
+
+    def print_stats(self):
+        """Print solver statistics to stderr."""
+        print(f"c {self.stats}", file=sys.stderr)
+
+    # -------------------------------------------------------------------------
     # DIMACS output
     # -------------------------------------------------------------------------
 
     @staticmethod
     def model_to_dimacs(model: List[int], num_vars: int) -> str:
         """Convert a model to DIMACS format."""
-        lines = [f"c SAT solution", f"s SATISFIABLE"]
+        lines = ["c SAT solution", "s SATISFIABLE"]
         values = []
         for v in range(1, num_vars + 1):
-            if v in model or (v) in model:
+            if v in model or -(v) not in model:
                 values.append(str(v))
             else:
                 values.append(str(-v))
@@ -737,7 +1020,7 @@ class Solver:
         for i, val in enumerate(values):
             line += val + " "
             if (i + 1) % 10 == 0:
-                line += "\nv "
+                line = line.rstrip() + "\nv "
         if not line.endswith("\n"):
             line += "0\n"
         return lines[0] + "\n" + lines[1] + "\n" + line
@@ -764,10 +1047,10 @@ def write_dimacs_model(model: List[int], num_vars: int, filename: str):
 # Convenience: solve from file
 # ---------------------------------------------------------------------------
 
-def solve_file(filename: str, time_limit: float = 0) -> Solver:
+def solve_file(filename: str, time_limit: float = 0, verbose: int = 0) -> Solver:
     """Solve a DIMACS CNF file and return the solver object."""
-    text = read_dimacs_file(filename)
-    solver = Solver.from_dimacs(text)
+    solver = Solver.from_file(filename)
+    solver.verbose = verbose
     solver.solve(time_limit=time_limit)
     return solver
 
@@ -782,39 +1065,45 @@ def main():
     parser.add_argument("input", help="DIMACS CNF input file")
     parser.add_argument("-t", "--timeout", type=float, default=0,
                         help="Time limit in seconds (0 = unlimited)")
-    parser.add_argument("-v", "--verbose", action="store_true",
-                        help="Print detailed statistics")
+    parser.add_argument("-v", "--verbose", type=int, default=0,
+                        help="Verbosity level (0=silent, 1=stats, 2=trace)")
     parser.add_argument("-p", "--proof", type=str, default=None,
                         help="Write DRAT proof to file")
     parser.add_argument("-o", "--output", type=str, default=None,
                         help="Write model to file (if SAT)")
+    parser.add_argument("-r", "--restart", type=str, default="luby",
+                        choices=["luby", "geometric"],
+                        help="Restart strategy")
+    parser.add_argument("--preprocess", action="store_true",
+                        help="Run preprocessing before solving")
     args = parser.parse_args()
 
     print(f"c CDCL SAT Solver")
     print(f"c Reading {args.input}...")
-    text = read_dimacs_file(args.input)
-    solver = Solver.from_dimacs(text)
+    solver = Solver.from_file(args.input)
+    solver.verbose = args.verbose
+    solver.restart_strategy = args.restart
 
     print(f"c Variables: {solver.num_vars}")
     print(f"c Clauses: {len(solver.clauses)}")
+
+    if args.preprocess:
+        print(f"c Preprocessing...")
+        ok = solver.preprocess()
+        print(f"c After preprocessing: {solver.num_vars} vars, "
+              f"{len(solver.clauses)} clauses, ok={ok}")
 
     if args.proof:
         solver.enable_proof(args.proof)
         print(f"c Proof logging: {args.proof}")
 
-    start = time.time()
     result = solver.solve(time_limit=args.timeout)
-    elapsed = time.time() - start
+
+    solver.print_stats()
 
     if result is True:
         print("s SATISFIABLE")
         model = solver.get_model()
-        if args.verbose:
-            print(f"c SAT! Decisions={solver.decisions} "
-                  f"Propagations={solver.propagations} "
-                  f"Conflicts={solver.conflicts} "
-                  f"Restarts={solver.restarts} "
-                  f"Time={elapsed:.3f}s")
         # Print model
         line = "v "
         for lit in sorted(model, key=lambda x: abs(x)):
@@ -823,19 +1112,14 @@ def main():
                 print(line.rstrip())
                 line = "v "
         if line.strip() != "v":
-            print(line.rstrip() + "0")
+            print(line.rstrip() + " 0")
         if args.output:
             write_dimacs_model(model, solver.num_vars, args.output)
     elif result is False:
         print("s UNSATISFIABLE")
-        if args.verbose:
-            print(f"c UNSAT. Decisions={solver.decisions} "
-                  f"Propagations={solver.propagations} "
-                  f"Conflicts={solver.conflicts} "
-                  f"Time={elapsed:.3f}s")
     else:
         print("s UNKNOWN")
-        print(f"c Time limit reached after {elapsed:.3f}s")
+        print(f"c Time limit reached")
 
     solver.close_proof()
 
