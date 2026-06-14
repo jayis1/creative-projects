@@ -1,0 +1,70 @@
+name: MIDI Sequencer CI
+
+on:
+  push:
+    paths:
+      - 'midi-sequencer/**'
+  pull_request:
+    paths:
+      - 'midi-sequencer/**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.11', '3.12']
+
+    defaults:
+      run:
+        working-directory: midi-sequencer
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install midiutil pytest pyyaml
+
+      - name: Run tests
+        run: |
+          python -m pytest tests/ -v
+
+      - name: Test CLI
+        run: |
+          python -m sequencer info scales
+          python -m sequencer info progressions
+          python -m sequencer info grooves
+
+      - name: Test MIDI export
+        run: |
+          python -m sequencer generate euclidean --beats 5 --length 16 -o /tmp/test_euc.mid
+          python -m sequencer generate drums --drum-style hiphop -o /tmp/test_drums.mid
+          python -m sequencer preset four_on_floor --key A --bpm 110 -o /tmp/test_preset.mid
+
+  lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: midi-sequencer
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install linters
+        run: pip install ruff
+
+      - name: Lint with ruff
+        run: ruff check sequencer/ --ignore=E501
+        continue-on-error: true

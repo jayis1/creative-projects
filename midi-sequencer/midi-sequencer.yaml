@@ -1,0 +1,40 @@
+# MIDI Step Sequencer Configuration
+# Copy this file to .midi-sequencer.yaml in your project directory
+# or home directory to customize defaults.
+
+# Tempo
+bpm: 120
+
+# MIDI resolution (pulses per quarter note)
+ppqn: 480
+
+# Time signature [beats_per_bar, beat_unit]
+time_signature:
+  - 4
+  - 4
+
+# Swing amount (0.0 = none, up to 0.3)
+swing: 0.0
+
+# Default musical parameters
+default_root: "C"
+default_scale: "pentatonic_minor"
+default_octave: 4
+default_velocity: 100
+default_gate: 0.8
+default_length: 16
+
+# Humanization
+humanize_velocity: 0.0
+humanize_timing: 0.0
+
+# MIDI defaults
+default_channel: 0
+default_program: 0
+
+# Output settings
+output_dir: "."
+add_metronome: false
+
+# Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+logging_level: "WARNING"

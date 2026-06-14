@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "midi-step-sequencer"
+version = "3.0.0"
+description = "Generative music composition toolkit and MIDI file exporter"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Creative Coder Pipeline"},
+]
+keywords = ["midi", "music", "sequencer", "generative", "euclidean", "l-system", "markov"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Musicians",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Sound/Audio :: MIDI",
+    "Topic :: Artistic Software",
+]
+dependencies = [
+    "midiutil>=1.2",
+]
+
+[project.optional-dependencies]
+yaml = ["pyyaml>=6.0"]
+dev = [
+    "pytest>=7.0",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+midi-sequencer = "sequencer.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["sequencer*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"

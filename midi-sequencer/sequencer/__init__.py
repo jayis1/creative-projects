@@ -1,6 +1,10 @@
-"""MIDI Step Sequencer — generative music composition and MIDI export."""
+"""MIDI Step Sequencer — generative music composition and MIDI export.
 
-__version__ = "2.0.0"
+A comprehensive toolkit for creating music through algorithmic composition,
+with support for Euclidean rhythms, Markov chains, L-Systems, and more.
+"""
+
+__version__ = "3.0.0"
 
 from sequencer.scales import (
     SCALE_INTERVALS, CHORD_INTERVALS, NOTE_OFFSETS,
@@ -23,3 +27,14 @@ from sequencer.progressions import PROGRESSIONS, build_progression, list_progres
 from sequencer.arrangement import Arrangement, Section, verse_chorus_verse
 from sequencer.serialization import save_song, load_song, save_pattern, load_pattern
 from sequencer.export import song_to_midi, pattern_to_midi
+from sequencer.config import SequencerConfig
+from sequencer.validation import ValidationError
+from sequencer.analysis import (
+    pattern_stats, track_stats, song_stats, song_summary,
+    visualize_pattern, note_distribution, interval_distribution,
+)
+from sequencer.batch import (
+    CompositionRecipe, parameter_sweep,
+    euclidean_variations, scale_exploration, progression_album,
+)
+from sequencer.extended_drums import extended_drum_pattern, list_extended_styles

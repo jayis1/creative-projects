@@ -10,3 +10,11 @@ test_enhancements.py
 test_cli.py
 euc_test.py
 tmp_test/
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+example_*.mid
+example_*.json
+batch_output/
+example_batch_output/
