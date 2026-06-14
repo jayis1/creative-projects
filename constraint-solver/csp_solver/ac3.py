@@ -124,6 +124,12 @@ def ac3(csp: CSP) -> bool:
         True if arc consistency was achieved (no domain emptied),
         False if a domain wipeout occurred (CSP is unsolvable).
     """
+    # Check for pre-existing empty domains — these mean the CSP is
+    # trivially unsatisfiable (a variable with no possible values).
+    for var_name in csp.variables:
+        if not csp.get_domain(var_name):
+            return False
+
     # Initialize queue with all arcs (both directions for each edge)
     queue: deque[Tuple[str, str]] = deque()
     for var_name in csp.variables:

@@ -135,6 +135,9 @@ class CSPSolver:
         is found, a constraint is added to prevent finding the same
         solution again, and search continues.
 
+        Note: This method works on a copy of the CSP so the original
+        is not mutated.
+
         Args:
             csp: The CSP to solve.
             max_solutions: Maximum number of solutions to find.
@@ -142,10 +145,13 @@ class CSPSolver:
         Returns:
             List of satisfying assignments.
         """
+        # Work on a copy so the original CSP is not mutated by
+        # blocking constraints added during enumeration.
+        csp_work = copy.deepcopy(csp)
         solutions: List[Assignment] = []
 
         for _ in range(max_solutions):
-            csp_copy = copy.deepcopy(csp)
+            csp_copy = copy.deepcopy(csp_work)
             if self.preprocess_ac3:
                 if not ac3(csp_copy):
                     break
@@ -164,7 +170,7 @@ class CSPSolver:
 
             solutions.append(result)
 
-            # Add constraint to block this solution
+            # Add constraint to block this solution on the working copy
             var_names = sorted(result.keys())
             values = tuple(result[v] for v in var_names)
 
@@ -175,9 +181,9 @@ class CSPSolver:
                     )
                 return blocker
 
-            csp.add_constraint(
+            csp_work.add_constraint(
                 Constraint(
-                    list(csp.variables.keys()),
+                    list(csp_work.variables.keys()),
                     make_blocker(var_names, values),
                 )
             )
@@ -237,8 +243,9 @@ def compare_strategies(csp: CSP, timeout: Optional[float] = 30.0) -> List[Dict]:
 
     results = []
     for strat in strategies:
-        name = strat.pop("name")
-        solver = CSPSolver(**strat, timeout=timeout)
+        name = strat["name"]  # Don't mutate the original dict
+        kwargs = {k: v for k, v in strat.items() if k != "name"}
+        solver = CSPSolver(**kwargs, timeout=timeout)
         result = solver.solve(csp)
         entry = {
             "strategy": name,

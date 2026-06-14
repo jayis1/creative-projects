@@ -140,6 +140,11 @@ class BacktrackingSolver:
         self.stats.start_time = time.time()
 
         try:
+            # Check for empty domains before starting — means CSP is unsatisfiable
+            for var_name in csp.variables:
+                if not csp.get_domain(var_name):
+                    return None
+
             # Initial constraint propagation
             if self.use_mac:
                 if not ac3(csp):

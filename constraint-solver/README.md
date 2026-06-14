@@ -203,3 +203,17 @@ The `compare_strategies` function tests five configurations:
 3. **BT+MRV+LCV** (variable and value ordering)
 4. **FC+MRV+LCV** (forward checking with heuristics)
 5. **MAC+MRV+LCV** (full constraint propagation — fastest in practice)
+
+## Known Issues (Resolved)
+
+### 1. `solve_all` mutated the original CSP
+**Bug**: `CSPSolver.solve_all()` added blocking constraints to the original CSP object, causing subsequent calls on the same CSP to produce incorrect results (fewer solutions or no solutions).  
+**Fix**: `solve_all` now works on a deep copy of the CSP, so blocking constraints are added to the copy, not the original.
+
+### 2. `compare_strategies` mutated strategy dicts
+**Bug**: `compare_strategies()` used `dict.pop("name")` which destroyed the "name" key from each strategy dict, making the dicts unusable after the call.  
+**Fix**: Changed to `strat["name"]` with a dict comprehension to filter out the "name" key, leaving the original dicts intact.
+
+### 3. AC-3 didn't detect pre-existing empty domains
+**Bug**: When a CSP had a variable with an empty domain before AC-3 started, `ac3()` returned `True` (consistency achieved), which is incorrect — an empty domain means the CSP is unsatisfiable.  
+**Fix**: Added an upfront check in `ac3()` that scans all domains and returns `False` immediately if any domain is empty. Also added the same check in `BacktrackingSolver.solve()` before starting search.
