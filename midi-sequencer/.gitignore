@@ -6,3 +6,6 @@ __pycache__/
 check_import.py
 run_test.py
 test_basic.py
+test_enhancements.py
+test_cli.py
+tmp_test/

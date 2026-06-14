@@ -12,6 +12,10 @@ from sequencer.generators import (
 )
 from sequencer.presets import PRESETS
 from sequencer.export import song_to_midi, pattern_to_midi
+from sequencer.grooves import GROOVE_TEMPLATES, VELOCITY_CURVES, apply_groove, apply_velocity_curve
+from sequencer.progressions import PROGRESSIONS, build_progression, list_progressions
+from sequencer.lsystem import lsystem_pattern, PRESETS as LS_PRESETS
+from sequencer.serialization import save_song, load_song, save_pattern, load_pattern
 
 
 def cmd_generate(args):
@@ -62,9 +66,35 @@ def cmd_generate(args):
             octave=args.octave,
             arpeggiate=args.arpeggiate,
         )
+    elif args.algorithm == "lsystem":
+        pattern = lsystem_pattern(
+            preset=args.lsystem_preset or "cantor",
+            iterations=args.lsystem_iterations or 3,
+            root=args.root,
+            scale=args.scale,
+            octave=args.octave,
+            velocity=args.velocity or 100,
+        )
+    elif args.algorithm == "progression":
+        prog_name = args.progression or "pop_I_V_vi_IV"
+        chords = build_progression(prog_name, key=args.root, scale=args.scale)
+        pattern = chord_pattern(
+            chords=chords,
+            length_per_chord=args.length,
+            octave=args.octave,
+            arpeggiate=args.arpeggiate,
+        )
     else:
         print(f"Unknown algorithm: {args.algorithm}", file=sys.stderr)
         sys.exit(1)
+
+    # Apply groove if specified
+    if args.groove:
+        pattern = apply_groove(pattern, args.groove, intensity=args.groove_intensity or 1.0)
+
+    # Apply velocity curve if specified
+    if args.velocity_curve:
+        pattern = apply_velocity_curve(pattern, args.velocity_curve)
 
     if args.output:
         song = Song(
@@ -91,6 +121,11 @@ def cmd_generate(args):
             else:
                 print(f"  Step {i:2d}: ░ (rest)")
 
+    # Save pattern as JSON if requested
+    if args.save_pattern:
+        save_pattern(pattern, args.save_pattern)
+        print(f"Pattern saved to {args.save_pattern}")
+
 
 def cmd_preset(args):
     """Generate a song from a preset template."""
@@ -104,9 +139,13 @@ def cmd_preset(args):
     print(f"Exported preset '{args.preset}' to {filename}")
     print(f"  Tracks: {len(song.tracks)}, BPM: {song.bpm}")
 
+    if args.save_json:
+        save_song(song, args.save_json)
+        print(f"  Song JSON saved to {args.save_json}")
+
 
 def cmd_info(args):
-    """Display information about scales, chords, and available options."""
+    """Display information about scales, chords, progressions, and available options."""
     if args.type == "scales":
         print("Available scales:")
         for name, intervals in SCALE_INTERVALS.items():
@@ -131,6 +170,19 @@ def cmd_info(args):
         rhythm = euclidean_rhythm(beats, length, rotation=args.rotation or 0)
         vis = "".join("█" if r else "·" for r in rhythm)
         print(f"Euclidean ({beats}, {length}): {vis}")
+    elif args.type == "progressions":
+        print("Available chord progressions:")
+        for name, prog in PROGRESSIONS.items():
+            degrees = " ".join(f"{d}:{q}" for d, q in prog)
+            print(f"  {name:25s} [{degrees}]")
+    elif args.type == "grooves":
+        print("Available groove templates:")
+        for name in GROOVE_TEMPLATES:
+            print(f"  {name}")
+    elif args.type == "lsystems":
+        print("Available L-System presets:")
+        for name, preset in LS_PRESETS.items():
+            print(f"  {name:20s} axiom={preset['axiom']} rules={preset['rules']}")
 
 
 def cmd_compose(args):
@@ -197,6 +249,23 @@ def cmd_compose(args):
             pattern = chord_pattern(chords, length_per_chord=args.length, octave=3, arpeggiate=True)
             tracks.append(Track(name="Chords", pattern=pattern, channel=min(len(tracks), 15), program=4))
 
+        elif track_type == "lsystem":
+            preset = parts[1] if len(parts) > 1 else "cantor"
+            iterations = int(parts[2]) if len(parts) > 2 else 3
+            root = parts[3] if len(parts) > 3 else args.root
+            scale = parts[4] if len(parts) > 4 else args.scale
+            octave = int(parts[5]) if len(parts) > 5 else args.octave
+            ch = len(tracks)
+            pattern = lsystem_pattern(preset=preset, iterations=iterations, root=root, scale=scale, octave=octave)
+            tracks.append(Track(name=f"LS-{preset}", pattern=pattern, channel=min(ch, 15)))
+
+        elif track_type == "progression":
+            prog_name = parts[1] if len(parts) > 1 else "pop_I_V_vi_IV"
+            octave = int(parts[2]) if len(parts) > 2 else 3
+            chords = build_progression(prog_name, key=args.root, scale=args.scale)
+            pattern = chord_pattern(chords, length_per_chord=args.length, octave=octave, arpeggiate=True)
+            tracks.append(Track(name=f"Prog-{prog_name}", pattern=pattern, channel=min(len(tracks), 15), program=4))
+
         else:
             print(f"Unknown track type: {track_type}", file=sys.stderr)
             sys.exit(1)
@@ -212,6 +281,10 @@ def cmd_compose(args):
     for t in tracks:
         print(f"  - {t.name}: {t.pattern.length} steps, ch={t.channel}, prog={t.program}")
 
+    if args.save_json:
+        save_song(song, args.save_json)
+        print(f"  Song JSON saved to {args.save_json}")
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -221,16 +294,21 @@ def main():
 Examples:
   %(prog)s generate euclidean --beats 5 --length 16 -o output.mid
   %(prog)s generate drums --drum-style hiphop -o drums.mid
+  %(prog)s generate lsystem --lsystem-preset fibonacci_melody -o lsystem.mid
+  %(prog)s generate progression --progression pop_I_V_vi_IV --root G -o prog.mid
   %(prog)s compose --tracks "drums:four_on_floor" "euclidean:5:16:C:pentatonic_minor:4" -o song.mid
   %(prog)s preset four_on_floor --key Am -o dance.mid
   %(prog)s info scales
+  %(prog)s info progressions
+  %(prog)s info grooves
         """,
     )
     subparsers = parser.add_subparsers(dest="command", help="Sub-command")
 
     # Generate subcommand
     gen_parser = subparsers.add_parser("generate", help="Generate a pattern")
-    gen_parser.add_argument("algorithm", choices=["euclidean", "random", "markov", "drums", "chords"],
+    gen_parser.add_argument("algorithm",
+                            choices=["euclidean", "random", "markov", "drums", "chords", "lsystem", "progression"],
                             help="Generation algorithm")
     gen_parser.add_argument("--beats", type=int, help="Number of beats (for Euclidean)")
     gen_parser.add_argument("--length", type=int, default=16, help="Pattern length in steps")
@@ -239,13 +317,21 @@ Examples:
     gen_parser.add_argument("--octave", type=int, default=4, help="Starting octave")
     gen_parser.add_argument("--rotation", type=int, help="Rotation offset (for Euclidean)")
     gen_parser.add_argument("--density", type=float, help="Note density 0-1 (for random)")
+    gen_parser.add_argument("--velocity", type=int, help="Note velocity")
     gen_parser.add_argument("--drum-style", default="four_on_floor", help="Drum pattern style")
     gen_parser.add_argument("--chords", nargs="+", help="Chord specs ROOT:QUALITY")
     gen_parser.add_argument("--arpeggiate", action="store_true", help="Arpeggiate chords")
+    gen_parser.add_argument("--lsystem-preset", help="L-System preset name (cantor, fibonacci_melody, tree_rhythm, koch_snowflake, serpinski_melody)")
+    gen_parser.add_argument("--lsystem-iterations", type=int, help="L-System iterations")
+    gen_parser.add_argument("--progression", help="Named chord progression (e.g. pop_I_V_vi_IV, jazz_ii_V_I)")
+    gen_parser.add_argument("--groove", help="Apply groove template (straight, swing_16th, shuffle, dilla, bossa, reggae)")
+    gen_parser.add_argument("--groove-intensity", type=float, help="Groove intensity 0.0-1.0")
+    gen_parser.add_argument("--velocity-curve", help="Apply velocity curve (crescendo, diminuendo, swell, heartbeat, random)")
     gen_parser.add_argument("-o", "--output", help="Output MIDI filename")
     gen_parser.add_argument("--bpm", type=int, default=120, help="Tempo in BPM")
     gen_parser.add_argument("--channel", type=int, default=0, help="MIDI channel")
     gen_parser.add_argument("--program", type=int, default=0, help="MIDI program number")
+    gen_parser.add_argument("--save-pattern", help="Save pattern to JSON file")
 
     # Preset subcommand
     preset_parser = subparsers.add_parser("preset", help="Generate from a preset template")
@@ -253,6 +339,7 @@ Examples:
     preset_parser.add_argument("--key", default="C", help="Root key")
     preset_parser.add_argument("--bpm", type=int, default=120, help="Tempo")
     preset_parser.add_argument("-o", "--output", default="preset_output.mid", help="Output filename")
+    preset_parser.add_argument("--save-json", help="Save song structure to JSON")
 
     # Compose subcommand
     comp_parser = subparsers.add_parser("compose", help="Compose a multi-track song")
@@ -264,11 +351,13 @@ Examples:
     comp_parser.add_argument("--octave", type=int, default=4, help="Default octave")
     comp_parser.add_argument("--name", help="Song name")
     comp_parser.add_argument("-o", "--output", default="composition.mid", help="Output filename")
+    comp_parser.add_argument("--save-json", help="Save song structure to JSON")
 
     # Info subcommand
     info_parser = subparsers.add_parser("info", help="Display information")
-    info_parser.add_argument("type", choices=["scales", "chords", "notes", "rhythm"],
-                            help="What to display")
+    info_parser.add_argument("type",
+                             choices=["scales", "chords", "notes", "rhythm", "progressions", "grooves", "lsystems"],
+                             help="What to display")
     info_parser.add_argument("--root", default="C", help="Root note for note display")
     info_parser.add_argument("--scale", default="major", help="Scale name for note display")
     info_parser.add_argument("--beats", type=int, help="Beats for rhythm display")
