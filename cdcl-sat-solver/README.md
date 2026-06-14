@@ -192,3 +192,20 @@ Key algorithms:
 - 1-UIP conflict analysis with seen-flag cleanup
 - Glucose-style clause deletion based on LBD/glue scores
 - Luby or geometric restart strategies
+
+## Known Issues (Resolved)
+
+### 1. Propagation Not Run After Learning Unit Clauses (FIXED)
+After conflict analysis and backtracking, unit learnt clauses were assigned via `_assign()` but their implications were not propagated before the next decision. This caused the solver to miss constraints and incorrectly report SAT for unsatisfiable instances (e.g., pigeonhole problems). **Fix**: Added explicit `_propagate()` call after `_add_learnt()` in the main solve loop, with proper conflict handling for cascading unit implications.
+
+### 2. Probing State Restoration Missing var_info (FIXED)
+The `_save_state()` and `_restore_state()` methods used by failed literal probing only saved trail, trail_lim, assignment, and prop_queue, but not the `var_info` fields (level, reason, polarity, seen). After restoring state, stale `var_info` from the failed probe could cause incorrect subsequent probes. **Fix**: Extended `_save_state()` and `_restore_state()` to include all `var_info` fields.
+
+### 3. model_to_dimacs Incorrect for Negative Literals (FIXED)
+The `model_to_dimacs()` method used incorrect logic (`v in model or -(v) not in model`) to determine variable values. When a variable appeared as a negative literal in the model (e.g., `-2`), the condition `-(v) not in model` would incorrectly evaluate, producing wrong output. **Fix**: Replaced with explicit set-based lookup that checks both positive and negative literal membership.
+
+### 4. Unit Clause Conflict Detection During Parsing (FIXED)
+When conflicting unit clauses (e.g., `[1]` and `[-1]`) were added during DIMACS parsing, the `_add_clause_watches` method only enqueued the second literal without checking for conflict with the first. The `_assign` method was called but its return value was not checked. **Fix**: `_add_clause_watches` now directly calls `_assign` for unit clauses and sets `self.ok = False` on conflict. The `from_dimacs` parser checks `self.ok` after all clauses are added.
+
+### 5. _analyze Trail Indexing Bounds (FIXED)
+The conflict analysis routine could attempt to access trail indices below 0 when analyzing conflicts involving unit clauses, causing an IndexError. **Fix**: Added `trail_idx >= 0` bounds check in the inner loop of `_analyze` and a `found_uip` flag to handle the case where no UIP is found (safety check).

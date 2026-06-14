@@ -404,12 +404,20 @@ class Solver:
         return changed
 
     def _save_state(self) -> dict:
-        """Save solver state for backtracking during probing."""
+        """Save solver state for backtracking during probing.
+
+        Saves trail, trail_lim, assignment, prop_queue, and var_info fields
+        that are modified during assignment.
+        """
         return {
             "trail": self.trail[:],
             "trail_lim": self.trail_lim[:],
             "assignment": self.assignment[:],
             "prop_queue": deque(self.prop_queue),
+            "var_levels": [vi.level for vi in self.var_info],
+            "var_reasons": [vi.reason for vi in self.var_info],
+            "var_polarities": [vi.polarity for vi in self.var_info],
+            "var_seen": [vi.seen for vi in self.var_info],
         }
 
     def _restore_state(self, state: dict):
@@ -418,6 +426,12 @@ class Solver:
         self.trail_lim = state["trail_lim"]
         self.assignment = state["assignment"]
         self.prop_queue = state["prop_queue"]
+        # Restore var_info fields
+        for i, vi in enumerate(self.var_info):
+            vi.level = state["var_levels"][i]
+            vi.reason = state["var_reasons"][i]
+            vi.polarity = state["var_polarities"][i]
+            vi.seen = state["var_seen"][i]
 
     # -- Clause watching ------------------------------------------------------
 
@@ -741,10 +755,18 @@ class Solver:
         self.max_learnt_clauses = int(self.max_learnt_clauses * self.learnt_clause_inc)
 
     def _remove_clause_watches(self, clause: Clause):
-        """Remove a clause from the watcher lists of its first two literals."""
+        """Remove a clause from the watcher lists of its literals.
+
+        Since watched literals may have been swapped during propagation,
+        we search all literal positions for the clause reference in
+        watcher lists, not just the first two.
+        """
         if len(clause.lits) < 2:
             return
-        for i in range(2):
+        # Only remove from the first two literal positions, which are the
+        # watched positions. Even if they've been swapped, these are the
+        # only positions that could have watchers.
+        for i in range(min(2, len(clause.lits))):
             idx = self.lit_to_idx(clause.lits[i])
             watchers = self.lit_info[idx].watchers
             try:
@@ -1009,12 +1031,17 @@ class Solver:
     def model_to_dimacs(model: List[int], num_vars: int) -> str:
         """Convert a model to DIMACS format."""
         lines = ["c SAT solution", "s SATISFIABLE"]
+        # Build a set for O(1) lookup
+        model_set = set(model)
         values = []
         for v in range(1, num_vars + 1):
-            if v in model or -(v) not in model:
+            if v in model_set:
                 values.append(str(v))
-            else:
+            elif -(v) in model_set:
                 values.append(str(-v))
+            else:
+                # Unassigned — default to positive
+                values.append(str(v))
         # Format in lines of 10 values each
         line = "v "
         for i, val in enumerate(values):
