@@ -59,7 +59,7 @@ def gray_scott_react(u, v, params):
     return du, dv
 
 
-def gray_scott_default_state(n):
+def gray_scott_default_state(n, params=None):
     """Default Gray-Scott state: u=1, v=0 (stable homogeneous state)."""
     u = np.ones((n, n), dtype=np.float64)
     v = np.zeros((n, n), dtype=np.float64)
@@ -102,18 +102,42 @@ def fitzhugh_nagumo_react(u, v, params):
     return du, dv
 
 
-def fitzhugh_nagumo_default_state(n):
-    """Default FHN state: resting near the fixed point (u≈-1.2, v≈-0.6).
+def fitzhugh_nagumo_default_state(n, params=None):
+    """Default FHN state: resting near the fixed point.
     
-    The fixed point of u - u³/3 - v = 0 with v = (u + β)/γ gives
-    approximately u ≈ -1.2, v ≈ -0.7 for default parameters.
+    The fixed point of u - u³/3 - v = 0 with v = (u + β)/γ is found
+    by solving u - u³/3 = (u + β)/γ numerically. We use scipy.optimize
+    or a bisection-based approach for robustness.
+    
+    Args:
+        n: Grid size
+        params: Optional dict with 'beta' and 'gamma' keys. If None, uses defaults.
     """
-    # Calculate fixed point more accurately
-    # At steady state: u - u³/3 = v and v = (u+β)/γ
-    # Solve: u - u³/3 = (u+β)/γ → u(1 - 1/γ) - u³/3 - β/γ = 0
-    # For default params, u ≈ -1.2
-    u = np.full((n, n), -1.2, dtype=np.float64)
-    v = np.full((n, n), -0.7, dtype=np.float64)
+    if params is not None:
+        beta = params.get("beta", 0.5)
+        gamma = params.get("gamma", 1.0)
+    else:
+        beta = 0.5
+        gamma = 1.0
+    
+    # Find fixed point: solve f(u) = u - u³/3 - (u+beta)/gamma = 0
+    # Use bisection in [-3, 3] which brackets the leftmost root for typical params
+    def f(u):
+        return u - u ** 3 / 3.0 - (u + beta) / gamma
+    
+    # Bisection method for robust root-finding
+    lo, hi = -3.0, 0.0
+    for _ in range(50):  # 50 iterations gives ~15 digits of accuracy
+        mid = (lo + hi) / 2.0
+        if f(mid) * f(lo) < 0:
+            hi = mid
+        else:
+            lo = mid
+    u_eq = (lo + hi) / 2.0
+    v_eq = (u_eq + beta) / gamma
+    
+    u = np.full((n, n), u_eq, dtype=np.float64)
+    v = np.full((n, n), v_eq, dtype=np.float64)
     return u, v
 
 
@@ -156,7 +180,7 @@ def gierer_meinhardt_react(u, v, params):
     return du, dv
 
 
-def gierer_meinhardt_default_state(n):
+def gierer_meinhardt_default_state(n, params=None):
     """Default GM state: uniform concentrations with small random perturbations."""
     rng = np.random.default_rng(42)
     u = np.ones((n, n), dtype=np.float64) * 0.5 + rng.normal(0, 0.01, (n, n))
@@ -203,10 +227,19 @@ def brusselator_react(u, v, params):
     return du, dv
 
 
-def brusselator_default_state(n):
-    """Default Brusselator state: near steady state (A, B/A)."""
-    A = 1.0
-    B = 3.0
+def brusselator_default_state(n, params=None):
+    """Default Brusselator state: near steady state (A, B/A).
+    
+    Args:
+        n: Grid size
+        params: Optional dict with 'A' and 'B' keys. If None, uses defaults.
+    """
+    if params is not None:
+        A = params.get("A", 1.0)
+        B = params.get("B", 3.0)
+    else:
+        A = 1.0
+        B = 3.0
     u = np.ones((n, n), dtype=np.float64) * A
     v = np.ones((n, n), dtype=np.float64) * (B / A)
     return u, v

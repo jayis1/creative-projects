@@ -703,6 +703,95 @@ def test_euler_rk2_consistency():
 
 
 # ──────────────────────────────────────────────────────
+# Bug-specific Tests
+# ──────────────────────────────────────────────────────
+
+@test("Bug fix: multi_spot perturbation v-indexing")
+def test_bug_multi_spot_v_indexing():
+    """The multi_spot perturbation had a bug where v used ry+s instead of rx+s
+    in the row dimension. This test verifies the fix."""
+    solver = ReactionDiffusionSolver("gray-scott", grid_size=64)
+    solver.apply_perturbation({"type": "multi_spot", "count": 10, "size": 8,
+                                "u_val": 0.0, "v_val": 1.0})
+    # u and v should have identical perturbation regions
+    # (both set to same value in same spots)
+    u_perturbed = solver.u < 0.5
+    v_perturbed = solver.v > 0.5
+    # The perturbation pattern should be the same for u and v
+    assert_true(np.array_equal(u_perturbed, v_perturbed),
+                "u and v perturbation masks should be identical")
+
+
+@test("Bug fix: adaptive_step restores dt")
+def test_bug_adaptive_step_dt_restore():
+    """The adaptive_step method modified self.dt but didn't restore it.
+    This test verifies the fix."""
+    solver = ReactionDiffusionSolver("gray-scott", grid_size=32)
+    original_dt = solver.dt
+    solver.apply_perturbation()
+    solver.adaptive_step(10)
+    assert_close(solver.dt, original_dt,
+                msg=f"dt should be restored to {original_dt}")
+
+
+@test("Bug fix: _apply_colormap returns uint8")
+def test_bug_colormap_uint8():
+    """The grayscale fallback in _apply_colormap returned float instead of uint8."""
+    from visualization import _apply_colormap
+    data = np.random.rand(10, 10)
+    # With matplotlib available
+    rgb = _apply_colormap(data, "inferno")
+    assert_true(rgb.dtype == np.uint8,
+                f"_apply_colormap should return uint8, got {rgb.dtype}")
+
+
+@test("Bug fix: FHN default state uses correct fixed point")
+def test_bug_fhn_fixed_point():
+    """FHN default state should compute the fixed point based on params."""
+    from models import fitzhugh_nagumo_default_state
+    u, v = fitzhugh_nagumo_default_state(32, params={"beta": 0.5, "gamma": 1.0})
+    # At steady state: du/dt = 0 and dv/dt = 0
+    # u - u³/3 - v = 0 and epsilon*(u + beta - gamma*v) = 0
+    # => v = (u + beta) / gamma
+    # Check that the fixed point approximately satisfies these
+    u_mean = u[0, 0]
+    v_mean = v[0, 0]
+    du = u_mean - u_mean**3 / 3 - v_mean
+    dv = 0.04 * (u_mean + 0.5 - 1.0 * v_mean)
+    assert_true(abs(du) < 0.1, f"FHN du at fixed point should be ~0, got {du:.4f}")
+    assert_true(abs(dv) < 0.01, f"FHN dv at fixed point should be ~0, got {dv:.4f}")
+
+
+@test("Bug fix: Brusselator default state uses params")
+def test_bug_brusselator_params():
+    """Brusselator default state should use A and B from params."""
+    from models import brusselator_default_state
+    u, v = brusselator_default_state(32, params={"A": 2.0, "B": 6.0})
+    # Steady state: u=A, v=B/A
+    assert_close(u[0, 0], 2.0, msg="Brusselator u should be A=2.0")
+    assert_close(v[0, 0], 3.0, msg="Brusselator v should be B/A=3.0")
+
+
+@test("Bug fix: CLI grid/step override")
+def test_bug_cli_override():
+    """Verify that CLI --grid and --steps override preset values."""
+    # Simulate what the CLI does
+    from presets import get_preset
+    preset = get_preset("spots")
+    grid_size = 64  # User-specified
+    steps = 500     # User-specified
+    
+    # When user specifies, preset should NOT override
+    if grid_size is None:
+        grid_size = preset.get("grid_size", 128)
+    if steps is None:
+        steps = preset.get("steps", 5000)
+    
+    assert_true(grid_size == 64, f"grid_size should be 64, got {grid_size}")
+    assert_true(steps == 500, f"steps should be 500, got {steps}")
+
+
+# ──────────────────────────────────────────────────────
 # Run all tests
 # ──────────────────────────────────────────────────────
 

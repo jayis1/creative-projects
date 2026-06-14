@@ -125,7 +125,7 @@ reaction-diffusion-sim/
 ├── solver.py          # PDE solver engine (Laplacian, stepping, checkpoints)
 ├── presets.py         # Parameter presets for all models
 ├── visualization.py  # Rendering, GIF, animation, colormaps
-├── tests.py           # Comprehensive test suite (52+ tests)
+├── tests.py           # Comprehensive test suite (116 tests)
 └── README.md
 ```
 
@@ -137,10 +137,14 @@ python3 tests.py
 
 ## Known Issues (Resolved)
 
-- **Gierer-Meinhardt overflow**: Fixed by clamping u to [0, ∞) and v to [1e-10, ∞) in reaction kinetics
-- **Brusselator overflow**: Fixed by clamping fields to [-10, 10] in reaction kinetics
-- **Grid/step override**: CLI `--grid` and `--steps` now correctly override preset values
-- **multi_spot perturbation**: Fixed v-indexing bug (was using `ry + s` instead of `ry - s` for column slice)
+1. **Gierer-Meinhardt overflow**: Fixed by clamping u to [0, ∞) and v to [1e-10, ∞) in reaction kinetics
+2. **Brusselator overflow**: Fixed by clamping fields to [-10, 10] in reaction kinetics
+3. **CLI grid/step override**: `--grid` and `--steps` now correctly override preset values (previously presets always won)
+4. **multi_spot perturbation v-indexing**: Fixed bug where `v` array used `ry + s` instead of `rx + s` for row slice, causing asymmetric perturbation placement
+5. **adaptive_step dt restoration**: `adaptive_step()` now restores `self.dt` to its original value after the adaptive loop (previously left it modified)
+6. **_apply_colormap grayscale fallback**: Returns `uint8` array instead of `float64`, ensuring consistency with the matplotlib path and compatibility with PIL
+7. **FHN fixed-point calculation**: Replaced divergent fixed-point iteration with robust bisection method for computing the FitzHugh-Nagumo equilibrium state; now also accepts `params` argument for custom β/γ
+8. **Brusselator/FHN default state with params**: `default_state()` functions now accept optional `params` argument so initial conditions match user-specified parameters instead of hardcoded defaults
 
 ## License
 

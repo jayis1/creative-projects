@@ -135,7 +135,7 @@ class ReactionDiffusionSolver:
         self._clamp_range = self.model_config.get("stability_clamp", None)
 
         # Initialize state
-        u, v = self.model_config["default_state"](grid_size)
+        u, v = self.model_config["default_state"](grid_size, params=self.params)
         self.u = u.astype(np.float64)
         self.v = v.astype(np.float64)
         
@@ -231,8 +231,9 @@ class ReactionDiffusionSolver:
                 rx = rng.integers(size, n - size)
                 ry = rng.integers(size, n - size)
                 s = size // 2
+                # BUG FIX: was rx-s:ry+s for v, should be rx-s:rx+s
                 self.u[rx - s:rx + s, ry - s:ry + s] = u_val
-                self.v[rx - s:ry + s, ry - s:ry + s] = v_val
+                self.v[rx - s:rx + s, ry - s:ry + s] = v_val
         else:
             raise ValueError(f"Unknown perturbation type: {ptype}")
 
@@ -302,7 +303,7 @@ class ReactionDiffusionSolver:
             self.step(remaining, method)
 
     def adaptive_step(self, num_steps, method="euler", safety=0.5,
-                      max_dt=None, min_dt=1e-6, target_change=0.1):
+                      max_dt=None, min_dt=None, target_change=0.1):
         """
         Advance with adaptive time stepping based on concentration change rate.
         
@@ -314,10 +315,11 @@ class ReactionDiffusionSolver:
             num_steps: Approximate number of steps (actual may vary)
             method: Integration method
             safety: Safety factor for time step (0 < safety < 1)
-            max_dt: Maximum allowed time step
-            min_dt: Minimum allowed time step
+            max_dt: Maximum allowed time step (default: 4x base dt)
+            min_dt: Minimum allowed time step (default: 0.01x base dt)
             target_change: Target maximum concentration change per step
         """
+        original_dt = self.dt  # Save to restore later
         if max_dt is None:
             max_dt = self.dt * 4  # allow up to 4x the base dt
         if min_dt is None:
@@ -364,7 +366,8 @@ class ReactionDiffusionSolver:
                 if self.step_count % every == 0:
                     callback(self)
         
-        # Restore original dt
+        # Restore original dt (may have been modified for RK2 fallback)
+        self.dt = original_dt
         return dt
 
     def get_state(self):

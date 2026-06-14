@@ -72,8 +72,8 @@ def _apply_colormap(data, cmap_name="inferno"):
         rgba = cm(normalized)
         return (rgba[:, :, :3] * 255).astype(np.uint8)
     else:
-        # Grayscale fallback
-        return np.stack([normalized] * 3, axis=-1)
+        # Grayscale fallback — return uint8 to match the matplotlib path
+        return (np.stack([normalized] * 3, axis=-1) * 255).astype(np.uint8)
 
 
 def render_frame(u, v, field="v", cmap="inferno", vmin=None, vmax=None,
