@@ -6,15 +6,33 @@ Simulates Turing patterns using Gray-Scott, FitzHugh-Nagumo,
 Gierer-Meinhardt, and Brusselator models with visualization.
 
 Usage:
+    # Quick start with a preset
     python3 rd_sim.py --preset coral
-    python3 rd_sim.py --model gray-scott --feed 0.035 --kill 0.065
-    python3 rd_sim.py --preset labyrinth --frames-dir ./frames --every 100
+
+    # Custom parameters
+    python3 rd_sim.py --model gray-scott --feed 0.035 --kill 0.065 --grid 256
+
+    # Animated GIF output
+    python3 rd_sim.py --preset mitosis --gif output.gif --gif-frames 50
+
+    # Grid of snapshots
+    python3 rd_sim.py --preset labyrinth --grid-view --grid-rows 4 --grid-cols 4
+
+    # Adaptive time stepping
+    python3 rd_sim.py --preset spots --adaptive
+
+    # Statistics output
+    python3 rd_sim.py --preset waves --stats
+
+    # Resume from checkpoint
+    python3 rd_sim.py --resume checkpoint.npz --steps 2000
 """
 
 import argparse
 import sys
 import os
 import time
+import json
 
 # Add project directory to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -22,7 +40,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from models import get_model, MODELS
 from solver import ReactionDiffusionSolver
 from presets import get_preset, list_presets, ALL_PRESETS
-from visualization import save_frame, save_frame_fast, render_frame_grid
+from visualization import (save_frame, save_frame_fast, render_frame_grid,
+                           save_gif)
 
 
 def parse_args():
@@ -41,10 +60,10 @@ Available presets:
                         help="Parameter preset name (see list below)")
 
     # Grid parameters
-    parser.add_argument("--grid", "-g", type=int, default=128,
-                        help="Grid size NxN (default: 128)")
-    parser.add_argument("--steps", "-s", type=int, default=5000,
-                        help="Number of simulation steps (default: 5000)")
+    parser.add_argument("--grid", "-g", type=int, default=None,
+                        help="Grid size NxN (default: 128, or preset-specified)")
+    parser.add_argument("--steps", "-s", type=int, default=None,
+                        help="Number of simulation steps (default: 5000, or preset-specified)")
     parser.add_argument("--dt", type=float, default=None,
                         help="Time step size (default: model-specific)")
 
@@ -54,9 +73,13 @@ Available presets:
     parser.add_argument("--kill", "-k", type=float, default=None,
                         help="Gray-Scott kill rate (k)")
 
-    # Method
+    # Integration method
     parser.add_argument("--method", choices=["euler", "rk2"], default="euler",
                         help="Integration method (default: euler)")
+    parser.add_argument("--adaptive", action="store_true",
+                        help="Use adaptive time stepping")
+    parser.add_argument("--no-clamp", action="store_true",
+                        help="Disable field clamping (may be unstable)")
 
     # Boundary conditions
     parser.add_argument("--bc", choices=["periodic", "dirichlet", "neumann"],
@@ -71,7 +94,8 @@ Available presets:
                         help="Perturbation size (default: 20)")
 
     # Visualization
-    parser.add_argument("--field", choices=["u", "v", "composite"], default="v",
+    parser.add_argument("--field", choices=["u", "v", "composite", "difference", "gradient"],
+                        default="v",
                         help="Field to visualize (default: v)")
     parser.add_argument("--cmap", default="inferno",
                         help="Matplotlib colormap (default: inferno)")
@@ -90,11 +114,25 @@ Available presets:
     parser.add_argument("--every", type=int, default=100,
                         help="Save frame every N steps (default: 100)")
 
+    # GIF output
+    parser.add_argument("--gif", default=None,
+                        help="Output animated GIF file path")
+    parser.add_argument("--gif-frames", type=int, default=60,
+                        help="Number of frames for GIF (default: 60)")
+    parser.add_argument("--gif-fps", type=int, default=15,
+                        help="GIF frames per second (default: 15)")
+
     # Checkpoint
     parser.add_argument("--checkpoint", default=None,
                         help="Save checkpoint file after simulation")
     parser.add_argument("--resume", default=None,
                         help="Resume from checkpoint file")
+
+    # Statistics
+    parser.add_argument("--stats", action="store_true",
+                        help="Print simulation statistics at the end")
+    parser.add_argument("--stats-file", default=None,
+                        help="Save statistics to JSON file")
 
     # List options
     parser.add_argument("--list-presets", action="store_true",
@@ -125,8 +163,8 @@ def main():
     model_name = args.model or "gray-scott"
     params = {}
     dt = 1.0
-    grid_size = args.grid
-    steps = args.steps
+    grid_size = args.grid  # None means user didn't specify
+    steps = args.steps     # None means user didn't specify
     pert_config = None
 
     # Load preset overrides
@@ -135,11 +173,22 @@ def main():
         model_name = preset["model"]
         params.update(preset["params"])
         dt = preset.get("dt", dt)
-        grid_size = preset.get("grid_size", grid_size)
-        steps = preset.get("steps", steps)
+        # Only use preset grid size if user didn't override via --grid
+        if grid_size is None:
+            grid_size = preset.get("grid_size", 128)
+        # Only use preset steps if user didn't override via --steps
+        if steps is None:
+            steps = preset.get("steps", 5000)
         pert_config = preset.get("perturbation", None)
+    
+    # Default grid size if not specified by user or preset
+    if grid_size is None:
+        grid_size = 128
+    # Default steps if not specified by user or preset
+    if steps is None:
+        steps = 5000
 
-    # CLI overrides
+    # CLI overrides (take precedence over preset)
     if args.feed is not None:
         params["F"] = args.feed
     if args.kill is not None:
@@ -165,6 +214,7 @@ def main():
             params=params,
             bc=args.bc,
             dt=dt,
+            clamp=not args.no_clamp,
         )
         if pert_config:
             solver.apply_perturbation(pert_config)
@@ -173,7 +223,17 @@ def main():
         print(f"Params: {solver.params}")
 
     # ── Run simulation ──
-    if args.frames_dir:
+    if args.gif:
+        # Animated GIF mode
+        print(f"Generating {args.gif_frames}-frame GIF...")
+        t0 = time.time()
+        save_gif(solver, steps, frames=args.gif_frames, filepath=args.gif,
+                 field=args.field, cmap=args.cmap, fps=args.gif_fps,
+                 method=args.method)
+        elapsed = time.time() - t0
+        print(f"  Completed in {elapsed:.1f}s")
+
+    elif args.frames_dir:
         # Batch mode: save frames periodically
         os.makedirs(args.frames_dir, exist_ok=True)
         every = args.every
@@ -199,7 +259,8 @@ def main():
         # Grid snapshot view
         rows, cols = args.grid_rows, args.grid_cols
         fig = render_frame_grid(solver, steps, grid_shape=(rows, cols),
-                                field=args.field, cmap=args.cmap)
+                                field=args.field, cmap=args.cmap,
+                                method=args.method)
         out_path = args.output or "grid_output.png"
         os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
         fig.savefig(out_path, dpi=150, bbox_inches="tight")
@@ -209,7 +270,10 @@ def main():
         # Standard mode: run and save final state
         print(f"Running {steps} steps...")
         t0 = time.time()
-        solver.step(steps, method=args.method)
+        if args.adaptive:
+            solver.adaptive_step(steps, method=args.method)
+        else:
+            solver.step(steps, method=args.method)
         elapsed = time.time() - t0
         print(f"  Completed in {elapsed:.2f}s ({steps/elapsed:.0f} steps/s)")
 
@@ -217,6 +281,18 @@ def main():
         out_path = args.output or "output.png"
         save_frame(solver.u, solver.v, out_path, field=args.field, cmap=args.cmap)
         print(f"  Saved to {out_path}")
+
+    # ── Statistics ──
+    if args.stats or args.stats_file:
+        stats = solver.compute_statistics()
+        if args.stats:
+            print("\nSimulation Statistics:")
+            for key, val in stats.items():
+                print(f"  {key}: {val:.6f}" if isinstance(val, float) else f"  {key}: {val}")
+        if args.stats_file:
+            with open(args.stats_file, "w") as f:
+                json.dump(stats, f, indent=2)
+            print(f"  Statistics saved to {args.stats_file}")
 
     # ── Checkpoint ──
     if args.checkpoint:
