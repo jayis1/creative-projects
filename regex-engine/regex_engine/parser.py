@@ -9,15 +9,25 @@ Supports:
   - Shorthand classes: \\d, \\w, \\s, \\D, \\W, \\S
   - Anchors: ^, $
   - Non-greedy quantifiers: *?, +?, ??
+  - Hex escapes: \\xNN
+  - Capture groups: (...) with group indexing
 """
 
 from __future__ import annotations
+
+import logging
 from dataclasses import dataclass, field
 from typing import Optional, List, Union
 
+logger = logging.getLogger(__name__)
+
 
 class ParseError(Exception):
-    """Error encountered while parsing a regex pattern."""
+    """Error encountered while parsing a regex pattern.
+
+    Attributes:
+        position: The position in the pattern where the error occurred.
+    """
     def __init__(self, message: str, position: int = -1):
         self.position = position
         super().__init__(f"Parse error at position {position}: {message}" if position >= 0 else message)
@@ -38,12 +48,12 @@ class Dot:
 
 @dataclass
 class AnchorStart:
-    """^ anchor."""
+    """^ anchor — match at start of string or after newline."""
     position: int = -1
 
 @dataclass
 class AnchorEnd:
-    """$ anchor."""
+    """$ anchor — match at end of string or before newline."""
     position: int = -1
 
 @dataclass
@@ -93,26 +103,53 @@ ASTNode = Union[Literal, Dot, AnchorStart, AnchorEnd, CharClass,
 
 
 class Parser:
-    """Recursive descent parser for regular expressions."""
+    """Recursive descent parser for regular expressions.
+
+    The parser converts a regex pattern string into an AST (Abstract Syntax Tree)
+    that can be compiled into an NFA by the Compiler.
+
+    The grammar (simplified):
+        alternation := concat ('|' concat)*
+        concat := quantified+
+        quantified := atom ('*' | '+' | '?' | '{n,m}') '?'?
+        atom := '(' alternation ')' | '[' charclass ']' | '.' | '^' | '$' | escape | literal
+
+    Args:
+        pattern: The regex pattern string to parse.
+
+    Raises:
+        ParseError: If the pattern has invalid syntax.
+    """
 
     def __init__(self, pattern: str):
+        if not isinstance(pattern, str):
+            raise TypeError(f"pattern must be str, got {type(pattern).__name__}")
         self.pattern = pattern
         self.pos = 0
         self.group_count = 0
 
     def parse(self) -> ASTNode:
-        """Parse the entire pattern and return an AST."""
+        """Parse the entire pattern and return an AST.
+
+        Returns:
+            The root AST node.
+
+        Raises:
+            ParseError: If the pattern has invalid syntax.
+        """
         node = self._parse_alternation()
         if self.pos < len(self.pattern):
             raise ParseError(f"Unexpected character '{self.pattern[self.pos]}'", self.pos)
         return node
 
     def _peek(self) -> Optional[str]:
+        """Look at the current character without advancing."""
         if self.pos < len(self.pattern):
             return self.pattern[self.pos]
         return None
 
     def _advance(self) -> Optional[str]:
+        """Consume and return the current character."""
         if self.pos < len(self.pattern):
             ch = self.pattern[self.pos]
             self.pos += 1
@@ -172,6 +209,7 @@ class Parser:
         return atom
 
     def _parse_brace_quantifier(self, atom: ASTNode) -> ASTNode:
+        """Parse brace quantifier: {n}, {n,}, {n,m}."""
         pos = self.pos
         self._advance()  # consume '{'
 
@@ -207,6 +245,7 @@ class Parser:
         raise ParseError("Invalid quantifier syntax", self.pos)
 
     def _parse_int(self) -> Optional[str]:
+        """Parse a sequence of digits."""
         start = self.pos
         while self.pos < len(self.pattern) and self.pattern[self.pos].isdigit():
             self.pos += 1
@@ -215,12 +254,14 @@ class Parser:
         return self.pattern[start:self.pos]
 
     def _parse_greedy(self) -> bool:
+        """Parse optional '?' non-greedy modifier."""
         if self._peek() == '?':
             self._advance()
             return False
         return True
 
     def _parse_atom(self) -> ASTNode:
+        """Parse a single atom: group, charclass, anchor, dot, escape, or literal."""
         ch = self._peek()
         if ch is None:
             raise ParseError("Unexpected end of pattern", self.pos)
@@ -251,6 +292,7 @@ class Parser:
         return Literal(char=ch, position=pos)
 
     def _parse_escape(self) -> ASTNode:
+        """Parse an escape sequence: \\d, \\w, \\s, \\n, \\t, \\xNN, etc."""
         pos = self.pos
         self._advance()  # consume '\\'
 
@@ -267,7 +309,7 @@ class Parser:
         if ch in escape_map:
             return Literal(char=escape_map[ch], position=pos)
 
-        # Hex escape \xNN
+        # Hex escape \\xNN
         if ch == 'x':
             hex_str = self.pattern[self.pos:self.pos + 2]
             if len(hex_str) == 2:
@@ -281,6 +323,7 @@ class Parser:
         return Literal(char=ch, position=pos)
 
     def _parse_group(self) -> ASTNode:
+        """Parse a capture group: (alternation)."""
         pos = self.pos
         self._advance()  # consume '('
         group_index = self.group_count
@@ -295,6 +338,7 @@ class Parser:
         return Group(child=child, index=group_index, position=pos)
 
     def _parse_char_class(self) -> ASTNode:
+        """Parse a character class: [abc], [a-z], [^0-9], etc."""
         pos = self.pos
         self._advance()  # consume '['
 
@@ -356,6 +400,7 @@ class Parser:
                         negated=negated, position=pos)
 
     def _parse_char_class_atom(self) -> str:
+        """Parse a single character inside a character class (for range endpoints)."""
         if self.pattern[self.pos] == '\\':
             self._advance()
             if self.pos >= len(self.pattern):

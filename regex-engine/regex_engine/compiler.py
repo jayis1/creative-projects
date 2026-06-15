@@ -5,9 +5,14 @@ Based on Russ Cox's "Regular Expression Matching Can Be Simple And Fast":
   - Each regex node compiles into a constant number of NFA states
   - Total states = O(n) where n is the pattern length
   - Two-list simulation gives O(nm) matching time
+
+Supports capture groups via GROUP_START/GROUP_END state types that mark
+the boundaries of captured subexpressions.
 """
 
 from __future__ import annotations
+
+import logging
 from typing import Optional
 
 from .parser import (ASTNode, Literal, Dot, AnchorStart, AnchorEnd,
@@ -15,9 +20,19 @@ from .parser import (ASTNode, Literal, Dot, AnchorStart, AnchorEnd,
                      Quantified, Group)
 from .nfa import State, Fragment, patch, append_outs
 
+logger = logging.getLogger(__name__)
+
 
 def _check_shorthand(ch: str, kind: str) -> bool:
-    """Check if a character matches a shorthand class."""
+    """Check if a character matches a shorthand class.
+
+    Args:
+        ch: The character to test.
+        kind: One of 'digit', 'word', 'space'.
+
+    Returns:
+        True if the character matches the shorthand class.
+    """
     if kind == 'digit':
         return ch.isdigit()
     elif kind == 'word':
@@ -28,20 +43,42 @@ def _check_shorthand(ch: str, kind: str) -> bool:
 
 
 class Compiler:
-    """Compiles a regex AST into an NFA."""
+    """Compiles a regex AST into an NFA.
+
+    The compiler uses Thompson's construction algorithm, which guarantees
+    O(m) NFA states for a pattern of length m. Each AST node type compiles
+    into a constant number of states.
+
+    Attributes:
+        num_groups: Number of capture groups found during compilation.
+    """
+
+    def __init__(self) -> None:
+        self.num_groups: int = 0
 
     def compile(self, ast: ASTNode) -> State:
         """Compile AST and return the NFA start state.
 
-        Returns the start state. The NFA has exactly one match state
-        reachable from any accepting path.
+        Args:
+            ast: The parsed AST root node.
+
+        Returns:
+            The start state of the compiled NFA.
+
+        Raises:
+            ValueError: If the AST node type is unknown.
         """
+        if ast is None:
+            raise ValueError("Cannot compile None AST node")
+        self.num_groups = 0
         frag = self._compile_node(ast)
         match_state = State.match_state()
         patch(frag.outs, match_state)
+        logger.debug("Compiled NFA with %d capture groups", self.num_groups)
         return frag.start
 
     def _compile_node(self, node: ASTNode) -> Fragment:
+        """Dispatch compilation based on AST node type."""
         if isinstance(node, Literal):
             return self._compile_literal(node)
         elif isinstance(node, Dot):
@@ -61,15 +98,17 @@ class Compiler:
         elif isinstance(node, Quantified):
             return self._compile_quantified(node)
         elif isinstance(node, Group):
-            return self._compile_node(node.child)
+            return self._compile_group(node)
         else:
-            raise ValueError(f"Unknown AST node: {type(node)}")
+            raise ValueError(f"Unknown AST node: {type(node).__name__}")
 
     def _compile_literal(self, node: Literal) -> Fragment:
+        """Compile a literal character into a CHAR state."""
         s = State.char_state(lambda ch, c=node.char: ch == c)
         return Fragment(s, [(s, 'out2')])
 
     def _compile_dot(self) -> Fragment:
+        """Compile a dot (.) wildcard into a CHAR state."""
         s = State.char_state(lambda ch: ch is not None and ch != '\n')
         return Fragment(s, [(s, 'out2')])
 
@@ -84,30 +123,38 @@ class Compiler:
         return Fragment(s, [(s, 'out1')])
 
     def _compile_char_class(self, node: CharClass) -> Fragment:
-        def match_class(ch):
+        """Compile a character class [...] into a CHAR state."""
+        # Capture node properties to avoid closure issues
+        ranges = list(node.ranges)
+        chars = list(node.chars)
+        shorthands = list(node.shorthands)
+        negated = node.negated
+
+        def match_class(ch: str) -> bool:
             if ch is None:
                 return False
             found = False
-            for start, end in node.ranges:
+            for start, end in ranges:
                 if start <= ch <= end:
                     found = True
                     break
             if not found:
-                for c in node.chars:
+                for c in chars:
                     if ch == c:
                         found = True
                         break
             if not found:
-                for kind, positive in node.shorthands:
+                for kind, positive in shorthands:
                     if _check_shorthand(ch, kind):
                         found = True
                         break
-            return found if not node.negated else not found
+            return found if not negated else not found
 
         s = State.char_state(match_class)
         return Fragment(s, [(s, 'out2')])
 
     def _compile_shorthand(self, node: Shorthand) -> Fragment:
+        """Compile a shorthand class (\\d, \\w, \\s, \\D, \\W, \\S) into a CHAR state."""
         # Map shorthand character to the kind name expected by _check_shorthand
         kind_map = {
             'd': 'digit', 'D': 'digit',
@@ -118,7 +165,7 @@ class Compiler:
         kind_name = kind_map[kind_char]
         is_upper = kind_char.isupper()
 
-        def match_shorthand(ch):
+        def match_shorthand(ch: str) -> bool:
             if ch is None:
                 return False
             result = _check_shorthand(ch, kind_name)
@@ -130,6 +177,7 @@ class Compiler:
         return Fragment(s, [(s, 'out2')])
 
     def _compile_concat(self, node: Concat) -> Fragment:
+        """Compile concatenation of nodes."""
         if not node.children:
             # Empty pattern — epsilon transition
             s = State(State.SPLIT)
@@ -144,24 +192,20 @@ class Compiler:
         return Fragment(frags[0].start, frags[-1].outs)
 
     def _compile_alternation(self, node: Alternation) -> Fragment:
+        """Compile alternation (|) of nodes.
+
+        Uses Thompson's construction:
+          - For a|b: single SPLIT(out1 -> a, out2 -> b)
+          - For a|b|c: chain SPLIT(out1 -> a, out2 -> SPLIT2)
+                                       SPLIT2(out1 -> b, out2 -> c)
+          No epsilon path to MATCH without going through actual content.
+        """
         frags = [self._compile_node(child) for child in node.children]
 
         if len(frags) == 1:
             return frags[0]
 
-        # Thompson construction for alternation:
-        # For a|b:
-        #   SPLIT(out1 -> a, out2 -> b)
-        #   a's outs and b's outs are all dangling
-        #
-        # For a|b|c:
-        #   SPLIT(out1 -> a, out2 -> SPLIT2)
-        #   SPLIT2(out1 -> b, out2 -> c)
-        #   a's outs, b's outs, c's outs are all dangling
-        #
-        # Key: no extra epsilon path — all paths go through actual content.
-
-        all_outs = []
+        all_outs: list = []
 
         if len(frags) == 2:
             # Simple case: a|b
@@ -189,7 +233,26 @@ class Compiler:
 
         return Fragment(splits[0], all_outs)
 
+    def _compile_group(self, node: Group) -> Fragment:
+        """Compile a capture group (...) with GROUP_START and GROUP_END markers."""
+        group_idx = self.num_groups
+        self.num_groups = max(self.num_groups, node.index + 1) if node.index >= 0 else self.num_groups
+        if node.index >= 0:
+            group_idx = node.index
+
+        inner_frag = self._compile_node(node.child)
+
+        # Wrap with GROUP_START and GROUP_END markers
+        gs = State.group_start_state(group_idx)
+        ge = State.group_end_state(group_idx)
+
+        gs.out1 = inner_frag.start
+        patch(inner_frag.outs, ge)
+
+        return Fragment(gs, [(ge, 'out1')])
+
     def _compile_quantified(self, node: Quantified) -> Fragment:
+        """Compile a quantified node (*, +, ?, {n}, {n,m})."""
         min_count = node.min
         max_count = node.max
         greedy = node.greedy

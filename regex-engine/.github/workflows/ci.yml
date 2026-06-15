@@ -1,0 +1,72 @@
+name: regex-engine CI
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'regex-engine/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'regex-engine/**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12']
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest
+
+    - name: Run original test suite
+      run: |
+        cd regex-engine
+        python3 tests.py
+
+    - name: Run pytest suite
+      run: |
+        cd regex-engine
+        python3 -m pytest tests/test_regex_engine.py -v
+
+    - name: Test CLI
+      run: |
+        cd regex-engine
+        python3 -m regex_engine '\\d+' 'hello 123 world'
+        python3 -m regex_engine --findall '[a-z]+' 'hello world'
+        python3 -m regex_engine --sub '\\s+' '_' 'hello   world'
+        python3 -m regex_engine --split ',' 'a,b,c'
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install linting tools
+      run: pip install flake8 mypy
+
+    - name: Lint with flake8
+      run: |
+        cd regex-engine
+        flake8 regex_engine/ --max-line-length=120 --ignore=E501,W503
+
+    - name: Type check with mypy
+      run: |
+        cd regex-engine
+        mypy regex_engine/ --ignore-missing-imports || true

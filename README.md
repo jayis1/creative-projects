@@ -14,6 +14,6 @@ A monorepo of AI-generated creative coding projects. Each project lives in its o
 | [constraint-solver](./constraint-solver) | Comprehensive CSP solver: AC-3, backtracking+MRV/LCV, MAC, forward checking, config system, visualization, serialization, 141 tests |
 | [reaction-diffusion-sim](./reaction-diffusion-sim) | Turing pattern simulator: 5 models (Gray-Scott, FHN, GM, Brusselator, Schnakenberg), RK4 solver, YAML/TOML config, parameter sweeps, custom model registration, 23 presets, 114 tests, pip-installable |
 | [midi-sequencer](./midi-sequencer) | Generative MIDI step sequencer: Euclidean/Markov/L-System generation, 15 scales, 11 chords, 10 progressions, 13 drum styles, groove templates, velocity curves, arrangement, serialization, CLI, config, validation, analysis, batch composition, 124 tests, pip-installable |
-| [regex-engine](./regex-engine) | Regex engine from scratch: Thompson NFA construction, O(nm) guarantee, recursive-descent parser, char classes, quantifiers, alternation, groups, findall/sub/split, 91 tests |
+| [regex-engine](./regex-engine) | Regex engine from scratch: Thompson NFA construction, O(nm) guarantee, recursive-descent parser, char classes, quantifiers, alternation, capture groups, findall/sub/split, backreferences in sub, CLI, 146 tests, pip-installable |
 
 ---
