@@ -137,15 +137,35 @@ python3 test_basic.py
 
 # Run enhanced feature tests (25 tests)
 python3 test_enhanced.py
+
+# Run bug fix verification tests (9 tests)
+python3 test_bug_fixes.py
+
+# Run all tests
+python3 test_basic.py && python3 test_enhanced.py && python3 test_bug_fixes.py
 ```
+
+## Known Issues (Resolved)
+
+The following bugs were found and fixed during the bug hunt phase:
+
+| # | Bug | Impact | Fix |
+|---|-----|--------|-----|
+| 1 | **SELECT CASE fall-through** | After matching a CASE, execution continued into subsequent CASE/END SELECT branches | Added `_active_select_end` and `_active_select_matched` tracking to skip to END SELECT when encountering a non-matched CASE line |
+| 2 | **File resource leak** | Open file handles were not closed when loading a new program or when the interpreter was destroyed | Added file cleanup in `load()` and `__del__()` destructor |
+| 3 | **Integer division rounds wrong** | `\` operator used Python floor division (`//`) which rounds toward negative infinity; BASIC should truncate toward zero | Changed to `int(a / b)` for truncation toward zero; e.g., `-7 \ 2` = `-3` not `-4` |
+| 4 | **MOD follows wrong sign** | Python `%` follows divisor sign; BASIC MOD should follow dividend sign | Changed to `a - (a \ b) * b` formula; e.g., `-7 MOD 2` = `-1` not `1` |
+| 5 | **_format_value misses int type** | Logical operators return Python `int` (0, -1) but `_format_value` only handled `float`, missing the leading/trailing spaces | Extended check to `isinstance(val, (int, float))` |
+| 6 | **O(n) line number lookup** | `GOTO`/`GOSUB`/`ON GOTO`/`RESUME` all used `sorted_lines.index()` — O(n) per call | Added `_line_to_idx` dict for O(1) lookup, replaced all 6 occurrences |
 
 ## How It Works
 
 1. Source lines are tokenized and parsed into statement ASTs
-2. Line numbers are stored in a sorted dictionary for fast lookup
+2. Line numbers are stored in a sorted dictionary with O(1) index lookup
 3. Multi-line structures (WHILE/WEND, DO/LOOP, SELECT CASE) are matched at load time
 4. The interpreter walks the program line by line, evaluating statements
 5. Control flow statements (GOTO, GOSUB, etc.) modify the program counter
 6. The `FOR` stack tracks loop variables and limits
 7. The call stack manages GOSUB/RETURN nesting
 8. Error handling via ON ERROR GOTO/RESUME intercepts runtime errors
+9. SELECT CASE tracks the matched branch to prevent fall-through

@@ -1314,6 +1314,7 @@ class Interpreter:
     def __init__(self, stdin=None, stdout=None):
         self.lines: Dict[int, list] = {}
         self.sorted_lines: List[int] = []
+        self._line_to_idx: Dict[int, int] = {}  # line_number -> index in sorted_lines, for O(1) lookup
         self.variables: Dict[str, Any] = {}
         self.arrays: Dict[str, Any] = {}
         self.data_values: List[Any] = []
@@ -1338,10 +1339,31 @@ class Interpreter:
         self._on_error_line: Optional[int] = None
         self._error_occurred: bool = False
         self._error_resume_line: Optional[int] = None
+        # SELECT CASE runtime tracking
+        # _active_select_end: the END SELECT line index (None if not in a SELECT block)
+        # _active_select_matched: the line index of the matched CASE (None until matched)
+        self._active_select_end: Optional[int] = None
+        self._active_select_matched: Optional[int] = None
+
+    def __del__(self):
+        """Clean up open file handles on interpreter destruction."""
+        for f in self._files.values():
+            try:
+                f.close()
+            except OSError:
+                pass
 
     # ── Program loading ──
 
     def load(self, source: str):
+        # Close any previously open files before loading new program
+        for f in self._files.values():
+            try:
+                f.close()
+            except OSError:
+                pass
+        self._files.clear()
+        
         self.lines.clear()
         self.data_values.clear()
         self.data_pointer = 0
@@ -1355,6 +1377,8 @@ class Interpreter:
         self.user_fns.clear()
         self._on_error_line = None
         self._error_occurred = False
+        self._active_select_end = None
+        self._active_select_matched = None
 
         immediate_stmts = []
         for raw_line in source.splitlines():
@@ -1392,6 +1416,7 @@ class Interpreter:
 
     def _rebuild(self):
         self.sorted_lines = sorted(self.lines.keys())
+        self._line_to_idx = {ln: i for i, ln in enumerate(self.sorted_lines)}
 
     def _collect_data(self):
         self.data_values = []
@@ -1506,8 +1531,8 @@ class Interpreter:
                 if self._on_error_line is not None and self._on_error_line != 0:
                     self._error_occurred = True
                     self._error_resume_line = current_pc
-                    if self._on_error_line in self.lines:
-                        idx = self.sorted_lines.index(self._on_error_line)
+                    if self._on_error_line in self._line_to_idx:
+                        idx = self._line_to_idx[self._on_error_line]
                         self.pc = idx - 1
                     else:
                         raise
@@ -1596,12 +1621,25 @@ class Interpreter:
         elif isinstance(stmt, SelectCaseStmt):
             self._exec_select_case(stmt)
         elif isinstance(stmt, CaseStmt):
-            # CASE is handled by SELECT CASE dispatcher; shouldn't be hit directly
-            pass
+            # CASE encountered during line-by-line execution.
+            # If we're inside a SELECT block and this CASE is NOT the one we matched,
+            # skip to END SELECT to prevent fall-through into the next case body.
+            if self._active_select_end is not None and self._active_select_matched is not None:
+                if self.pc != self._active_select_matched:
+                    self.pc = self._active_select_end
+                    self._active_select_end = None
+                    self._active_select_matched = None
         elif isinstance(stmt, CaseElseStmt):
-            pass
+            # Same as CaseStmt — skip to END SELECT if this is not our matched case
+            if self._active_select_end is not None and self._active_select_matched is not None:
+                if self.pc != self._active_select_matched:
+                    self.pc = self._active_select_end
+                    self._active_select_end = None
+                    self._active_select_matched = None
         elif isinstance(stmt, EndSelectStmt):
-            pass
+            # END SELECT clears the active select tracking
+            self._active_select_end = None
+            self._active_select_matched = None
         elif isinstance(stmt, OpenStmt):
             self._exec_open(stmt)
         elif isinstance(stmt, CloseStmt):
@@ -1681,9 +1719,12 @@ class Interpreter:
         self.stdout.flush()
 
     def _format_value(self, val) -> str:
-        if isinstance(val, float):
-            if val == int(val) and abs(val) < 1e15:
+        if isinstance(val, (int, float)):
+            # BASIC prints numbers with a leading space (sign position) and trailing space
+            if isinstance(val, float) and val == int(val) and abs(val) < 1e15:
                 return " " + str(int(val)) + " "
+            if isinstance(val, int):
+                return " " + str(val) + " "
             return " " + str(val) + " "
         return str(val)
 
@@ -1958,16 +1999,16 @@ class Interpreter:
             raise BasicRuntimeError("DO...LOOP without condition: infinite loop")
 
     def _exec_goto(self, stmt: GotoStmt):
-        if stmt.line not in self.lines:
+        if stmt.line not in self._line_to_idx:
             raise BasicRuntimeError(f"GOTO: line {stmt.line} not found")
-        idx = self.sorted_lines.index(stmt.line)
+        idx = self._line_to_idx[stmt.line]
         self.pc = idx - 1
 
     def _exec_gosub(self, stmt: GosubStmt):
-        if stmt.line not in self.lines:
+        if stmt.line not in self._line_to_idx:
             raise BasicRuntimeError(f"GOSUB: line {stmt.line} not found")
         self.call_stack.append(self.pc)
-        idx = self.sorted_lines.index(stmt.line)
+        idx = self._line_to_idx[stmt.line]
         self.pc = idx - 1
 
     def _exec_return(self, stmt: ReturnStmt):
@@ -2032,19 +2073,19 @@ class Interpreter:
         val = int(self._to_number(self._eval(stmt.expr)))
         if 1 <= val <= len(stmt.targets):
             target = stmt.targets[val - 1]
-            if target not in self.lines:
+            if target not in self._line_to_idx:
                 raise BasicRuntimeError(f"ON GOTO: line {target} not found")
-            idx = self.sorted_lines.index(target)
+            idx = self._line_to_idx[target]
             self.pc = idx - 1
 
     def _exec_on_gosub(self, stmt: OnGosubStmt):
         val = int(self._to_number(self._eval(stmt.expr)))
         if 1 <= val <= len(stmt.targets):
             target = stmt.targets[val - 1]
-            if target not in self.lines:
+            if target not in self._line_to_idx:
                 raise BasicRuntimeError(f"ON GOSUB: line {target} not found")
             self.call_stack.append(self.pc)
-            idx = self.sorted_lines.index(target)
+            idx = self._line_to_idx[target]
             self.pc = idx - 1
 
     def _exec_swap(self, stmt: SwapStmt):
@@ -2088,7 +2129,12 @@ class Interpreter:
         self.stdout.flush()
 
     def _exec_select_case(self, stmt: SelectCaseStmt):
-        """SELECT CASE: evaluate test expr, then skip to matching CASE line."""
+        """SELECT CASE: evaluate test expr, then jump to matching CASE line.
+        
+        Sets _active_select_end so that when execution reaches a subsequent
+        CASE/CASE ELSE/END SELECT line (after the matched CASE body has run),
+        we can skip to END SELECT to prevent fall-through.
+        """
         test_val = self._eval(stmt.test_expr)
         info = self.select_info.get(self.pc)
         if info is None:
@@ -2110,14 +2156,21 @@ class Interpreter:
             if matched_case_idx is not None:
                 break
 
+        # Track the END SELECT index so CASE/END SELECT lines can skip to it
+        self._active_select_end = end_select_idx
+
         if matched_case_idx is not None:
             # Jump to the matching CASE line
+            self._active_select_matched = matched_case_idx
             self.pc = matched_case_idx - 1  # -1 because run() will add 1
         elif case_else_idx is not None:
+            self._active_select_matched = case_else_idx
             self.pc = case_else_idx - 1
         else:
             # No match, no CASE ELSE: skip to END SELECT
             self.pc = end_select_idx
+            self._active_select_end = None
+            self._active_select_matched = None
 
     def _match_case(self, test_val, conditions: list) -> bool:
         for cond in conditions:
@@ -2240,9 +2293,9 @@ class Interpreter:
         if not self._error_occurred:
             raise BasicRuntimeError("RESUME without error")
         if stmt.line is not None and stmt.line > 0:
-            if stmt.line not in self.lines:
+            if stmt.line not in self._line_to_idx:
                 raise BasicRuntimeError(f"RESUME: line {stmt.line} not found")
-            idx = self.sorted_lines.index(stmt.line)
+            idx = self._line_to_idx[stmt.line]
             self.pc = idx - 1
         elif stmt.line == -1:
             # RESUME NEXT: skip the line that caused the error
@@ -2544,10 +2597,12 @@ class Interpreter:
             return ln / rn
         if expr.op == "\\":
             if rn == 0: raise BasicRuntimeError("Division by zero")
-            return float(int(ln) // int(rn))
+            # BASIC integer division truncates toward zero, not floor division
+            return float(int(int(ln) / int(rn)))
         if expr.op == "MOD":
             if rn == 0: raise BasicRuntimeError("Division by zero")
-            return float(int(ln) % int(rn))
+            # BASIC MOD: result has same sign as dividend
+            return float(int(ln) - int(int(ln) / int(rn)) * int(rn))
         if expr.op == "^": return ln ** rn
         if expr.op == "=": return -1 if ln == rn else 0
         if expr.op == "<>": return -1 if ln != rn else 0
