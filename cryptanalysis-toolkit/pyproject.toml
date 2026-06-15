@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cryptanalysis-toolkit"
+version = "1.0.0"
+description = "Classical cipher implementations and automatic cryptanalysis tools"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "Creative Projects"}]
+
+[project.scripts]
+cryptanalysis = "cryptanalysis_toolkit.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["cryptanalysis_toolkit*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
