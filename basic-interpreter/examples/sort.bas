@@ -1,0 +1,23 @@
+10 REM *** Array Sort (Bubble Sort) ***
+20 DIM A(10)
+30 PRINT "Original array:"
+40 FOR I = 1 TO 10
+50 READ A(I)
+60 PRINT A(I);
+70 NEXT I
+80 PRINT
+90 REM Bubble sort
+100 FOR I = 1 TO 9
+110 FOR J = 1 TO 10 - I
+120 IF A(J) <= A(J+1) THEN GOTO 160
+130 LET T = A(J)
+140 LET A(J) = A(J+1)
+150 LET A(J+1) = T
+160 NEXT J
+170 NEXT I
+180 PRINT "Sorted array:"
+190 FOR I = 1 TO 10
+200 PRINT A(I);
+210 NEXT I
+220 PRINT
+230 DATA 64, 34, 25, 12, 22, 11, 90, 1, 45, 33

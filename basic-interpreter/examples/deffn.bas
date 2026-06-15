@@ -1,0 +1,10 @@
+10 REM *** User-Defined Functions ***
+20 DEF FN SQUARE(X) = X * X
+30 DEF FN HYPOTENUSE(A, B) = SQR(FN SQUARE(A) + FN SQUARE(B))
+40 PRINT "Squares: ";
+50 FOR I = 1 TO 10
+60   PRINT FN SQUARE(I);
+70 NEXT I
+80 PRINT
+90 PRINT "Hypotenuse of 3,4 = "; FN HYPOTENUSE(3, 4)
+100 PRINT "Hypotenuse of 5,12 = "; FN HYPOTENUSE(5, 12)
