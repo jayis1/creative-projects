@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "compression-engine"
+version = "1.0.0"
+description = "From-scratch data compression engine: Huffman, LZ77, BWT, DEFLATE"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+
+[project.scripts]
+compression-engine = "compression_engine.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
