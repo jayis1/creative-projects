@@ -74,29 +74,14 @@ class Compiler:
         return Fragment(s, [(s, 'out2')])
 
     def _compile_anchor_start(self) -> Fragment:
-        # ^ anchor: epsilon transition that only succeeds at position 0
-        # We use a CHAR state with a special predicate that checks position
-        # Since NFA simulation handles this, we make it always succeed
-        # and rely on anchored matching mode
-        s = State(State.SPLIT)
-        s.out1 = None  # will be patched
-        s.out2 = None  # will be patched
-        # Actually, for ^ we need a special approach.
-        # We'll mark it as an epsilon split that the matcher can check.
-        # For simplicity, ^ is handled at the matcher level.
-        # Here we just create an epsilon passthrough.
-        out = State(State.SPLIT)
-        out.out1 = None
-        out.out2 = None
-        s.out1 = out.out1  # dangling
-        return Fragment(s, [(out, 'out1'), (out, 'out2')])
+        """Compile ^ anchor — matches at start of string or after newline."""
+        s = State.anchor_start_state()
+        return Fragment(s, [(s, 'out1')])
 
     def _compile_anchor_end(self) -> Fragment:
-        # Similarly, $ is handled at matcher level. Create epsilon passthrough.
-        s = State(State.SPLIT)
-        s.out1 = None
-        s.out2 = None
-        return Fragment(s, [(s, 'out1'), (s, 'out2')])
+        """Compile $ anchor — matches at end of string or before newline."""
+        s = State.anchor_end_state()
+        return Fragment(s, [(s, 'out1')])
 
     def _compile_char_class(self, node: CharClass) -> Fragment:
         def match_class(ch):

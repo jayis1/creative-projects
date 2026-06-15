@@ -3,7 +3,7 @@ Pattern — high-level regex pattern interface (re-like API).
 """
 
 from __future__ import annotations
-from typing import Optional, List
+from typing import Optional, List, Tuple
 from .parser import Parser, ParseError
 from .compiler import Compiler
 from .nfa import State
@@ -55,6 +55,10 @@ class Pattern:
     def split(self, text: str, maxsplit: int = 0) -> List[str]:
         """Split string by pattern."""
         return self._matcher.split(text, maxsplit)
+
+    def subn(self, repl: str, text: str, count: int = 0) -> Tuple[str, int]:
+        """Replace occurrences and return (new_string, number_of_subs)."""
+        return self._matcher.subn(repl, text, count)
 
     def __repr__(self):
         return f"Pattern('{self.pattern}')"

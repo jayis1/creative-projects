@@ -8,14 +8,16 @@ The engine works in three stages:
 
 1. **Parsing** — A recursive descent parser converts a regex pattern string into an Abstract Syntax Tree (AST), handling operator precedence, character classes, escape sequences, and quantifiers.
 
-2. **Compilation** — Thompson's construction converts the AST into an NFA (Nondeterministic Finite Automaton) with three state types:
-   - **CHAR**: transitions on a character that satisfies a predicate (out1 = predicate, out2 = target state)
-   - **SPLIT**: two epsilon transitions (out1, out2) taken simultaneously
+2. **Compilation** — Thompson's construction converts the AST into an NFA (Nondeterministic Finite Automaton) with five state types:
+   - **CHAR**: transitions on a character that satisfies a predicate (`out1` = predicate, `out2` = target state)
+   - **SPLIT**: two epsilon transitions (`out1`, `out2`) taken simultaneously
    - **MATCH**: accepting state (pattern matched!)
+   - **ANCHOR_START**: epsilon transition that only succeeds at position 0 or after newline (`^`)
+   - **ANCHOR_END**: epsilon transition that only succeeds at end of string or before newline (`$`)
 
    The key property: the NFA has **O(m)** states where m is the pattern length, and each AST node compiles to a constant number of states.
 
-3. **Simulation** — Thompson's two-list algorithm simulates the NFA on input text in **O(nm)** time (n = text length, m = pattern length), with no backtracking. This guarantees linear-time matching even for pathological patterns that cause exponential backtracking in backtracking engines.
+3. **Simulation** — Thompson's two-list algorithm simulates the NFA on input text in **O(nm)** time (n = text length, m = pattern length), with no backtracking. This guarantees linear-time matching even for pathological patterns that cause exponential backtracking in other engines.
 
 ## Supported Features
 
@@ -28,16 +30,16 @@ The engine works in three stages:
 | Kleene star | `*` | `a*` matches "", "a", "aaa" |
 | Plus | `+` | `a+` matches "a", "aaa" |
 | Optional | `?` | `a?` matches "", "a" |
-| Brace quantifiers | `{n}`, `{n,m}`, `{n,}` | `a{2,4}` matches "aa" to "aaaa" |
-| Non-greedy | `*?`, `+?`, `??` | `a*?` matches minimal "a" |
+| Brace quantifiers | `{n}`, `{n,m}`, `{n,}` | `a{2,4}` matches "aa"–"aaaa" |
 | Character classes | `[abc]`, `[a-z]`, `[^0-9]` | `[a-z]+` matches lowercase words |
 | Shorthand classes | `\d`, `\w`, `\s`, `\D`, `\W`, `\S` | `\d+` matches "123" |
 | Escapes | `\.`, `\\`, `\n`, `\t` | `a\.b` matches "a.b" |
 | Anchors | `^`, `$` | `^hello` matches at start |
+| Non-greedy | `*?`, `+?`, `??` | `a*?` prefers shortest match |
 
 ## API
 
-The API is intentionally similar to Python's `re` module:
+The API mirrors Python's `re` module:
 
 ```python
 from regex_engine import compile, match, search, findall, sub, split
@@ -61,14 +63,45 @@ print(sub(r'\d+', 'X', 'a1b23c'))  # 'aXbXc'
 print(split(r',', 'a,b,c'))  # ['a', 'b', 'c']
 ```
 
-## Match Object
+### Pattern Methods
 
-The `Match` object provides:
+| Method | Description |
+|--------|-------------|
+| `match(text)` | Match at start of text |
+| `fullmatch(text)` | Match entire text |
+| `search(text, pos)` | Search for first match |
+| `findall(text)` | All non-overlapping matches |
+| `finditer(text)` | All matches as Match objects |
+| `sub(repl, text, count)` | Replace matches |
+| `subn(repl, text, count)` | Replace matches, return (string, count) |
+| `split(text, maxsplit)` | Split by pattern |
 
-- `m.group(0)` — the entire matched string
-- `m.start`, `m.end` — start and end positions
-- `m.span()` — (start, end) tuple
-- `m.matched` — whether the match succeeded
+### Match Object
+
+| Attribute/Method | Description |
+|-----------------|-------------|
+| `group(n)` | Matched group (0 = entire match) |
+| `groups()` | All captured groups as tuple |
+| `span(n)` | (start, end) of group n |
+| `start`, `end` | Match boundaries |
+| `matched` | Whether match succeeded |
+| `__bool__` | Truthy if matched |
+
+### Command Line
+
+```bash
+# Match
+python -m regex_engine '\d+' 'hello 123 world'
+
+# Find all
+python -m regex_engine --findall '[a-z]+' 'hello world'
+
+# Substitute
+python -m regex_engine --sub '\s+' '_' 'hello   world'
+
+# Split
+python -m regex_engine --split ',' 'a,b,c'
+```
 
 ## Architecture
 
@@ -77,9 +110,10 @@ regex_engine/
 ├── __init__.py    # Module-level API (match, search, findall, sub, split)
 ├── parser.py      # Recursive descent parser → AST
 ├── compiler.py    # Thompson's construction: AST → NFA
-├── nfa.py         # NFA state and fragment definitions
+├── nfa.py         # NFA state and fragment definitions (5 state types)
 ├── matcher.py     # Thompson's two-list NFA simulation
-└── pattern.py     # High-level Pattern interface (like re.Pattern)
+├── pattern.py     # High-level Pattern interface (like re.Pattern)
+└── cli.py         # Command-line interface
 ```
 
 ## Performance Guarantee

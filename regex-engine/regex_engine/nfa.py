@@ -8,9 +8,14 @@ State types:
     For CHAR states:
       - out1 = the predicate function (callable) that tests if a char matches
       - out2 = the target State to transition to on match (dangling until patched)
+  - ANCHOR_START: epsilon transition that only succeeds at position 0 (or after newline)
+      - out1 = target State (epsilon transition on anchor match)
+  - ANCHOR_END: epsilon transition that only succeeds at end of string (or before newline)
+      - out1 = target State (epsilon transition on anchor match)
 
-This is the classic Thompson NFA representation used in Russ Cox's
-"Regular Expression Matching Can Be Simple And Fast" paper.
+This is based on the Thompson NFA representation from Russ Cox's
+"Regular Expression Matching Can Be Simple And Fast" paper, extended with
+anchor states for ^ and $ support.
 """
 
 from __future__ import annotations
@@ -22,24 +27,25 @@ class State:
     MATCH = 'match'
     SPLIT = 'split'
     CHAR = 'char'
+    ANCHOR_START = 'anchor_start'
+    ANCHOR_END = 'anchor_end'
 
     __slots__ = ('kind', 'out1', 'out2', 'id')
     _counter = 0
 
     def __init__(self, kind: str, out1=None, out2=None):
         self.kind = kind
-        self.out1 = out1  # For SPLIT: State. For CHAR: predicate callable.
-        self.out2 = out2  # For SPLIT: State. For CHAR: target State (dangling until patched).
+        self.out1 = out1  # For SPLIT: State. For CHAR: predicate. For ANCHOR_*: target State.
+        self.out2 = out2  # For SPLIT: State. For CHAR: target State. For ANCHOR_*: not used.
         self.id = State._counter
         State._counter += 1
 
     def __repr__(self):
-        if self.kind == State.MATCH:
-            return f"State({self.id}, MATCH)"
-        elif self.kind == State.SPLIT:
-            return f"State({self.id}, SPLIT)"
-        else:
-            return f"State({self.id}, CHAR)"
+        kind_names = {
+            State.MATCH: 'MATCH', State.SPLIT: 'SPLIT', State.CHAR: 'CHAR',
+            State.ANCHOR_START: 'ANCHOR_START', State.ANCHOR_END: 'ANCHOR_END',
+        }
+        return f"State({self.id}, {kind_names.get(self.kind, self.kind)})"
 
     @staticmethod
     def match_state() -> 'State':
@@ -54,9 +60,18 @@ class State:
         """Create a CHAR state with the given predicate.
 
         out1 = predicate (callable), out2 = None (dangling — to be patched).
-        The dangling out2 is what gets connected when fragments are composed.
         """
         return State(State.CHAR, predicate, None)
+
+    @staticmethod
+    def anchor_start_state() -> 'State':
+        """Create a ^ anchor state. out1 will be patched to target."""
+        return State(State.ANCHOR_START, None, None)
+
+    @staticmethod
+    def anchor_end_state() -> 'State':
+        """Create a $ anchor state. out1 will be patched to target."""
+        return State(State.ANCHOR_END, None, None)
 
 
 class Fragment:
