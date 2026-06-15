@@ -145,3 +145,13 @@ python3 -m pytest tests/ -v
 - BWT uses lexicographic sorting with O(n log² n) Python sort
 - CRC32 uses `zlib.crc32` for reliable checksum computation
 - Pipeline format stores codec names for reconstruction during decompression
+
+## Known Issues (Resolved)
+
+| # | Bug | Severity | Fix |
+|---|-----|----------|-----|
+| 1 | **LZ77 hardcoded min_match=3 in decompress** — The decompressor always used `min_match=3` regardless of the encoder's actual `min_match` setting, causing corrupted output for `LZ77Codec(min_match=4+)`. | High | Added `min_match` as an 8-bit value in the LZ77 header (after offset/length bit widths), read during decompression. |
+| 2 | **Delta codec uint16/uint32 modes lose trailing bytes** — When data length wasn't a multiple of the element size (e.g., 5 bytes with uint16 mode), trailing bytes were silently dropped during compression and decompression. | High | Added a `n_vals` count (2-byte LE) to the delta payload header; trailing bytes are now stored literally after the delta stream. |
+| 3 | **Delta auto-detect false positives** — The `_detect_mode` method could incorrectly select uint16/uint32 modes for very short data (e.g., 2 bytes) because `all(...)` on an empty delta list returns True. | Medium | Added `len(vals) >= 2` guard before computing deltas in auto-detect. |
+| 4 | **BWT empty data header too short** — Compressing empty data returned only 8 bytes (length+CRC32), but decompress expected 16 bytes (4 fields). | Low | Fixed empty-data path to emit all 4 header fields (16 bytes). |
+| 5 | **RLE escape byte decoding failures** — The original RLE codec had inconsistent escape handling; 0xFF bytes in data and run markers were confused, causing length mismatches on nearly all non-trivial inputs. | Critical | Rewrote RLE codec with clean escape scheme: runs of 3+ encoded as `0xFF, byte, count`; single 0xFF as `0xFF, 0xFF, 0x00`; literals for singles/pairs of non-0xFF bytes. |

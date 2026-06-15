@@ -21,6 +21,7 @@ class LZ77Codec:
     - 4 bytes: CRC32 checksum of original data (little-endian)
     - 5 bits: offset bit width
     - 5 bits: length bit width
+    - 8 bits: min_match value (stored so decompressor knows the offset)
     """
 
     def __init__(self, window_size: int = 4096, min_match: int = 3, max_match: int = 258) -> None:
@@ -48,6 +49,8 @@ class LZ77Codec:
 
         writer.write_bits(self._offset_bits, 5)
         writer.write_bits(self._length_bits, 5)
+        # Store min_match so decompressor can reconstruct it
+        writer.write_byte(self.min_match)
 
         i = 0
         while i < len(data):
@@ -102,7 +105,8 @@ class LZ77Codec:
 
         offset_bits = reader.read_bits(5)
         length_bits = reader.read_bits(5)
-        min_match = 3  # same as default
+        # Read min_match from header (fix: was hardcoded to 3)
+        min_match = reader.read_byte()
 
         result = bytearray()
         while len(result) < orig_len:

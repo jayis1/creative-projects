@@ -22,6 +22,8 @@ class DeltaCodec:
     - 4 bytes: CRC32 checksum of original data (little-endian)
     - 1 byte: mode (0=byte-level delta, 1=uint16 LE delta, 2=uint32 LE delta)
     - First value(s) stored literally, then deltas as signed varint
+    - For uint16/uint32 modes, any trailing bytes (if data length is not
+      a multiple of the element size) are stored literally after the delta stream.
     """
 
     def __init__(self, mode: str = "auto") -> None:
@@ -39,17 +41,20 @@ class DeltaCodec:
     def _detect_mode(self, data: bytes) -> int:
         """Auto-detect the best delta encoding mode."""
         n = len(data)
+        # Only consider uint32 if data is well-aligned and has enough values
         if n % 4 == 0 and n >= 8:
-            # Check if data looks like uint32 values
             vals = [struct.unpack_from("<I", data, i)[0] for i in range(0, min(n, 64), 4)]
-            deltas = [vals[i+1] - vals[i] for i in range(len(vals)-1)]
-            if all(-128 <= d <= 127 for d in deltas):
-                return 2
+            if len(vals) >= 2:
+                deltas = [vals[i+1] - vals[i] for i in range(len(vals)-1)]
+                if all(-128 <= d <= 127 for d in deltas):
+                    return 2
+        # Only consider uint16 if data is well-aligned and has enough values
         if n % 2 == 0 and n >= 4:
             vals = [struct.unpack_from("<H", data, i)[0] for i in range(0, min(n, 64), 2)]
-            deltas = [vals[i+1] - vals[i] for i in range(len(vals)-1)]
-            if all(-128 <= d <= 127 for d in deltas):
-                return 1
+            if len(vals) >= 2:
+                deltas = [vals[i+1] - vals[i] for i in range(len(vals)-1)]
+                if all(-128 <= d <= 127 for d in deltas):
+                    return 1
         return 0
 
     def _encode_varint(self, value: int) -> bytes:
@@ -102,6 +107,8 @@ class DeltaCodec:
         elif mode == 1:
             # uint16 LE delta
             n = len(data) // 2
+            # Store number of uint16 values as 2-byte LE
+            result.extend(struct.pack("<H", n))
             vals = [struct.unpack_from("<H", data, i * 2)[0] for i in range(n)]
             result.extend(struct.pack("<H", vals[0]))
             prev = vals[0]
@@ -109,9 +116,15 @@ class DeltaCodec:
                 delta = vals[i] - prev
                 result.extend(self._encode_varint(delta))
                 prev = vals[i]
+            # Store any trailing bytes literally
+            trailing = data[n * 2:]
+            if trailing:
+                result.extend(trailing)
         elif mode == 2:
             # uint32 LE delta
             n = len(data) // 4
+            # Store number of uint32 values as 2-byte LE
+            result.extend(struct.pack("<H", n))
             vals = [struct.unpack_from("<I", data, i * 4)[0] for i in range(n)]
             result.extend(struct.pack("<I", vals[0]))
             prev = vals[0]
@@ -119,6 +132,10 @@ class DeltaCodec:
                 delta = vals[i] - prev
                 result.extend(self._encode_varint(delta))
                 prev = vals[i]
+            # Store any trailing bytes literally
+            trailing = data[n * 4:]
+            if trailing:
+                result.extend(trailing)
 
         return bytes(result)
 
@@ -153,28 +170,40 @@ class DeltaCodec:
             # uint16 LE delta
             result = bytearray()
             offset = 0
+            n_vals = struct.unpack_from("<H", payload, offset)[0]
+            offset += 2
             first = struct.unpack_from("<H", payload, offset)[0]
             offset += 2
             result.extend(struct.pack("<H", first))
             prev = first
-            while len(result) < orig_len and offset < len(payload):
+            for _ in range(1, n_vals):
                 delta, offset = self._decode_varint(payload, offset)
                 value = prev + delta
                 result.extend(struct.pack("<H", value & 0xFFFF))
                 prev = value
+            # Read any trailing bytes literally
+            expected_trailing = orig_len - len(result)
+            if expected_trailing > 0:
+                result.extend(payload[offset:offset + expected_trailing])
         elif mode == 2:
             # uint32 LE delta
             result = bytearray()
             offset = 0
+            n_vals = struct.unpack_from("<H", payload, offset)[0]
+            offset += 2
             first = struct.unpack_from("<I", payload, offset)[0]
             offset += 4
             result.extend(struct.pack("<I", first))
             prev = first
-            while len(result) < orig_len and offset < len(payload):
+            for _ in range(1, n_vals):
                 delta, offset = self._decode_varint(payload, offset)
                 value = prev + delta
                 result.extend(struct.pack("<I", value & 0xFFFFFFFF))
                 prev = value
+            # Read any trailing bytes literally
+            expected_trailing = orig_len - len(result)
+            if expected_trailing > 0:
+                result.extend(payload[offset:offset + expected_trailing])
         else:
             raise ValueError(f"Invalid delta mode: {mode}")
 
