@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Comprehensive tests for the regex engine — covering all features.
+Comprehensive tests for the regex engine — covering all features and edge cases.
 """
 
 import sys
@@ -15,16 +15,6 @@ from regex_engine.pattern import Pattern
 import regex_engine as re
 
 
-def test(name, condition, msg=""):
-    """Simple test assertion."""
-    if condition:
-        print(f"  ✓ {name}")
-        return True
-    else:
-        print(f"  ✗ {name}: {msg}")
-        return False
-
-
 total = 0
 passed = 0
 
@@ -33,7 +23,9 @@ def check(name, condition, msg=""):
     total += 1
     if condition:
         passed += 1
-    test(name, condition, msg)
+        print(f"  ✓ {name}")
+    else:
+        print(f"  ✗ {name}: {msg}")
 
 
 # ============================================================
@@ -183,6 +175,44 @@ check("complex regex 2", Pattern("[a-z]+@[a-z]+\\.[a-z]+").match("user@example.c
 check("repeated quantifier", Pattern("a{2}b{3}").match("aabbb") is not None)
 
 # ============================================================
+# Bug fixes: previously found and fixed bugs
+# ============================================================
+
+# Bug: Pattern("a").match("abc") was returning end=3 instead of end=1
+check("literal match truncation", Pattern("a").match("abc").group(0) == "a")
+check("literal match end pos", Pattern("a").match("abc").end == 1)
+
+# Bug: alternation a|b|c matched 'c' with empty string
+check("alt three all branches", Pattern("a|b|c").match("c").group(0) == "c")
+
+# Bug: shorthand classes \d, \w, \s didn't work (predicate was broken)
+check("\\d predicate fixed", Pattern("\\d+").match("123").group(0) == "123")
+check("\\w predicate fixed", Pattern("\\w+").match("hello_123").group(0) == "hello_123")
+check("\\s predicate fixed", Pattern("\\s+").match("  \t").group(0) == "  \t")
+
+# Bug: sub with count didn't append remaining text
+check("sub count appends rest", Pattern("\\d+").sub("X", "a1b2c3d", count=2) == "aXbXc3d")
+
+# Bug: $ anchor in match mode
+check("$ match at end of string", Pattern("hello$").search("hello") is not None)
+check("$ search at end", Pattern("end$").search("the end") is not None)
+
+# Bug: split with zero-length matches
+check("split empty pattern", Pattern("").split("abc") == ["", "a", "b", "c", ""])
+
+# Bug: alternation with empty branch
+check("alt empty branch", Pattern("a|").match("") is not None)
+
+# Bug: nested quantifiers (a*)* — Thompson NFA handles this correctly
+check("nested star quantifier", Pattern("(a*)*").match("aaa") is not None)
+
+# Bug: escaped backslash
+check("escaped backslash", Pattern("\\\\").match("\\") is not None)
+
+# Bug: ] at start of char class
+check("] in charclass", Pattern("[]abc]").match("]") is not None)
+
+# ============================================================
 # Module-level API
 # ============================================================
 check("re.match", re.match("hello", "hello world").group(0) == "hello")
@@ -211,6 +241,24 @@ try:
     check("invalid quantifier error", False, "should have raised ParseError")
 except ParseError:
     check("invalid quantifier error", True)
+
+try:
+    Pattern("^+")
+    check("quantifier on anchor error", False, "should have raised ParseError")
+except ParseError:
+    check("quantifier on anchor error", True)
+
+try:
+    Pattern("*")
+    check("bare star error", False, "should have raised ParseError")
+except ParseError:
+    check("bare star error", True)
+
+try:
+    Pattern("+")
+    check("bare plus error", False, "should have raised ParseError")
+except ParseError:
+    check("bare plus error", True)
 
 
 print(f"\n{'='*50}")

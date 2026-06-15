@@ -126,6 +126,34 @@ Unlike backtracking regex engines (which can take O(2^n) time on pathological in
 python3 tests.py
 ```
 
+106 tests covering all features including edge cases and bug regressions.
+
+## Known Issues (Resolved)
+
+### 1. CHAR state Fragment dangling arrow convention (Critical)
+**Bug**: In the original compiler, CHAR-state Fragments used `'out1'` as the dangling arrow attribute. When `patch()` overwrote `out1`, it destroyed the predicate callable, causing all character matching to fail silently.
+**Fix**: Changed all CHAR-state Fragment dangling arrows to `'out2'`. The convention is now: `out1` = predicate callable, `out2` = transition target (dangling until patched).
+
+### 2. Shorthand class kind mapping (Critical)
+**Bug**: The `_compile_shorthand` method passed the raw shorthand character (`'d'`, `'w'`, `'s'`) to `_check_shorthand`, but that function expected the full kind name (`'digit'`, `'word'`, `'space'`). This caused `\d`, `\w`, `\s` and their negations to always return `False`.
+**Fix**: Added a `kind_map` dictionary to translate shorthand characters to kind names before calling `_check_shorthand`.
+
+### 3. Alternation epsilon path (Critical)
+**Bug**: The alternation compiler created a chain of SPLIT states where the last SPLIT had both `out1` (branch) and `out2` (dangling) outputs. When patched to the match state, `out2` created an epsilon path directly to MATCH, allowing patterns like `a|b` to match any character with an empty string.
+**Fix**: Restructured alternation compilation so only 2-alternative cases use a single SPLIT, and 3+ alternative cases chain SPLITs where the last alternative goes directly (no extra epsilon path).
+
+### 4. `sub()` with `count` not appending remaining text (Major)
+**Bug**: When `count` limit was reached, the `sub()` method would break out of the loop without appending the remaining unmatched text.
+**Fix**: Added `result.append(text[pos:])` before the break when count is reached.
+
+### 5. Matcher overwriting `last_match` at end-of-string (Major)
+**Bug**: The end-of-string anchor handling code checked for MATCH states in `current` after the main loop and unconditionally set `last_match = len(text)`. This caused patterns like `"a"` matching `"abc"` to return end=3 instead of end=1.
+**Fix**: Removed the MATCH-state check from end-of-string handling; only ANCHOR_END transitions are followed. MATCH states are already recorded during the main character-processing loop.
+
+### 6. `split()` not handling zero-length matches (Minor)
+**Bug**: The `split()` method skipped all zero-length matches, making it impossible to split on patterns like `""` (empty string).
+**Fix**: Added proper zero-length match handling in `split()` — splits at the current position and advances by one character to avoid infinite loops.
+
 ## References
 
 - Russ Cox, *"Regular Expression Matching Can Be Simple And Fast"* (https://swtch.com/~rsc/regexp/regexp1.html)

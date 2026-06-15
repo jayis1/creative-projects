@@ -193,7 +193,11 @@ class Matcher:
         return (''.join(result), num_subs)
 
     def split(self, text: str, maxsplit: int = 0) -> List[str]:
-        """Split text by occurrences of pattern."""
+        """Split text by occurrences of pattern.
+
+        Zero-length matches are handled by advancing one character
+        after each split to avoid infinite loops.
+        """
         result = []
         last_end = 0
         pos = 0
@@ -201,15 +205,20 @@ class Matcher:
 
         while pos <= len(text):
             end = self._run_anchored(text, pos)
-            if end is not None and end != pos:
-                result.append(text[last_end:pos])
-                last_end = end
-                pos = end
+            if end is not None:
+                if end != pos:
+                    # Non-zero-length match
+                    result.append(text[last_end:pos])
+                    last_end = end
+                    pos = end
+                else:
+                    # Zero-length match: split at current position
+                    result.append(text[last_end:pos])
+                    last_end = pos
+                    pos += 1
                 num_splits += 1
                 if maxsplit > 0 and num_splits >= maxsplit:
                     break
-            elif end is not None and end == pos:
-                pos += 1
             else:
                 pos += 1
 
@@ -260,6 +269,21 @@ class Matcher:
                 if s.kind == State.MATCH:
                     last_match = i + 1
                     break
+
+        # After processing all characters, check if any ANCHOR_END states
+        # can transition to MATCH at end of string. This handles the $ anchor.
+        # Only follow ANCHOR_END transitions here; MATCH states were already
+        # checked during the main loop and should not override last_match.
+        end_seen = set()
+        end_states = []
+        for s in current:
+            if s.kind == State.ANCHOR_END:
+                self._add_state_to(end_states, s.out1, end_seen, text, len(text))
+
+        for s in end_states:
+            if s.kind == State.MATCH:
+                last_match = len(text)
+                break
 
         return last_match
 
