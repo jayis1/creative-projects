@@ -7,6 +7,7 @@ from .ciphers import (
     CaesarCipher, SubstitutionCipher, VigenereCipher, AffineCipher,
     PlayfairCipher, RailFenceCipher, ColumnarTranspositionCipher,
     AutokeyCipher, BeaufortCipher, PortaCipher,
+    XORCipher, EnigmaCipher,
 )
 from .analysis import FrequencyAnalyzer, IndexOfCoincidence, KasiskiExaminer, NgramScorer
 from .breaker import CipherBreaker
@@ -23,6 +24,8 @@ CIPHERS = {
     "autokey": AutokeyCipher,
     "beaufort": BeaufortCipher,
     "porta": PortaCipher,
+    "xor": XORCipher,
+    "enigma": EnigmaCipher,
 }
 
 
@@ -66,11 +69,19 @@ def cmd_encrypt(args):
             print("--key required for columnar transposition cipher")
             sys.exit(1)
         cipher = cipher_cls(key=args.key)
+    elif cipher_name == "xor":
+        if not args.key:
+            print("--key required for XOR cipher")
+            sys.exit(1)
+        cipher = cipher_cls(key=args.key)
+    elif cipher_name == "enigma":
+        cipher = cipher_cls(
+            rotor_order=args.rotors or [1, 2, 3],
+            initial_positions=args.positions or [0, 0, 0],
+        )
 
     result = cipher.encrypt(text)
     print(result)
-
-
 def cmd_decrypt(args):
     """Handle decrypt command."""
     text = args.text
@@ -110,6 +121,16 @@ def cmd_decrypt(args):
             print("--key required for columnar transposition cipher")
             sys.exit(1)
         cipher = cipher_cls(key=args.key)
+    elif cipher_name == "xor":
+        if not args.key:
+            print("--key required for XOR cipher")
+            sys.exit(1)
+        cipher = cipher_cls(key=args.key)
+    elif cipher_name == "enigma":
+        cipher = cipher_cls(
+            rotor_order=args.rotors or [1, 2, 3],
+            initial_positions=args.positions or [0, 0, 0],
+        )
 
     result = cipher.decrypt(text)
     print(result)

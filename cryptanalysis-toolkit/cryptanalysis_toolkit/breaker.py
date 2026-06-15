@@ -1,6 +1,7 @@
 """Cipher breaking tools — automatic cryptanalysis."""
 
 from __future__ import annotations
+import math
 import random
 import string
 from typing import Dict, List, Optional, Tuple
@@ -285,5 +286,3 @@ class CipherBreaker:
             "likely_type": likely_type,
         }
 
-
-import math

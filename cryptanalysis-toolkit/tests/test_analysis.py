@@ -84,6 +84,25 @@ class TestIndexOfCoincidence:
         ic = IndexOfCoincidence()
         assert ic.calculate("A") == 0.0
 
+    def test_friedman_test(self):
+        ic = IndexOfCoincidence()
+        from cryptanalysis_toolkit.ciphers.vigenere import VigenereCipher
+        # English text should have Friedman estimate around 1 for no encryption
+        plaintext = "THIS IS A LONGER PIECE OF ENGLISH TEXT FOR TESTING THE FRIEDMAN TEST"
+        result = ic.friedman_test(plaintext)
+        # For monoalphabetic text, Friedman should estimate key length near 1
+        assert 0.5 < result < 2.0
+
+    def test_friedman_test_vigenere(self):
+        ic = IndexOfCoincidence()
+        from cryptanalysis_toolkit.ciphers.vigenere import VigenereCipher
+        plaintext = "THEQUICKBROWNFOXJUMPSOVERTHELAZYDOGTHERAININSPAINFALLSMAINLYONTHEPLAIN"
+        cipher = VigenereCipher(keyword="KEY")
+        ciphertext = cipher.encrypt(plaintext)
+        result = ic.friedman_test(ciphertext)
+        # Should estimate a key length around 2-5 for a 3-letter key
+        assert result > 1
+
     def test_estimated_key_length(self):
         ic = IndexOfCoincidence()
         from cryptanalysis_toolkit.ciphers.vigenere import VigenereCipher

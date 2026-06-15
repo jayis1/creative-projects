@@ -6,7 +6,7 @@ ciphers using statistical methods including frequency analysis, Kasiski
 examination, index of coincidence, and hill climbing.
 """
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 from .ciphers import (
     CaesarCipher,
@@ -19,12 +19,16 @@ from .ciphers import (
     AutokeyCipher,
     BeaufortCipher,
     PortaCipher,
+    XORCipher,
+    EnigmaCipher,
 )
 from .analysis import (
     FrequencyAnalyzer,
     IndexOfCoincidence,
     KasiskiExaminer,
     NgramScorer,
+    PatternMatcher,
+    word_pattern,
 )
 from .breaker import CipherBreaker
 
@@ -39,9 +43,13 @@ __all__ = [
     "AutokeyCipher",
     "BeaufortCipher",
     "PortaCipher",
+    "XORCipher",
+    "EnigmaCipher",
     "FrequencyAnalyzer",
     "IndexOfCoincidence",
     "KasiskiExaminer",
     "NgramScorer",
+    "PatternMatcher",
+    "word_pattern",
     "CipherBreaker",
 ]

@@ -92,6 +92,31 @@ class IndexOfCoincidence:
         return results
 
     @staticmethod
+    def friedman_test(ciphertext: str) -> float:
+        """Estimate key length using the Friedman test.
+
+        Uses the formula: k ≈ 0.0266 * n / ((IC * (n-1)) - 0.0279 * n + 0.0385)
+        where n is the text length and IC is the observed index of coincidence.
+
+        Args:
+            ciphertext: Encrypted text to analyze.
+
+        Returns:
+            Estimated key length as a float. Round to nearest integer for practical use.
+        """
+        text = "".join(ch for ch in ciphertext.upper() if ch.isalpha())
+        n = len(text)
+        if n < 2:
+            return 0.0
+        ic = IndexOfCoincidence.calculate(text)
+        # Friedman formula for English
+        numerator = 0.0266 * n
+        denominator = ic * (n - 1) - 0.0279 * n + 0.0385
+        if abs(denominator) < 1e-10:
+            return 0.0
+        return numerator / denominator
+
+    @staticmethod
     def identify_language(text: str) -> List[Tuple[str, float, float]]:
         """Attempt to identify the language of text by comparing IC to known values.
 

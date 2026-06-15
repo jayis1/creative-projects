@@ -10,6 +10,8 @@ from .columnar import ColumnarTranspositionCipher
 from .autokey import AutokeyCipher
 from .beaufort import BeaufortCipher
 from .porta import PortaCipher
+from .xor import XORCipher
+from .enigma import EnigmaCipher
 
 __all__ = [
     "CaesarCipher",
@@ -22,4 +24,6 @@ __all__ = [
     "AutokeyCipher",
     "BeaufortCipher",
     "PortaCipher",
+    "XORCipher",
+    "EnigmaCipher",
 ]
