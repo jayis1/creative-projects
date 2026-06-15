@@ -1,0 +1,15 @@
+# BASIC Interpreter Configuration
+# This file can be used with: basic-interpreter --config config.toml program.bas
+
+[interpreter]
+# Maximum number of iterations before raising an error (prevents infinite loops)
+max_iterations = 10000000
+
+# Column width for PRINT comma (,) zones
+zone_width = 14
+
+# Enable trace mode (prints line numbers during execution)
+trace = false
+
+# Seed for the RND function (null = use default random seed)
+# random_seed = 42
