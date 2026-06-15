@@ -4,15 +4,36 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cryptanalysis-toolkit"
-version = "1.0.0"
-description = "Classical cipher implementations and automatic cryptanalysis tools"
+version = "2.0.0"
+description = "Classical cipher implementations, analysis tools, and automatic cryptanalysis framework"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [{name = "Creative Projects"}]
+keywords = ["cryptography", "cryptanalysis", "cipher", "caesar", "vigenere", "enigma", "frequency-analysis", "hill-climbing"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Education",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security :: Cryptography",
+    "Topic :: Education",
+]
+dependencies = ["pyyaml>=6.0"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "pytest-cov>=4.0"]
 
 [project.scripts]
 cryptanalysis = "cryptanalysis_toolkit.cli:main"
+
+[project.urls]
+Repository = "https://github.com/jayis1/creative-projects/tree/main/cryptanalysis-toolkit"
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -20,3 +41,7 @@ include = ["cryptanalysis_toolkit*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "-v --tb=short"
+
+[tool.setuptools.package-data]
+cryptanalysis_toolkit = ["py.typed"]

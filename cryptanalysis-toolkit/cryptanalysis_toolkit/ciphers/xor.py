@@ -58,7 +58,8 @@ class XORCipher:
         """Attempt to break single-byte XOR encryption.
 
         Tries all 256 possible single-byte keys and scores each
-        decryption by how many printable ASCII characters it produces.
+        decryption using English letter frequency analysis combined
+        with space ratio and printable ASCII ratio.
 
         Args:
             data: XOR-encrypted data.
@@ -69,12 +70,50 @@ class XORCipher:
             List of dicts with keys: 'key', 'plaintext', 'score'.
             Sorted by score (highest first).
         """
+        # English letter frequency distribution (percentage)
+        english_freq = {
+            'A': 8.167, 'B': 1.492, 'C': 2.782, 'D': 4.253, 'E': 12.702,
+            'F': 2.228, 'G': 2.015, 'H': 6.094, 'I': 6.966, 'J': 0.153,
+            'K': 0.772, 'L': 4.025, 'M': 2.406, 'N': 6.749, 'O': 7.507,
+            'P': 1.929, 'Q': 0.095, 'R': 5.987, 'S': 6.327, 'T': 9.056,
+            'U': 2.758, 'V': 0.978, 'W': 2.360, 'X': 0.150, 'Y': 1.974,
+            'Z': 0.074,
+        }
+
         results = []
         for k in range(min_key, max_key + 1):
             decrypted = bytes(b ^ k for b in data)
-            # Score by printable ASCII ratio
+
+            # Compute English frequency score
+            text = decrypted.decode('ascii', errors='replace')
+            alpha_chars = [ch for ch in text.upper() if ch.isalpha()]
+            if alpha_chars:
+                total_alpha = len(alpha_chars)
+                from collections import Counter
+                counts = Counter(alpha_chars)
+                freq_score = 0.0
+                for ch, count in counts.items():
+                    if ch in english_freq:
+                        observed = (count / total_alpha) * 100
+                        freq_score -= abs(observed - english_freq[ch])
+                # Normalize by text length for fair comparison
+                freq_score = freq_score / max(total_alpha, 1)
+            else:
+                freq_score = -100.0
+
+            # Space ratio bonus (English text typically ~15-20% spaces)
+            space_ratio = sum(1 for b in decrypted if b == 32) / max(len(decrypted), 1)
+            space_bonus = 0.0
+            if 0.10 <= space_ratio <= 0.25:
+                space_bonus = 2.0
+
+            # Printable ASCII penalty for non-printable characters
             printable = sum(1 for b in decrypted if 32 <= b <= 126 or b in (9, 10, 13))
-            score = printable / max(len(decrypted), 1)
+            printable_ratio = printable / max(len(decrypted), 1)
+            printable_score = printable_ratio * 5.0
+
+            # Combined score
+            score = freq_score + space_bonus + printable_score
             results.append({
                 "key": k,
                 "plaintext": decrypted,

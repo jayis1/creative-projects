@@ -1,0 +1,8 @@
+# Break a Vigenère cipher with a longer key
+# Use this config with: cryptanalysis pipeline examples/break_vigenere.yaml < ciphertext.txt
+
+operations:
+  - cipher: vigenere
+    action: decrypt
+    params:
+      key: CRYPTO

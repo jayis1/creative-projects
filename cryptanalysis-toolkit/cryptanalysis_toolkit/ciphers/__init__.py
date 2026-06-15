@@ -12,6 +12,10 @@ from .beaufort import BeaufortCipher
 from .porta import PortaCipher
 from .xor import XORCipher
 from .enigma import EnigmaCipher
+from .rot13 import ROT13Cipher
+from .atbash import AtbashCipher
+from .hill import HillCipher
+from .base import BaseCipher
 
 __all__ = [
     "CaesarCipher",
@@ -26,4 +30,8 @@ __all__ = [
     "PortaCipher",
     "XORCipher",
     "EnigmaCipher",
+    "ROT13Cipher",
+    "AtbashCipher",
+    "HillCipher",
+    "BaseCipher",
 ]

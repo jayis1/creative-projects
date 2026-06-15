@@ -1,0 +1,12 @@
+# Example pipeline configuration
+# Apply Caesar cipher (shift 7) then Vigenère cipher (key "SECRET")
+
+operations:
+  - cipher: caesar
+    action: encrypt
+    params:
+      shift: 7
+  - cipher: vigenere
+    action: encrypt
+    params:
+      key: SECRET

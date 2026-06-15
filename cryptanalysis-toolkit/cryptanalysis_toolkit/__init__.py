@@ -6,7 +6,7 @@ ciphers using statistical methods including frequency analysis, Kasiski
 examination, index of coincidence, and hill climbing.
 """
 
-__version__ = "1.1.0"
+__version__ = "2.0.0"
 
 from .ciphers import (
     CaesarCipher,
@@ -21,6 +21,10 @@ from .ciphers import (
     PortaCipher,
     XORCipher,
     EnigmaCipher,
+    ROT13Cipher,
+    AtbashCipher,
+    HillCipher,
+    BaseCipher,
 )
 from .analysis import (
     FrequencyAnalyzer,
@@ -31,8 +35,17 @@ from .analysis import (
     word_pattern,
 )
 from .breaker import CipherBreaker
+from .pipeline import (
+    CipherPipeline,
+    build_cipher,
+    load_config,
+    process_file,
+    analyze_text,
+    CIPHER_REGISTRY,
+)
 
 __all__ = [
+    # Ciphers
     "CaesarCipher",
     "SubstitutionCipher",
     "VigenereCipher",
@@ -45,11 +58,24 @@ __all__ = [
     "PortaCipher",
     "XORCipher",
     "EnigmaCipher",
+    "ROT13Cipher",
+    "AtbashCipher",
+    "HillCipher",
+    "BaseCipher",
+    # Analysis
     "FrequencyAnalyzer",
     "IndexOfCoincidence",
     "KasiskiExaminer",
     "NgramScorer",
     "PatternMatcher",
     "word_pattern",
+    # Breaking
     "CipherBreaker",
+    # Pipeline
+    "CipherPipeline",
+    "build_cipher",
+    "load_config",
+    "process_file",
+    "analyze_text",
+    "CIPHER_REGISTRY",
 ]
