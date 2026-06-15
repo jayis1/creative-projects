@@ -1,8 +1,10 @@
-"""Burrows-Wheeler Transform codec with Move-to-Front and Run-Length Encoding."""
+"""Burrows-Wheeler Transform codec with Move-to-Front, Run-Length Encoding, and CRC32 integrity."""
 
 from __future__ import annotations
 
-from typing import List, Tuple
+import struct
+import zlib
+from typing import Dict, List, Tuple
 from .bitio import BitReader, BitWriter
 
 
@@ -10,35 +12,14 @@ def _bwt_transform(data: bytes) -> Tuple[bytes, int]:
     """Compute the Burrows-Wheeler Transform.
 
     Returns (transformed_data, original_index).
-    Uses suffix-array-like approach for efficiency.
     """
     if not data:
         return b"", 0
     n = len(data)
-    # Create all rotations' indices and sort by the rotation
-    # To avoid creating n strings, we use index-based comparison
-    indices = list(range(n))
-
     # Double the data to handle wrap-around comparison
     doubled = data + data
-
-    def compare_rotations(i: int, j: int) -> bool:
-        """Compare rotation starting at i vs j."""
-        for k in range(n):
-            ci = doubled[i + k]
-            cj = doubled[j + k]
-            if ci != cj:
-                return ci < cj
-        return False  # equal
-
-    # For small data, use Python sort with a key function
-    # For larger data, we'd want a suffix array, but this works for moderate sizes
-    try:
-        indices.sort(key=lambda i: doubled[i:i + n])
-    except MemoryError:
-        # Fallback: use comparison-based sort
-        import functools
-        indices.sort(key=functools.cmp_to_key(lambda i, j: -1 if doubled[i:i+n] < doubled[j:j+n] else (1 if doubled[i:i+n] > doubled[j:j+n] else 0)))
+    indices = list(range(n))
+    indices.sort(key=lambda i: doubled[i:i + n])
 
     # Find original index
     orig_idx = indices.index(0)
@@ -115,10 +96,8 @@ def _move_to_front_decode(data: bytes) -> bytes:
 def _rle_encode(data: bytes) -> bytes:
     """Run-Length Encoding for BWT output.
 
-    Format: for each run of identical bytes:
-    - If run length <= 1: just output the byte
-    - If run length > 1: output the byte, then the count-1
-    We use a simple scheme: escape byte 0xFF followed by count.
+    Two identical consecutive bytes signal a run: the third byte gives
+    the additional count (0-255), so total run = 2 + count.
     """
     if not data:
         return b""
@@ -159,49 +138,51 @@ def _rle_decode(data: bytes) -> bytes:
 
 
 class BWTCodec:
-    """Burrows-Wheeler Transform codec.
+    """Burrows-Wheeler Transform codec with CRC32 integrity.
 
     Pipeline: BWT -> Move-to-Front -> RLE -> output
 
     Format:
     - 4 bytes: original length (little-endian)
+    - 4 bytes: CRC32 checksum of original data (little-endian)
     - 4 bytes: BWT original index (little-endian)
     - N bytes: MTF+RLE encoded BWT output
     """
 
     def compress(self, data: bytes) -> bytes:
         """Compress using BWT + MTF + RLE."""
+        checksum = zlib.crc32(data) & 0xFFFFFFFF
+
         if not data:
-            return struct_header(0, 0)
+            return struct.pack("<IIII", 0, checksum, 0, 0)
 
         bwt_data, orig_idx = _bwt_transform(data)
         mtf_data = _move_to_front_encode(bwt_data)
         rle_data = _rle_encode(mtf_data)
 
-        return struct_header(len(data), orig_idx) + rle_data
+        header = struct.pack("<IIII", len(data), checksum, orig_idx, len(rle_data))
+        return header + rle_data
 
     def decompress(self, data: bytes) -> bytes:
-        """Decompress BWT-coded data."""
-        orig_len, orig_idx, payload = parse_header(data)
+        """Decompress BWT-coded data with CRC32 verification."""
+        if len(data) < 16:
+            raise ValueError("Data too short for BWT header")
+
+        orig_len, expected_checksum, orig_idx, rle_len = struct.unpack("<IIII", data[:16])
+
         if orig_len == 0:
+            actual_checksum = zlib.crc32(b"") & 0xFFFFFFFF
+            if actual_checksum != expected_checksum:
+                raise ValueError(f"CRC32 mismatch: expected {expected_checksum:#010x}, got {actual_checksum:#010x}")
             return b""
 
+        payload = data[16:16 + rle_len]
         mtf_data = _rle_decode(payload)
         bwt_data = _move_to_front_decode(mtf_data)
         result = _bwt_inverse(bwt_data, orig_idx)
-        return result[:orig_len]
+        result = result[:orig_len]
 
-
-def struct_header(length: int, index: int) -> bytes:
-    """Pack a header: 4 bytes length + 4 bytes index, little-endian."""
-    import struct
-    return struct.pack("<II", length, index)
-
-
-def parse_header(data: bytes) -> tuple:
-    """Parse header: returns (length, index, remaining_payload)."""
-    import struct
-    if len(data) < 8:
-        raise ValueError("Data too short for BWT header")
-    length, index = struct.unpack("<II", data[:8])
-    return length, index, data[8:]
+        actual_checksum = zlib.crc32(result) & 0xFFFFFFFF
+        if actual_checksum != expected_checksum:
+            raise ValueError(f"CRC32 mismatch: expected {expected_checksum:#010x}, got {actual_checksum:#010x}")
+        return result

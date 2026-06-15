@@ -1,4 +1,4 @@
-"""DEFLATE-like compression codec combining LZ77 and Huffman coding.
+"""DEFLATE-like compression codec combining LZ77 and Huffman coding with CRC32 integrity.
 
 Implements a simplified version of the DEFLATE algorithm:
 1. LZ77 pass to produce literal/length/distance tokens
@@ -11,6 +11,7 @@ This is a from-scratch implementation (no zlib dependency).
 from __future__ import annotations
 
 import heapq
+import zlib
 from typing import Dict, List, Optional, Tuple
 from .bitio import BitReader, BitWriter
 from .huffman import _lengths_to_canonical
@@ -94,6 +95,7 @@ MATCH = 1
 
 
 class _Token:
+    """LZ77 token: either a literal byte or a (length, distance) match."""
     __slots__ = ("kind", "byte", "length", "distance")
 
     def __init__(self, kind: int, byte: int = 0, length: int = 0, distance: int = 0) -> None:
@@ -134,12 +136,13 @@ def _lz77_tokenize(data: bytes, window_size: int = 32768, max_match: int = 258, 
 
 
 class DeflateCodec:
-    """DEFLATE-like compression codec.
+    """DEFLATE-like compression codec with CRC32 integrity.
 
-    Combines LZ77 tokenization with Huffman coding.
+    Combines LZ77 tokenization with static Huffman coding.
 
     Format:
     - 4 bytes: original data length (little-endian)
+    - 4 bytes: CRC32 checksum of original data (little-endian)
     - 1 bit: BFINAL (1 if last block)
     - 2 bits: BTYPE (01 = static Huffman)
     - Compressed data using static Huffman codes
@@ -153,7 +156,6 @@ class DeflateCodec:
     - Distance 0-31:   5 bits
     """
 
-    # Static Huffman code lengths (DEFLATE spec)
     _STATIC_LIT_LENGTHS: Dict[int, int] = {}
     _STATIC_DIST_LENGTHS: Dict[int, int] = {}
 
@@ -162,7 +164,7 @@ class DeflateCodec:
 
     @classmethod
     def _init_static_tables(cls) -> None:
-        """Build static Huffman code tables."""
+        """Build static Huffman code tables (DEFLATE spec)."""
         if cls._STATIC_LIT_LENGTHS:
             return
         lengths: Dict[int, int] = {}
@@ -181,13 +183,17 @@ class DeflateCodec:
     def compress(self, data: bytes) -> bytes:
         """Compress data using DEFLATE-like codec with static Huffman."""
         self._init_static_tables()
+        checksum = zlib.crc32(data) & 0xFFFFFFFF
+
+        # Write 4-byte original length + 4-byte CRC32
+        length_prefix = bytearray()
+        for shift in range(0, 32, 8):
+            length_prefix.append((len(data) >> shift) & 0xFF)
+        for shift in range(0, 32, 8):
+            length_prefix.append((checksum >> shift) & 0xFF)
 
         if not data:
-            # Write 4-byte length prefix + minimal block
             writer = BitWriter()
-            # 4-byte original length
-            for shift in range(0, 32, 8):
-                writer.write_byte(0)
             # Block: BFINAL=1, BTYPE=01 (static Huffman)
             writer.write_bit(1)       # BFINAL
             writer.write_bits(1, 2)   # BTYPE = 01 (static Huffman)
@@ -195,17 +201,12 @@ class DeflateCodec:
             lit_canonical = _lengths_to_canonical(self._STATIC_LIT_LENGTHS)
             eob_code, eob_len = lit_canonical[256]
             writer.write_bits(eob_code, eob_len)
-            return writer.flush()
+            return bytes(length_prefix) + writer.flush()
 
         tokens = _lz77_tokenize(data, self.window_size)
 
         lit_canonical = _lengths_to_canonical(self._STATIC_LIT_LENGTHS)
         dist_canonical = _lengths_to_canonical(self._STATIC_DIST_LENGTHS)
-
-        # Prepend 4-byte original length
-        length_prefix = bytearray()
-        for shift in range(0, 32, 8):
-            length_prefix.append((len(data) >> shift) & 0xFF)
 
         writer = BitWriter()
         # Block header: BFINAL=1, BTYPE=01
@@ -237,11 +238,12 @@ class DeflateCodec:
         return bytes(length_prefix) + writer.flush()
 
     def decompress(self, data: bytes) -> bytes:
-        """Decompress DEFLATE-like coded data."""
+        """Decompress DEFLATE-like coded data with CRC32 verification."""
         self._init_static_tables()
-        if len(data) < 4:
-            raise ValueError("Data too short")
+        if len(data) < 8:
+            raise ValueError("Data too short for header")
         orig_len = int.from_bytes(data[:4], "little")
+        expected_checksum = int.from_bytes(data[4:8], "little")
 
         lit_canonical = _lengths_to_canonical(self._STATIC_LIT_LENGTHS)
         dist_canonical = _lengths_to_canonical(self._STATIC_DIST_LENGTHS)
@@ -257,7 +259,7 @@ class DeflateCodec:
         max_lit_len = max(ln for ln in self._STATIC_LIT_LENGTHS.values())
         max_dist_len = max(ln for ln in self._STATIC_DIST_LENGTHS.values())
 
-        reader = BitReader(data[4:])
+        reader = BitReader(data[8:])
         result = bytearray()
 
         while True:
@@ -266,7 +268,6 @@ class DeflateCodec:
 
             if btype == 0:
                 # Stored block: skip to byte boundary, read LEN/NLEN, copy bytes
-                # Align to byte boundary
                 _align_reader(reader)
                 if reader.bits_remaining < 32:
                     raise ValueError("Unexpected end of stored block header")
@@ -322,7 +323,11 @@ class DeflateCodec:
             if bfinal == 1:
                 break
 
-        return bytes(result[:orig_len])
+        result_bytes = bytes(result[:orig_len])
+        actual_checksum = zlib.crc32(result_bytes) & 0xFFFFFFFF
+        if actual_checksum != expected_checksum:
+            raise ValueError(f"CRC32 mismatch: expected {expected_checksum:#010x}, got {actual_checksum:#010x}")
+        return result_bytes
 
 
 def _align_reader(reader: BitReader) -> None:

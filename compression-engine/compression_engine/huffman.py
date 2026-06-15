@@ -1,8 +1,9 @@
-"""Huffman coding: canonical Huffman with bit-level I/O."""
+"""Huffman coding: canonical Huffman with bit-level I/O and CRC32 integrity."""
 
 from __future__ import annotations
 
 import heapq
+import zlib
 from typing import Dict, List, Optional, Tuple
 from .bitio import BitReader, BitWriter
 
@@ -25,7 +26,7 @@ class _Node:
         self.right = right
 
     def __lt__(self, other: "_Node") -> bool:
-        # Break ties deterministically by using a synthetic sort key
+        """Break ties deterministically for reproducible trees."""
         if self.freq != other.freq:
             return self.freq < other.freq
         # Leaves (with symbol) sort before internal nodes
@@ -51,7 +52,7 @@ def _build_frequency_table(data: bytes) -> List[int]:
 
 
 def _build_tree(freq: List[int]) -> _Node:
-    """Build a Huffman tree from a frequency table."""
+    """Build a Huffman tree from a frequency table using a min-heap."""
     heap: List[_Node] = []
     for symbol in range(257):
         if freq[symbol] > 0:
@@ -115,11 +116,12 @@ def _lengths_to_canonical(lengths: Dict[int, int]) -> Dict[int, Tuple[int, int]]
 
 
 class HuffmanCodec:
-    """Huffman coding codec with canonical code serialization.
+    """Huffman coding codec with canonical code serialization and CRC32 integrity.
 
     Format:
     - 4 bytes: original data length (little-endian, unsigned)
-    - 1 byte: number of code length entries (N)
+    - 4 bytes: CRC32 checksum of original data (little-endian)
+    - 2 bytes: number of code length entries (uint16 LE)
     - N entries, each: 2 bytes symbol (uint16 LE) + 1 byte code length
     - Compressed bitstream using canonical Huffman codes
     - Terminated by EOF symbol (256) code
@@ -132,11 +134,15 @@ class HuffmanCodec:
         if len(data) > 0xFFFFFFFF:
             raise ValueError("Data too large for Huffman codec (max ~4GB)")
 
+        checksum = zlib.crc32(data) & 0xFFFFFFFF
+
         if not data:
             writer = BitWriter()
-            # 4-byte original length (0)
+            # 4-byte original length (0) + 4-byte CRC32
             for shift in range(0, 32, 8):
                 writer.write_byte(0)
+            for shift in range(0, 32, 8):
+                writer.write_byte((checksum >> shift) & 0xFF)
             # 2-byte entry count (0)
             writer.write_uint16_le(0)
             return writer.flush()
@@ -153,6 +159,9 @@ class HuffmanCodec:
         # Write original length as 4 bytes LE
         for shift in range(0, 32, 8):
             writer.write_byte((len(data) >> shift) & 0xFF)
+        # Write CRC32 as 4 bytes LE
+        for shift in range(0, 32, 8):
+            writer.write_byte((checksum >> shift) & 0xFF)
         # Write code length table: 2-byte entry count (supports up to 65535)
         entries = sorted(lengths.items())
         writer.write_uint16_le(len(entries))
@@ -171,14 +180,22 @@ class HuffmanCodec:
         return writer.flush()
 
     def decompress(self, data: bytes) -> bytes:
-        """Decompress Huffman-coded data."""
+        """Decompress Huffman-coded data with CRC32 verification."""
         reader = BitReader(data)
         # Read original length as 4 bytes LE
         orig_len = 0
         for shift in range(0, 32, 8):
             orig_len |= reader.read_byte() << shift
+        # Read CRC32 as 4 bytes LE
+        expected_checksum = 0
+        for shift in range(0, 32, 8):
+            expected_checksum |= reader.read_byte() << shift
         if orig_len == 0:
             _num_entries = reader.read_uint16_le()
+            # Verify CRC32 of empty data
+            actual_checksum = zlib.crc32(b"") & 0xFFFFFFFF
+            if actual_checksum != expected_checksum:
+                raise ValueError(f"CRC32 mismatch: expected {expected_checksum:#010x}, got {actual_checksum:#010x}")
             return b""
         num_entries = reader.read_uint16_le()
         lengths: Dict[int, int] = {}
@@ -207,9 +224,19 @@ class HuffmanCodec:
                 sym = decode_table.get((code, code_len))
                 if sym is not None:
                     if sym == 256:  # EOF
-                        return bytes(result)
+                        result_bytes = bytes(result)
+                        actual_checksum = zlib.crc32(result_bytes) & 0xFFFFFFFF
+                        if actual_checksum != expected_checksum:
+                            raise ValueError(f"CRC32 mismatch: expected {expected_checksum:#010x}, got {actual_checksum:#010x}")
+                        return result_bytes
                     result.append(sym)
                     break
             else:
                 raise ValueError(f"Invalid Huffman code encountered at position {len(result)}")
-        return bytes(result)
+
+        # Fallback: reached orig_len without seeing EOF
+        result_bytes = bytes(result[:orig_len])
+        actual_checksum = zlib.crc32(result_bytes) & 0xFFFFFFFF
+        if actual_checksum != expected_checksum:
+            raise ValueError(f"CRC32 mismatch: expected {expected_checksum:#010x}, got {actual_checksum:#010x}")
+        return result_bytes
