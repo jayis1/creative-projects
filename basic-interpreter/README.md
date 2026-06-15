@@ -1,158 +1,151 @@
-# BASIC Interpreter
+# BASIC Language Interpreter
 
-A full-featured interpreter for a classic BASIC programming language dialect, written in pure Python with no external dependencies.
+A full-featured interpreter for a classic BASIC dialect, written in pure Python with no external dependencies.
 
 ## Features
 
-- **Line-numbered programs** with `GOTO`, `GOSUB`, and `RETURN`
-- **Control flow**: `IF...THEN...ELSE`, `FOR...NEXT`, `WHILE...WEND`
-- **Variables**: numeric and string (with `$` suffix), implicit declaration (default 0/empty)
-- **Arrays**: 1D and 2D via `DIM`, auto-extending on out-of-bounds access
-- **I/O**: `PRINT`, `INPUT`, `READ`/`DATA`/`RESTORE`
-- **User-defined functions**: `DEF FN name(params) = expression`
-- **Built-in functions**: 25+ including math, string, and utility functions
-- **Operators**: arithmetic, comparison, logical (`AND`, `OR`, `NOT`), string concatenation
-- **Statements**: `LET`, `SWAP`, `ON...GOTO`/`ON...GOSUB`, `REM`, `END`, `STOP`
-- **Terminal control**: `CLS`, `COLOR`, `LOCATE`
-- **REPL mode** with `RUN`, `LIST`, `NEW` commands
-- **Safety**: configurable max iteration limit to prevent infinite loops
+### Core Language
+- **Line-numbered programs** with `GOTO`, `GOSUB`/`RETURN`
+- **Variables**: numeric (`X`, `COUNT%`) and string (`NAME$`) types with automatic conversion
+- **Arrays**: 1D and 2D via `DIM`, auto-expanding with default 11-element size
+- **Operators**: arithmetic (`+`, `-`, `*`, `/`, `\`, `MOD`, `^`), comparison (`=`, `<>`, `<`, `>`, `<=`, `>=`)
+- **Logical operators**: `AND`, `OR`, `NOT`, `XOR`, `EQV`, `IMP`
+- **String operations**: concatenation with `+`, comparison
 
-## How It Works
+### Control Flow
+- `IF...THEN...ELSE` (single-line and multi-statement)
+- `FOR...NEXT` with optional `STEP` (including negative step)
+- `WHILE...WEND` loops
+- `DO...LOOP` with `WHILE`/`UNTIL` pre- and post-conditions
+- `SELECT CASE` with `IS`, `TO` range, `CASE ELSE`, `END SELECT`
+- `ON...GOTO` / `ON...GOSUB` computed branching
+- `ON ERROR GOTO` / `RESUME` error handling
 
-### Architecture
+### I/O
+- `PRINT` with `;` (compact), `,` (zone-tab) separators
+- `PRINT USING` formatted output (`#`, `&`, `!`, `\...\` format fields)
+- `INPUT` with optional prompt
+- `LINE INPUT` for reading full lines
+- `READ`/`DATA`/`RESTORE` for static data
+- File I/O: `OPEN`/`CLOSE`/`PRINT#`/`INPUT#`/`LINE INPUT#`
 
-The interpreter follows a classic three-stage pipeline:
+### Built-in Functions
+| Category | Functions |
+|----------|-----------|
+| Math | `ABS`, `INT`, `FIX`, `SGN`, `SQR`, `SIN`, `COS`, `TAN`, `ATN`, `LOG`, `EXP`, `RND`, `CINT`, `CSNG`, `CDBL` |
+| String | `LEN`, `LEFT$`, `RIGHT$`, `MID$`, `CHR$`, `ASC`, `STR$`, `VAL`, `LCASE$`, `UCASE$`, `LTRIM$`, `RTRIM$`, `STRING$`, `INSTR` |
+| I/O | `TAB`, `SPC` |
+| System | `DATE$`, `TIME$`, `INKEY$`, `TIMER`, `FRE`, `PEEK`, `ENVIRON$` |
+| User | `DEF FN` — define your own functions |
 
-1. **Lexer** — Tokenizes BASIC source lines into tokens (keywords, numbers, strings, operators, identifiers)
-2. **Parser** — Recursive-descent parser builds an AST from tokens with proper operator precedence
-3. **Interpreter** — Tree-walking evaluator executes the AST against a runtime environment
+### Statements
+`LET`, `PRINT`, `INPUT`, `LINE INPUT`, `IF/THEN/ELSE`, `FOR/TO/STEP/NEXT`, `WHILE/WEND`, `DO/LOOP`, `SELECT CASE`, `GOTO`, `GOSUB`, `RETURN`, `DIM`, `ERASE`, `READ`, `DATA`, `RESTORE`, `DEF FN`, `REM`, `END`, `STOP`, `ON...GOTO/GOSUB`, `ON ERROR GOTO`, `RESUME`, `SWAP`, `CLS`, `COLOR`, `LOCATE`, `BEEP`, `OPEN`, `CLOSE`, `PRINT#`, `INPUT#`
 
-### Key Design Decisions
-
-- **PC Management**: The program counter (`pc`) is an index into sorted line numbers. Jump instructions set `pc = target - 1`; the main loop detects when `pc` has been modified and adds +1, so execution lands on the target line. Normal flow simply increments `pc` by 1.
-- **FOR/NEXT Loop Stack**: FOR pushes loop metadata (variable, stop, step, pc) onto a stack. NEXT increments the loop variable, checks the condition, and either loops back or pops the entry.
-- **WHILE/WEND Matching**: Resolved at load time by scanning the program structure, so WEND can efficiently jump back to the matching WHILE.
-- **GOSUB/RETURN**: Uses a call stack of line indices. GOSUB pushes the current pc; RETURN pops it.
-- **User Functions (DEF FN)**: Stored as AST nodes. When called, parameters are temporarily set in the variable table, the body expression is evaluated, and parameters are restored.
-- **DATA/READ/RESTORE**: All DATA values are collected at load time in line-number order. READ consumes from a pointer; RESTORE resets the pointer to 0.
-- **Arrays**: Auto-allocated on first access with generous defaults (11 elements for 1D). Arrays auto-extend if accessed out of bounds.
-- **Type Conventions**: Variables ending in `$` are strings; others are numeric. Undeclared numeric variables default to 0; string variables default to `""`. Comparisons return -1 (true) or 0 (false) following BASIC convention.
-
-### Operator Precedence (low to high)
-
-1. `OR`
-2. `AND`
-3. `NOT`
-4. `=`, `<>`, `<`, `>`, `<=`, `>=`
-5. `+`, `-`
-6. `*`, `/`
-7. `\` (integer division), `MOD`
-8. `^` (exponentiation, right-associative)
-9. Unary `-`, `+`
-10. Function calls, parenthesized expressions, literals, variables
+### Interactive REPL
+Enhanced REPL with commands:
+- **RUN** — execute loaded program
+- **LIST** [start[-end]] — list program lines
+- **NEW** — clear program and variables
+- **SAVE** filename — save to file
+- **LOAD** filename — load from file
+- **EDIT** line — edit a line
+- **DELETE** line|start-end — delete line(s)
+- **QUIT** — exit
 
 ## Usage
 
-### Run a program file
 ```bash
+# Run a BASIC program
 python3 basic.py program.bas
-```
 
-### Evaluate a one-liner
-```bash
-python3 basic.py -e "PRINT 2+2"
+# One-liner
 python3 basic.py -e 'PRINT "Hello, World!"'
-```
 
-### Interactive REPL
-```bash
+# Interactive REPL
 python3 basic.py
-```
 
-REPL commands:
-- `RUN` — Execute the current program
-- `LIST` — Display all program lines
-- `NEW` — Clear the program
-- `QUIT` / `EXIT` — Leave the REPL
-
-### Trace mode
-```bash
+# With tracing
 python3 basic.py --trace program.bas
 ```
 
-### Example Programs
+## Examples
 
-The `examples/` directory contains several demonstration programs:
+See the `examples/` directory:
 
-| File | Description |
-|------|-------------|
-| `hello.bas` | Hello World |
-| `fibonacci.bas` | Fibonacci sequence (20 terms) |
-| `sort.bas` | Bubble sort using arrays and DATA/READ |
-| `gosub.bas` | GOSUB/RETURN with nested subroutines |
-| `collatz.bas` | Collatz conjecture using WHILE/WEND |
-| `deffn.bas` | User-defined functions (DEF FN) |
-| `strings.bas` | String manipulation functions |
-| `mandelbrot.bas` | ASCII Mandelbrot set renderer |
-| `guess.bas` | Number guessing game (requires interactive input) |
+- **hello.bas** — Hello World
+- **fibonacci.bas** — Fibonacci sequence
+- **guess.bas** — Number guessing game
+- **sort.bas** — Bubble sort
+- **gosub.bas** — Subroutine demonstration
+- **collatz.bas** — Collatz conjecture
+- **deffn.bas** — User-defined functions
+- **strings.bas** — String manipulation
+- **mandelbrot.bas** — ASCII Mandelbrot set renderer
 
-## Supported Language Reference
+### SELECT CASE Example
 
-### Statements
-| Statement | Syntax | Description |
-|----------|--------|-------------|
-| LET | `LET var = expr` | Assignment (keyword optional) |
-| PRINT | `PRINT expr [;|,] ...` | Output with formatting |
-| INPUT | `INPUT ["prompt";] var, ...` | Read user input |
-| IF | `IF expr THEN stmts [ELSE stmts]` | Conditional |
-| FOR | `FOR var = start TO stop [STEP step]` | Loop init |
-| NEXT | `NEXT [var]` | Loop increment |
-| WHILE | `WHILE expr` | While loop |
-| WEND | `WEND` | End while loop |
-| GOTO | `GOTO linenum` | Unconditional jump |
-| GOSUB | `GOSUB linenum` | Subroutine call |
-| RETURN | `RETURN` | Return from subroutine |
-| DIM | `DIM var(size), ...` | Declare arrays |
-| READ | `READ var, ...` | Read from DATA |
-| DATA | `DATA val, ...` | Define data values |
-| RESTORE | `RESTORE` | Reset DATA pointer |
-| DEF FN | `DEF FN name(params) = expr` | Define function |
-| ON | `ON expr GOTO line, ...` | Computed goto |
-| SWAP | `SWAP var1, var2` | Exchange variables |
-| REM | `REM comment` | Comment |
-| END | `END` | Terminate program |
-| STOP | `STOP` | Breakpoint |
+```basic
+10 INPUT "Enter a number: "; N
+20 SELECT CASE N
+30   CASE 1
+40     PRINT "One"
+50   CASE 2 TO 5
+60     PRINT "Two through five"
+70   CASE IS > 10
+80     PRINT "Greater than ten"
+90   CASE ELSE
+100    PRINT "Six through ten"
+110 END SELECT
+```
 
-### Built-in Functions
-| Function | Description |
-|----------|-------------|
-| `ABS(x)` | Absolute value |
-| `INT(x)` | Floor (largest integer ≤ x) |
-| `RND(x)` | Random number [0,1); x<0 seeds, x=0 repeats |
-| `SQR(x)` | Square root |
-| `SIN(x)`, `COS(x)`, `TAN(x)` | Trigonometric (radians) |
-| `ATN(x)` | Arc tangent |
-| `LOG(x)` | Natural logarithm |
-| `EXP(x)` | Exponential |
-| `LEN(s$)` | String length |
-| `LEFT$(s$, n)` | Left substring |
-| `RIGHT$(s$, n)` | Right substring |
-| `MID$(s$, start [, len])` | Substring (1-indexed) |
-| `CHR$(n)` | Character from ASCII code |
-| `ASC(s$)` | ASCII code of first character |
-| `STR$(n)` | Number to string |
-| `VAL(s$)` | String to number |
-| `INSTR([start,] haystack$, needle$)` | Find substring |
-| `STRING$(n, char)` | Repeat character |
-| `TAB(n)`, `SPC(n)` | Print positioning |
+### DO...LOOP Example
 
-### Operators
-| Operator | Description |
-|----------|-------------|
-| `+`, `-`, `*`, `/` | Arithmetic |
-| `^` | Exponentiation |
-| `\` | Integer division |
-| `MOD` | Modulo |
-| `=`, `<>`, `<`, `>`, `<=`, `>=` | Comparison (return -1 or 0) |
-| `AND`, `OR`, `NOT` | Logical |
-| `+` | String concatenation |
+```basic
+10 DO
+20   INPUT "Guess (1-10): "; G
+30   IF G = 7 THEN PRINT "Correct!": EXIT DO
+40 LOOP UNTIL G = 7
+```
+
+### File I/O Example
+
+```basic
+10 OPEN "data.txt" FOR OUTPUT AS #1
+20 PRINT# 1, "Hello from file"
+30 CLOSE #1
+40 OPEN "data.txt" FOR INPUT AS #2
+50 INPUT# 2, A$
+60 CLOSE #2
+70 PRINT A$
+```
+
+## Architecture
+
+The interpreter follows a classic three-phase design:
+
+1. **Lexer** — Tokenizes source lines, recognizing keywords, numbers, strings, operators
+2. **Parser** — Recursive-descent parser building an AST with precedence climbing for expressions
+3. **Interpreter** — Tree-walking evaluator with line-number management for control flow
+
+Multi-line constructs (`WHILE/WEND`, `DO/LOOP`, `SELECT CASE`) are resolved at load time by building cross-reference tables, enabling efficient jumps during execution.
+
+## Testing
+
+```bash
+# Run original test suite (24 tests)
+python3 test_basic.py
+
+# Run enhanced feature tests (25 tests)
+python3 test_enhanced.py
+```
+
+## How It Works
+
+1. Source lines are tokenized and parsed into statement ASTs
+2. Line numbers are stored in a sorted dictionary for fast lookup
+3. Multi-line structures (WHILE/WEND, DO/LOOP, SELECT CASE) are matched at load time
+4. The interpreter walks the program line by line, evaluating statements
+5. Control flow statements (GOTO, GOSUB, etc.) modify the program counter
+6. The `FOR` stack tracks loop variables and limits
+7. The call stack manages GOSUB/RETURN nesting
+8. Error handling via ON ERROR GOTO/RESUME intercepts runtime errors
