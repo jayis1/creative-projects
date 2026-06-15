@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.11', '3.12']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest
+
+      - name: Run tests
+        working-directory: compression-engine
+        run: |
+          python -m pytest tests/ -v --tb=short
+
+      - name: Run CLI smoke test
+        working-directory: compression-engine
+        run: |
+          echo "Hello, world!" | python -m compression_engine compress -c huffman -v
+          echo "Test data for compression" > /tmp/test_input.txt
+          python -m compression_engine compress /tmp/test_input.txt -o /tmp/test_compressed.bin -c deflate -v
+          python -m compression_engine decompress /tmp/test_compressed.bin -o /tmp/test_output.txt -c deflate -v
+          python -m compression_engine analyze /tmp/test_input.txt
+          python -m compression_engine benchmark /tmp/test_input.txt

@@ -51,5 +51,5 @@ class TestPipeline:
 
     def test_all_codecs_registered(self):
         """Check that all expected codecs are in the registry."""
-        expected = {"huffman", "lz77", "bwt", "deflate", "rle", "delta"}
+        expected = {"huffman", "lz77", "bwt", "deflate", "rle", "delta", "lzw", "arithmetic"}
         assert set(CODEC_REGISTRY.keys()) == expected

@@ -6,22 +6,26 @@ better compression on specific data types.
 
 from __future__ import annotations
 
-from typing import List, Optional, Tuple
+import struct
+from typing import Dict, List, Optional, Tuple
 from .huffman import HuffmanCodec
 from .lz77 import LZ77Codec
 from .bwt import BWTCodec
 from .deflate import DeflateCodec
 from .rle import RLECodec
 from .delta import DeltaCodec
+from .lzw import LZWCodec
+from .arithmetic import ArithmeticCodec
 
-
-CODEC_REGISTRY = {
+CODEC_REGISTRY: Dict[str, type] = {
     "huffman": HuffmanCodec,
     "lz77": LZ77Codec,
     "bwt": BWTCodec,
     "deflate": DeflateCodec,
     "rle": RLECodec,
     "delta": DeltaCodec,
+    "lzw": LZWCodec,
+    "arithmetic": ArithmeticCodec,
 }
 
 
@@ -41,6 +45,9 @@ class Pipeline:
         Args:
             codec_names: List of codec names to apply in order.
             codec_kwargs: Optional keyword arguments for specific codecs.
+
+        Raises:
+            ValueError: If a codec name is not in the registry.
         """
         self.codecs = []
         for name in codec_names:
@@ -51,10 +58,16 @@ class Pipeline:
         self.codec_names = codec_names
 
     def compress(self, data: bytes) -> bytes:
-        """Compress data through the pipeline."""
-        import struct
+        """Compress data through the pipeline.
 
-        # Header: number of codecs (1 byte), then for each codec: name length (1 byte) + name bytes
+        Args:
+            data: Raw input bytes.
+
+        Returns:
+            Compressed bytes with pipeline header.
+        """
+        # Header: number of codecs (1 byte), then for each codec:
+        # name length (1 byte) + name bytes
         header = bytearray()
         header.append(len(self.codec_names))
         for name in self.codec_names:
@@ -69,14 +82,30 @@ class Pipeline:
         return bytes(header) + current
 
     def decompress(self, data: bytes) -> bytes:
-        """Decompress data through the pipeline (reverse order)."""
-        # Parse header
+        """Decompress data through the pipeline (reverse order).
+
+        Args:
+            data: Compressed bytes with pipeline header.
+
+        Returns:
+            Original uncompressed bytes.
+
+        Raises:
+            ValueError: If the pipeline header is invalid.
+        """
+        if len(data) < 1:
+            raise ValueError("Data too short for pipeline header")
+
         num_codecs = data[0]
         offset = 1
         codec_names = []
         for _ in range(num_codecs):
+            if offset >= len(data):
+                raise ValueError("Truncated pipeline header")
             name_len = data[offset]
             offset += 1
+            if offset + name_len > len(data):
+                raise ValueError("Truncated codec name in pipeline header")
             name = data[offset:offset + name_len].decode("ascii")
             offset += name_len
             codec_names.append(name)
@@ -94,6 +123,9 @@ class Pipeline:
 
         return current
 
+    def __repr__(self) -> str:
+        return f"Pipeline({'+'.join(self.codec_names)})"
+
 
 def create_pipeline(spec: str, **kwargs: dict) -> Pipeline:
     """Create a pipeline from a string specification.
@@ -104,6 +136,9 @@ def create_pipeline(spec: str, **kwargs: dict) -> Pipeline:
 
     Returns:
         Pipeline instance.
+
+    Raises:
+        ValueError: If spec contains unknown codec names.
     """
     codec_names = [s.strip() for s in spec.split("+")]
     return Pipeline(codec_names, **kwargs)
