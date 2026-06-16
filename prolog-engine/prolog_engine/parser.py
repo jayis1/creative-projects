@@ -23,6 +23,7 @@ INFIX_OPS = {
     ">": (700, "xfx"),
     "=<": (700, "xfx"),
     ">=": (700, "xfx"),
+    "=..": (700, "xfx"),
     # Arithmetic operators (used in is/2 expressions)
     "+": (500, "yfx"),
     "-": (500, "yfx"),

@@ -1,174 +1,177 @@
-# prolog-engine
+# Mini-Prolog Engine
 
-A **mini-Prolog logic programming engine** implemented from scratch in pure Python. Features a complete unification algorithm with occurs-check, backtracking search, a standard library of built-in predicates, arithmetic evaluation, list operations, and an interactive REPL.
+A complete logic programming engine implementing a subset of Prolog in pure Python, featuring Robinson's unification with occurs-check, backtracking search, predicate indexing, and ~50 built-in predicates.
+
+## Features
+
+- **Robinson's unification** with occurs-check to prevent infinite terms
+- **Backtracking search** with depth-first SLD resolution
+- **Predicate indexing** for efficient clause lookup by name/arity
+- **50+ built-in predicates** covering unification, type checking, control flow, arithmetic, lists, term inspection, dynamic database, and meta-logical operations
+- **Standard Prolog syntax**: clauses, queries, lists, infix operators (=, \=, is, <, >, =<, >=, ==, \==, =..)
+- **Arithmetic with operator precedence**: `X is 3 + 4 * 2.` correctly evaluates to 11
+- **Dynamic database**: assertz/1, asserta/1, retract/1, clause/2
+- **Meta-logical**: findall/3, bagof/3, setof/3, copy_term/2
+- **Cut (!)** for pruning choice points
+- **Negation as failure** (not/1, \+/1)
+- **Tracing mode** for debugging
+- **Max depth protection** against infinite loops
+- **REPL** for interactive exploration
+- **Comprehensive test suite** (109 tests)
 
 ## How It Works
 
-The engine implements the core components of a Prolog system:
-
-1. **Lexer/Tokenizer** — Converts Prolog source text into tokens (atoms, variables, numbers, strings, punctuation, operators).
-2. **Recursive-Descent Parser** — Parses tokens into an AST of clauses, queries, and terms (atoms, variables, numbers, compounds, lists).
-3. **Unification Algorithm** — Robinson's unification with occurs-check, the heart of Prolog's pattern matching. Two terms unify if there exists a substitution making them identical.
-4. **Backtracking Search Engine** — Depth-first search through the proof tree. For each goal, it tries all matching clauses in order; if a clause's body fails, it backtracks and tries the next clause.
-5. **Variable Renaming** — Each clause use gets fresh variables (standardizing apart) to prevent accidental variable capture.
-6. **Arithmetic Evaluation** — Evaluates `is/2` goals: `X is 3 + 4 * 2` binds X to 11.
-7. **Built-in Predicates** — A library of ~30 built-ins for arithmetic comparison, type checking, list operations, I/O, and control flow.
-
 ### Architecture
 
-```
-Source → Lexer → Parser → AST (Clauses/Queries/Terms)
-                                      ↓
-                              Engine (backtracking search)
-                                      ↕
-                              Unifier (Robinson's algorithm)
-                                      ↕
-                              Builtins (arithmetic, lists, I/O, type checks)
+The engine follows the standard Prolog execution model:
+
+1. **Lexer** — Tokenizes Prolog source into atoms, variables, numbers, strings, operators, and punctuation. Handles line/block comments, quoted atoms, string escapes, and the `=..` univ operator as a special multi-character token.
+
+2. **Parser** — Uses precedence-climbing for infix operators. Supports:
+   - Clauses (facts and rules with `:-`)
+   - Queries (`?-`)
+   - Lists (`[a, b, c]`, `[H|T]`)
+   - All standard infix operators with correct precedence and associativity
+   - Compound terms with nested arguments
+
+3. **Unifier** — Implements Robinson's unification algorithm with occurs-check. Terms unify recursively: atoms unify if equal, variables bind to terms (unless the term contains the variable — occurs-check), and compounds unify if names, arities, and all arguments unify.
+
+4. **Engine** — Performs depth-first SLD resolution with backtracking:
+   - Goals are solved left-to-right
+   - Clauses are tried in database order
+   - Variable renaming (standardizing apart) prevents variable capture
+   - Predicate indexing maps `name/arity` to clause positions for O(1) lookup
+   - Cut (!) prunes alternative solutions
+   - Depth limit prevents infinite recursion
+
+5. **Built-ins** — 50+ predicates registered as Python generators that yield substitutions for successful proofs and return (yield nothing) for failure.
+
+### Built-in Predicates
+
+| Category | Predicates |
+|----------|-----------|
+| Unification | `=/2`, `\=/2`, `==/2`, `\==/2` |
+| Arithmetic | `is/2`, `</2`, `>/2`, `=</2`, `>=/2`, `between/3`, `succ/2`, `plus/3` |
+| Type checking | `var/1`, `nonvar/1`, `atom/1`, `number/1`, `compound/1`, `integer/1`, `float/1`, `string/1`, `atomic/1`, `ground/1` |
+| Control flow | `true/0`, `fail/0`, `!/0`, `not/1`, `\+/1`, `once/1`, `forall/2`, `repeat/0` |
+| Lists | `length/2`, `member/2`, `append/3`, `reverse/2`, `nth0/3`, `nth1/3`, `last/2`, `sort/2`, `msort/2` |
+| Term inspection | `functor/3`, `arg/3`, `copy_term/2`, `=../2` |
+| Dynamic DB | `assertz/1`, `asserta/1`, `retract/1`, `clause/2` |
+| Meta-logical | `findall/3`, `bagof/3`, `setof/3` |
+| I/O | `write/1`, `writeln/1`, `nl/0`, `write_canonical/1` |
+
+### Arithmetic Functions
+
+Supported in `is/2` expressions: `+`, `-`, `*`, `/`, `//` (integer division), `mod`, `rem`, `**` (power), `abs`, `max`, `min`, `sqrt`, `floor`, `ceil`, `round`.
+
+## Installation
+
+```bash
+cd prolog-engine
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .
 ```
 
 ## Usage
 
-### Programmatic API
+### Command-Line REPL
+
+```bash
+prolog-repl                          # Start with empty database
+prolog-repl program.pl               # Load a Prolog source file
+prolog-repl -q "program.pl" "query"  # Load file and run query
+```
+
+### Python API
 
 ```python
-from prolog_engine import create_engine
+from prolog_engine.engine import Engine
+from prolog_engine.builtins import register_builtins
 
-engine = create_engine()
+engine = Engine()
+register_builtins(engine)
 
 # Load Prolog source
 engine.load_source("""
     parent(tom, bob).
     parent(tom, liz).
     parent(bob, ann).
-    parent(bob, pat).
     grandparent(X, Z) :- parent(X, Y), parent(Y, Z).
 """)
 
-# Query for all grandparents
-for subst in engine.query("?- grandparent(tom, Z)."):
-    z = subst.apply(engine.query("?- grandparent(tom, Z).")[0])  # simplified
-    print(engine.format_solution(subst))
-# Output: Z = ann ; Z = pat ;
-
-# Arithmetic
-engine.load_source("square(X, Y) :- Y is X * X.")
-for subst in engine.query("?- square(5, R)."):
-    print(engine.format_solution(subst))
-# Output: R = 25
-
-# Lists
-engine.load_source("""
-    last(X, [X]).
-    last(X, [_|T]) :- last(X, T).
-""")
-for subst in engine.query("?- last(X, [a, b, c])."):
-    print(engine.format_solution(subst))
-# Output: X = c
+# Run a query
+results = engine.query("?- grandparent(tom, X).")
+for result in results:
+    print(engine.format_solution(result))
+# Output: X = ann
 ```
 
-### Command-Line Interface
+### Example Programs
+
+**Fibonacci:**
+```prolog
+fib(0, 0).
+fib(1, 1).
+fib(N, R) :- N > 1, N1 is N - 1, N2 is N - 2, fib(N1, R1), fib(N2, R2), R is R1 + R2.
+
+% Query: ?- fib(6, X).  →  X = 8
+```
+
+**Quicksort:**
+```prolog
+qsort([], []).
+qsort([H|T], Sorted) :-
+    partition(H, T, Less, Greater),
+    qsort(Less, SortedLess),
+    qsort(Greater, SortedGreater),
+    append(SortedLess, [H|SortedGreater], Sorted).
+
+partition(_, [], [], []).
+partition(Pivot, [H|T], [H|Less], Greater) :- H =< Pivot, partition(Pivot, T, Less, Greater).
+partition(Pivot, [H|T], Less, [H|Greater]) :- H > Pivot, partition(Pivot, T, Less, Greater).
+
+% Query: ?- qsort([3, 1, 4, 1, 5], R).  →  R = [1, 1, 3, 4, 5]
+```
+
+**Dynamic Programming:**
+```prolog
+% Add facts at runtime
+?- assertz(likes(alice, bob)).
+?- assertz(likes(bob, carol)).
+
+% Query the dynamic database
+?- likes(X, Y).
+% X = alice, Y = bob
+% X = bob, Y = carol
+
+% Introspect
+?- clause(likes(X, Y), Body).
+```
+
+**Findall:**
+```prolog
+num(1). num(2). num(3). num(4). num(5).
+square(X, Y) :- num(X), Y is X * X.
+
+% Query: ?- findall(Y, square(X, Y), Squares).
+% Squares = [1, 4, 9, 16, 25]
+```
+
+## Running Tests
 
 ```bash
-# Install
-pip install -e .
-
-# Interactive REPL
-prolog-engine -i
-
-# Load a file and query
-prolog-engine family.pl -q "?- grandparent(tom, X)."
-
-# Load multiple files
-prolog-engine kb1.pl kb2.pl -i
+python -m pytest tests/ -v
 ```
 
-### REPL
+## Implementation Notes
 
-```
-?- parent(tom, bob).
-Loaded 1 clause(s).
-
-?- parent(tom, X).
-X = bob ;
-X = liz ;
-
-?-
-```
-
-## Built-in Predicates
-
-### Unification & Comparison
-| Predicate | Description |
-|-----------|-------------|
-| `=/2` | Unification: `X = Y` |
-| `\=/2` | Not unifiable |
-| `is/2` | Arithmetic evaluation: `X is Expr` |
-| `==/2` | Arithmetic equality |
-| `\==/2` | Arithmetic inequality |
-| `</2`, `=</2`, `>/2`, `>=/2` | Arithmetic comparisons |
-
-### Type Checking
-| Predicate | Description |
-|-----------|-------------|
-| `var/1` | Is it an uninstantiated variable? |
-| `nonvar/1` | Is it instantiated? |
-| `atom/1` | Is it an atom? |
-| `number/1` | Is it a number? |
-| `integer/1` | Is it an integer? |
-| `float/1` | Is it a float? |
-| `string/1` | Is it a string? |
-| `compound/1` | Is it a compound term? |
-
-### Control Flow
-| Predicate | Description |
-|-----------|-------------|
-| `true/0` | Always succeeds |
-| `fail/0` | Always fails |
-| `!/0` | Cut (commit to current choice) |
-| `not/1`, `\+/1` | Negation as failure |
-| `repeat/0` | Infinite choice points |
-
-### List Operations
-| Predicate | Description |
-|-----------|-------------|
-| `length/2` | List length |
-| `member/2` | List membership |
-| `append/3` | List concatenation |
-
-### Structural
-| Predicate | Description |
-|-----------|-------------|
-| `functor/3` | Get term name/arity or construct |
-| `arg/3` | Access nth argument of compound |
-
-### I/O
-| Predicate | Description |
-|-----------|-------------|
-| `write/1` | Write term |
-| `writeln/1` | Write term + newline |
-| `nl/0` | Print newline |
-
-### Arithmetic Functions
-Available in `is/2` expressions: `+`, `-`, `*`, `/`, `//` (integer div), `mod`, `rem`, `abs`, `max`, `min`, `**`/`^` (power), `pi`.
-
-## Project Structure
-
-```
-prolog-engine/
-├── prolog_engine/
-│   ├── __init__.py       # Package exports + create_engine()
-│   ├── lexer.py          # Tokenizer
-│   ├── parser.py         # Recursive-descent parser
-│   ├── ast_nodes.py      # AST nodes + term utilities
-│   ├── unifier.py        # Robinson's unification algorithm
-│   ├── engine.py         # Backtracking inference engine
-│   ├── builtins.py       # ~30 built-in predicates
-│   └── cli.py            # REPL and CLI
-├── tests/
-│   └── ...
-├── pyproject.toml
-└── README.md
-```
+- **Occurs-check**: The unifier always performs occurs-check, preventing creation of infinite terms (cyclic structures). This is safer but slightly slower than Prolog systems that skip it.
+- **Cut semantics**: Cut (!) in the current implementation prunes all alternative solutions for the current goal, similar to standard Prolog.
+- **Depth limit**: Default max depth is 1000 to prevent infinite loops. Override with `engine._max_depth = N`.
+- **Variable renaming**: Each clause is renamed (standardized apart) before resolution to prevent variable capture between different rule applications.
+- **Atom vs 0-arity compound**: Atoms and 0-arity compounds are handled interchangeably in goal resolution.
+- **Generator-based builtins**: All builtins are Python generators that yield substitutions for success and return (yield nothing) for failure, naturally integrating with the backtracking engine.
 
 ## License
 

@@ -137,6 +137,13 @@ class Lexer:
                 self._advance()
                 self._tokens.append(Token(TokenType.QUERY, "?-", line, col))
                 continue
+            # =.. (univ operator) — must be checked before = and .
+            if ch == "=" and self._pos + 2 < len(self._source) and self._source[self._pos + 1] == "." and self._source[self._pos + 2] == ".":
+                self._advance()
+                self._advance()
+                self._advance()
+                self._tokens.append(Token(TokenType.ATOM, "=..", line, col))
+                continue
 
             # Single-char tokens
             if ch == "(":

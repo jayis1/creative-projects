@@ -8,7 +8,7 @@ from prolog_engine.ast_nodes import (
     variables_in, substitute, term_to_str,
 )
 from prolog_engine.unifier import Unifier, Substitution, UnificationError
-from prolog_engine.engine import Engine
+from prolog_engine.engine import Engine, EngineError
 from prolog_engine.builtins import register_builtins
 
 
@@ -121,6 +121,7 @@ class TestLexer:
         assert tokens[0].value == "parent"
         assert tokens[1].type == TokenType.LPAREN
         assert tokens[2].type == TokenType.VARIABLE
+        # tokens[0]=parent, [1]=(, [2]=X, [3]=comma, [4]=Y, [5]=), [6]=:-
         assert tokens[6].type == TokenType.NECK
 
 
@@ -187,7 +188,6 @@ class TestParser:
         lst = clause.head.args[0]
         assert isinstance(lst, Compound)
         assert lst.name == "."
-        # [a, b, c] = .(a, .(b, .(c, [])))
         assert lst.args[0] == Atom("a")
         assert lst.args[1].args[0] == Atom("b")
 
@@ -198,9 +198,34 @@ class TestParser:
         lst = clause.head.args[0]
         assert isinstance(lst, Compound)
         assert lst.args[0] == Atom("a")
-        # Tail should be Variable T
         assert isinstance(lst.args[1], Variable)
         assert lst.args[1].name == "T"
+
+    def test_infix_unification(self):
+        parser = Parser.from_source("?- X = hello.")
+        query = parser.parse_query()
+        assert len(query.goals) == 1
+        goal = query.goals[0]
+        assert isinstance(goal, Compound)
+        assert goal.name == "="
+        assert goal.arity == 2
+
+    def test_infix_arithmetic(self):
+        parser = Parser.from_source("?- X is 3 + 4 * 2.")
+        query = parser.parse_query()
+        assert len(query.goals) == 1
+        # Should parse as: X is (3 + (4 * 2))
+        goal = query.goals[0]
+        assert isinstance(goal, Compound)
+        assert goal.name == "is"
+
+    def test_infix_comparison(self):
+        parser = Parser.from_source("?- 3 < 5.")
+        query = parser.parse_query()
+        assert len(query.goals) == 1
+        goal = query.goals[0]
+        assert isinstance(goal, Compound)
+        assert goal.name == "<"
 
 
 # ==================================================================
@@ -225,7 +250,6 @@ class TestUnifier:
         X = Variable("X")
         Y = Variable("Y")
         subst = Unifier.unify(X, Y)
-        # Either X bound to Y or Y bound to X
         assert len(subst) == 1
 
     def test_unify_compounds(self):
@@ -323,6 +347,14 @@ class TestEngine:
         x_val = results[0].apply(Variable("X"))
         assert isinstance(x_val, Number)
         assert x_val.value == 7
+
+    def test_arithmetic_precedence(self):
+        engine = self._make_engine()
+        results = engine.query("?- X is 3 + 4 * 2.")
+        assert len(results) == 1
+        x_val = results[0].apply(Variable("X"))
+        assert isinstance(x_val, Number)
+        assert x_val.value == 11  # 3 + (4*2)
 
     def test_arithmetic_comparison(self):
         engine = self._make_engine()
@@ -441,6 +473,249 @@ class TestEngine:
 
 
 # ==================================================================
+# Enhanced feature tests
+# ==================================================================
+
+class TestEnhancedBuiltins:
+    def _make_engine(self) -> Engine:
+        engine = Engine()
+        register_builtins(engine)
+        return engine
+
+    # --- Type checking additions ---
+
+    def test_atomic(self):
+        engine = self._make_engine()
+        assert len(engine.query("?- atomic(hello).")) == 1
+        assert len(engine.query("?- atomic(42).")) == 1
+        assert len(engine.query("?- atomic(f(a)).")) == 0
+
+    def test_ground(self):
+        engine = self._make_engine()
+        assert len(engine.query("?- ground(f(a, b)).")) == 1
+        assert len(engine.query("?- ground(f(X)).")) == 0
+
+    # --- Control flow additions ---
+
+    def test_once(self):
+        engine = self._make_engine()
+        engine.load_source("""
+            a(1).
+            a(2).
+            a(3).
+        """)
+        results = engine.query("?- once(a(X)).")
+        assert len(results) == 1
+
+    def test_forall(self):
+        engine = self._make_engine()
+        engine.load_source("""
+            positive(1).
+            positive(2).
+            positive(3).
+        """)
+        results = engine.query("?- forall(positive(X), X > 0).")
+        assert len(results) == 1
+
+    # --- Numeric generation ---
+
+    def test_between(self):
+        engine = self._make_engine()
+        results = engine.query("?- between(1, 3, X).")
+        assert len(results) == 3
+        values = [results[i].apply(Variable("X")).value for i in range(3)]
+        assert values == [1, 2, 3]
+
+    def test_between_check(self):
+        engine = self._make_engine()
+        results = engine.query("?- between(1, 5, 3).")
+        assert len(results) == 1
+
+    def test_succ(self):
+        engine = self._make_engine()
+        results = engine.query("?- succ(2, 3).")
+        assert len(results) == 1
+        results = engine.query("?- succ(2, 4).")
+        assert len(results) == 0
+
+    def test_succ_generate(self):
+        engine = self._make_engine()
+        results = engine.query("?- succ(2, X).")
+        assert len(results) == 1
+        assert results[0].apply(Variable("X")) == Number(3)
+
+    def test_plus(self):
+        engine = self._make_engine()
+        results = engine.query("?- plus(2, 3, 5).")
+        assert len(results) == 1
+        results = engine.query("?- plus(2, 3, X).")
+        assert len(results) == 1
+        assert results[0].apply(Variable("X")) == Number(5)
+
+    # --- List operations ---
+
+    def test_reverse(self):
+        engine = self._make_engine()
+        results = engine.query("?- reverse([a, b, c], R).")
+        assert len(results) == 1
+        # R should be [c, b, a]
+        r = results[0].apply(Variable("R"))
+        assert term_to_str(r) == "[c, b, a]"
+
+    def test_nth0(self):
+        engine = self._make_engine()
+        results = engine.query("?- nth0(1, [a, b, c], X).")
+        assert len(results) == 1
+        assert results[0].apply(Variable("X")) == Atom("b")
+
+    def test_nth1(self):
+        engine = self._make_engine()
+        results = engine.query("?- nth1(1, [a, b, c], X).")
+        assert len(results) == 1
+        assert results[0].apply(Variable("X")) == Atom("a")
+
+    def test_last(self):
+        engine = self._make_engine()
+        results = engine.query("?- last([a, b, c], X).")
+        assert len(results) == 1
+        assert results[0].apply(Variable("X")) == Atom("c")
+
+    def test_sort(self):
+        engine = self._make_engine()
+        results = engine.query("?- sort([3, 1, 2, 1], R).")
+        assert len(results) == 1
+        r = results[0].apply(Variable("R"))
+        assert term_to_str(r) == "[1, 2, 3]"  # deduped and sorted
+
+    def test_msort(self):
+        engine = self._make_engine()
+        results = engine.query("?- msort([3, 1, 2, 1], R).")
+        assert len(results) == 1
+        r = results[0].apply(Variable("R"))
+        assert term_to_str(r) == "[1, 1, 2, 3]"  # sorted, duplicates kept
+
+    # --- Term inspection ---
+
+    def test_copy_term(self):
+        engine = self._make_engine()
+        results = engine.query("?- copy_term(f(X, Y), C).")
+        assert len(results) == 1
+        c = results[0].apply(Variable("C"))
+        assert isinstance(c, Compound)
+        assert c.name == "f"
+        assert c.arity == 2
+        # The copy should have fresh variables, not X and Y
+        assert isinstance(c.args[0], Variable)
+        assert c.args[0].name != "X"
+
+    def test_univ_decompose(self):
+        engine = self._make_engine()
+        results = engine.query("?- f(a, b) =.. L.")
+        assert len(results) == 1
+        l = results[0].apply(Variable("L"))
+        assert term_to_str(l) == "[f, a, b]"
+
+    def test_univ_compose(self):
+        engine = self._make_engine()
+        results = engine.query("?- T =.. [f, a, b].")
+        assert len(results) == 1
+        t = results[0].apply(Variable("T"))
+        assert term_to_str(t) == "f(a, b)"
+
+    # --- Dynamic database ---
+
+    def test_assertz(self):
+        engine = self._make_engine()
+        engine.load_source("a(1).")
+        engine.query("?- assertz(a(2)).")
+        results = engine.query("?- a(X).")
+        assert len(results) == 2
+
+    def test_asserta(self):
+        engine = self._make_engine()
+        engine.load_source("a(1).")
+        engine.query("?- asserta(a(0)).")
+        results = engine.query("?- a(X).")
+        # a(0) should be first
+        x = results[0].apply(Variable("X"))
+        assert x == Number(0)
+
+    def test_retract(self):
+        engine = self._make_engine()
+        engine.load_source("""
+            a(1).
+            a(2).
+        """)
+        engine.query("?- retract(a(1)).")
+        results = engine.query("?- a(X).")
+        assert len(results) == 1
+
+    # --- Meta-logical ---
+
+    def test_findall(self):
+        engine = self._make_engine()
+        engine.load_source("""
+            a(1).
+            a(2).
+            a(3).
+        """)
+        results = engine.query("?- findall(X, a(X), L).")
+        assert len(results) == 1
+        l = results[0].apply(Variable("L"))
+        assert term_to_str(l) == "[1, 2, 3]"
+
+    def test_bagof(self):
+        engine = self._make_engine()
+        engine.load_source("""
+            a(1).
+            a(2).
+        """)
+        results = engine.query("?- bagof(X, a(X), L).")
+        assert len(results) == 1
+
+    def test_bagof_fails_when_empty(self):
+        engine = self._make_engine()
+        engine.load_source("a(1).")
+        results = engine.query("?- bagof(X, b(X), L).")
+        assert len(results) == 0
+
+    def test_setof(self):
+        engine = self._make_engine()
+        engine.load_source("""
+            a(1).
+            a(2).
+            a(1).
+        """)
+        results = engine.query("?- setof(X, a(X), L).")
+        assert len(results) == 1
+        l = results[0].apply(Variable("L"))
+        assert term_to_str(l) == "[1, 2]"
+
+    # --- Tracing ---
+
+    def test_trace_property(self):
+        engine = self._make_engine()
+        assert engine.trace is False
+        engine.trace = True
+        assert engine.trace is True
+
+    # --- Predicate indexing ---
+
+    def test_predicate_index(self):
+        engine = self._make_engine()
+        engine.load_source("""
+            parent(tom, bob).
+            parent(tom, liz).
+            grandparent(X, Z) :- parent(X, Y), parent(Y, Z).
+        """)
+        idx = engine.predicate_index()
+        assert "parent/2" in idx
+        assert idx["parent/2"] == 2
+        assert "grandparent/2" in idx
+        assert idx["grandparent/2"] == 1
+
+
+# ==================================================================
 # AST utility tests
 # ==================================================================
 
@@ -475,7 +750,6 @@ class TestASTUtils:
         assert term_to_str(term) == "f(a, X)"
 
     def test_term_to_str_list(self):
-        # [a, b] = .(a, .(b, []))
         lst = Compound(".", (Atom("a"), Compound(".", (Atom("b"), Atom("[]")))))
         assert term_to_str(lst) == "[a, b]"
 
@@ -554,3 +828,47 @@ class TestIntegration:
         assert len(results) == 1
         assert results[0].apply(Variable("X")) == Atom("a")
         assert results[0].apply(Variable("Y")) == Atom("b")
+
+    def test_quicksort(self):
+        engine = self._make_engine()
+        engine.load_source("""
+            qsort([], []).
+            qsort([H|T], Sorted) :-
+                partition(H, T, Less, Greater),
+                qsort(Less, SortedLess),
+                qsort(Greater, SortedGreater),
+                append(SortedLess, [H|SortedGreater], Sorted).
+            partition(_, [], [], []).
+            partition(Pivot, [H|T], [H|Less], Greater) :-
+                H =< Pivot,
+                partition(Pivot, T, Less, Greater).
+            partition(Pivot, [H|T], Less, [H|Greater]) :-
+                H > Pivot,
+                partition(Pivot, T, Less, Greater).
+        """)
+        results = engine.query("?- qsort([3, 1, 4, 1, 5], R).")
+        assert len(results) == 1
+        r = results[0].apply(Variable("R"))
+        assert term_to_str(r) == "[1, 1, 3, 4, 5]"
+
+    def test_findall_with_computation(self):
+        engine = self._make_engine()
+        engine.load_source("""
+            num(1).
+            num(2).
+            num(3).
+            num(4).
+            num(5).
+            square(X, Y) :- num(X), Y is X * X.
+        """)
+        results = engine.query("?- findall(Y, square(X, Y), Squares).")
+        assert len(results) == 1
+        squares = results[0].apply(Variable("Squares"))
+        assert term_to_str(squares) == "[1, 4, 9, 16, 25]"
+
+    def test_max_depth_protection(self):
+        engine = self._make_engine()
+        engine._max_depth = 50
+        engine.load_source("loop :- loop.")
+        with pytest.raises(EngineError, match="Maximum inference depth"):
+            engine.query("?- loop.")
