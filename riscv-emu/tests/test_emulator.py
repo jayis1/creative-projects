@@ -354,8 +354,8 @@ class TestCPU:
     def test_auipc(self):
         cpu = make_cpu_with_code("auipc x5, 0x1000")
         cpu.step()
-        # AUIPC: rd = pc + upper_imm
-        assert cpu.get_reg(5) == (0x20000000 + 0x1000) & 0xFFFFFFFF
+        # AUIPC: rd = pc + (upper_imm << 12) = pc + 0x1000 << 12 = pc + 0x1000000
+        assert cpu.get_reg(5) == (0x20000000 + 0x1000000) & 0xFFFFFFFF
 
     def test_addi(self):
         cpu = make_cpu_with_code("addi x5, x0, 42")
@@ -737,3 +737,184 @@ class TestTracer:
         assert 5 in changed
         assert 10 in changed
         assert len(changed) == 2
+
+
+# ============================================================
+# RV32M (Multiply/Divide) tests
+# ============================================================
+class TestRV32M:
+    """Tests for the RV32M extension instructions."""
+
+    def test_mul(self):
+        cpu = make_cpu_with_code("mul a0, a1, a2")
+        cpu.set_reg(11, 7)
+        cpu.set_reg(12, 6)
+        cpu.step()
+        assert cpu.get_reg(10) == 42
+
+    def test_mul_negative(self):
+        cpu = make_cpu_with_code("mul a0, a1, a2")
+        cpu.set_reg(11, 0xFFFFFFFF)  # -1 as unsigned
+        cpu.set_reg(12, 6)
+        cpu.step()
+        # -1 * 6 = -6 = 0xFFFFFFFA
+        assert cpu.get_reg(10) == 0xFFFFFFFA
+
+    def test_mulh(self):
+        cpu = make_cpu_with_code("mulh a0, a1, a2")
+        cpu.set_reg(11, 0x7FFFFFFF)  # Max positive signed
+        cpu.set_reg(12, 2)
+        cpu.step()
+        # Signed multiply: 0x7FFFFFFF * 2 = 0xFFFFFFFE, upper 32 = 0
+        assert cpu.get_reg(10) == 0
+
+    def test_mulhu(self):
+        cpu = make_cpu_with_code("mulhu a0, a1, a2")
+        cpu.set_reg(11, 0xFFFFFFFF)
+        cpu.set_reg(12, 2)
+        cpu.step()
+        # Unsigned: 0xFFFFFFFF * 2 = 0x1FFFFFFFE, upper 32 = 1
+        assert cpu.get_reg(10) == 1
+
+    def test_div(self):
+        cpu = make_cpu_with_code("div a0, a1, a2")
+        cpu.set_reg(11, 42)
+        cpu.set_reg(12, 6)
+        cpu.step()
+        assert cpu.get_reg(10) == 7
+
+    def test_div_negative(self):
+        cpu = make_cpu_with_code("div a0, a1, a2")
+        cpu.set_reg(11, 0xFFFFFFEA)  # -22 signed
+        cpu.set_reg(12, 2)
+        cpu.step()
+        assert cpu.get_reg(10) == 0xFFFFFFF5  # -11
+
+    def test_div_by_zero(self):
+        cpu = make_cpu_with_code("div a0, a1, a2")
+        cpu.set_reg(11, 42)
+        cpu.set_reg(12, 0)
+        cpu.step()
+        assert cpu.get_reg(10) == 0xFFFFFFFF  # -1
+
+    def test_divu(self):
+        cpu = make_cpu_with_code("divu a0, a1, a2")
+        cpu.set_reg(11, 0xFFFFFFFE)  # 4294967294 unsigned
+        cpu.set_reg(12, 2)
+        cpu.step()
+        assert cpu.get_reg(10) == 0x7FFFFFFF
+
+    def test_rem(self):
+        cpu = make_cpu_with_code("rem a0, a1, a2")
+        cpu.set_reg(11, 43)
+        cpu.set_reg(12, 6)
+        cpu.step()
+        assert cpu.get_reg(10) == 1
+
+    def test_remu(self):
+        cpu = make_cpu_with_code("remu a0, a1, a2")
+        cpu.set_reg(11, 0xFFFFFFFE)  # 4294967294
+        cpu.set_reg(12, 3)
+        cpu.step()
+        assert cpu.get_reg(10) == 0xFFFFFFFE % 3  # 2
+
+
+# ============================================================
+# Disassembler tests
+# ============================================================
+class TestDisassembler:
+    """Tests for the RV32I disassembler."""
+
+    def test_lui(self):
+        from riscv_emu.disassembler import disassemble
+        # LUI x5, 0x12345
+        insn = (0x12345 << 12) | (5 << 7) | 0x37
+        result = disassemble(insn)
+        assert "lui" in result
+        assert "t0" in result or "x5" in result
+
+    def test_addi(self):
+        from riscv_emu.disassembler import disassemble
+        # ADDI x10, x0, 42
+        insn = (42 << 20) | (0 << 15) | (0b000 << 12) | (10 << 7) | 0x13
+        result = disassemble(insn)
+        assert "addi" in result
+
+    def test_add(self):
+        from riscv_emu.disassembler import disassemble
+        # ADD x7, x5, x6
+        insn = (0 << 25) | (6 << 20) | (5 << 15) | (0b000 << 12) | (7 << 7) | 0x33
+        result = disassemble(insn)
+        assert "add" in result
+
+    def test_sw(self):
+        from riscv_emu.disassembler import disassemble
+        # SW x5, 0(x4)
+        insn = (0 << 25) | (5 << 20) | (4 << 15) | (0b010 << 12) | (0 << 7) | 0x23
+        result = disassemble(insn)
+        assert "sw" in result
+
+    def test_ecall(self):
+        from riscv_emu.disassembler import disassemble
+        result = disassemble(0x00000073)
+        assert "ecall" in result
+
+    def test_mul(self):
+        from riscv_emu.disassembler import disassemble
+        # MUL x10, x11, x12
+        insn = (1 << 25) | (12 << 20) | (11 << 15) | (0b000 << 12) | (10 << 7) | 0x33
+        result = disassemble(insn)
+        assert "mul" in result
+
+    def test_disassemble_block(self):
+        from riscv_emu.disassembler import disassemble_block
+        import struct
+        code = struct.pack("<III", 0x00000013, 0x00100073, 0x00000013)  # NOP, EBREAK, NOP
+        results = disassemble_block(code, base_addr=0x20000000)
+        assert len(results) == 3
+        assert "nop" in results[0][2].lower() or "addi" in results[0][2].lower()
+        assert "ebreak" in results[1][2]
+
+    def test_branch_with_pc(self):
+        from riscv_emu.disassembler import disassemble
+        # BEQ x5, x6, offset=8 (forward branch)
+        insn = (0 << 31) | (0 << 25) | (6 << 20) | (5 << 15) | (0b000 << 12) | (0 << 7) | 0x63
+        # Manually set the immediate bits for offset=8
+        # imm[4:1]=0100, imm[11]=0, rs1=5, rs2=6, funct3=000, imm[10:5]=000000, imm[12]=0
+        # B-type: imm[12|10:5|rs2|rs1|funct3|imm[4:1|11]|opcode]
+        offset = 8
+        imm_4_1 = (offset >> 1) & 0xF
+        imm_10_5 = (offset >> 5) & 0x3F
+        imm_11 = (offset >> 11) & 0x1
+        imm_12 = (offset >> 12) & 0x1
+        insn = (imm_12 << 31) | (imm_10_5 << 25) | (6 << 20) | (5 << 15) | \
+               (0b000 << 12) | (imm_4_1 << 8) | (imm_11 << 7) | 0b1100011
+        result = disassemble(insn, pc=0x20000000)
+        assert "beq" in result
+        assert "0x20000008" in result
+
+
+# ============================================================
+# UART MMIO tests
+# ============================================================
+class TestUART:
+    """Tests for UART MMIO output."""
+
+    def test_uart_write(self):
+        mem = Memory([MemoryRegion(0x10000000, 8, "rw")])
+        cpu = CPU(memory=mem, pc=0x10000000)
+        cpu._handle_uart_write(0x10000000, 0x48)  # 'H'
+        cpu._handle_uart_write(0x10000000, 0x69)  # 'i'
+        assert cpu.uart_output == "Hi"
+
+    def test_uart_via_cpu(self):
+        """Test writing to UART via store instruction."""
+        cpu = make_cpu_with_code("""
+            lui t0, 0x10000
+            li t1, 0x41
+            sw t1, 0(t0)
+        """)
+        # Add UART memory region
+        cpu.memory.add_region(MemoryRegion(0x10000000, 8, "rw"))
+        cpu.run(max_instructions=10)
+        assert "A" in cpu.uart_output

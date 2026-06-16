@@ -1,149 +1,170 @@
 # RISC-V RV32I Emulator
 
-A full-featured RISC-V RV32I CPU emulator with assembler, interactive debugger, execution profiler, and trace recorder — written in pure Python.
+A full-featured RISC-V RV32I CPU emulator with assembler, disassembler, interactive debugger, execution profiler, and trace recorder — written in pure Python.
 
 ## Features
 
-- **Complete RV32I base instruction set** — all 40 instructions: LUI, AUIPC, JAL, JALR, branches (BEQ/BNE/BLT/BGE/BLTU/BGEU), loads (LB/LH/LW/LBU/LHU), stores (SB/SH/SW), I-type ALU (ADDI/SLTI/SLTIU/XORI/ORI/ANDI/SLLI/SRLI/SRAI), R-type ALU (ADD/SUB/SLL/SLT/SLTU/XOR/SRL/SRA/OR/AND), FENCE, ECALL, EBREAK
-- **Zicsr extension** — CSRRW, CSRRS, CSRRC, CSRRWI, CSRRSI, CSRRCI with full CSR file (mstatus, misa, mepc, mcause, mtvec, mip, mie, mscratch, cycle, instret)
-- **Two-pass assembler** — labels, forward references, directives (`.word`/`.half`/`.byte`/`.string`/`.align`/`.org`/`.text`/`.data`), 15+ pseudo-instructions (LI/LA/MV/NOT/NEG/J/RET/CALL/BGT/BLE/BGTU/BLEU/BEQZ/BNEZ/BGEZ/BLTZ/NOP)
-- **Interactive debugger** — GDB-like command interface with breakpoints, watchpoints, single-step, register/memory inspection, disassembly, undo, tracing, and profiling
-- **ELF32 loader** — parses ELF headers and loads PT_LOAD segments with proper permissions
-- **Sparse memory system** — region-based with configurable permissions, alignment checking, and MMIO callback support
-- **Trap handling** — full exception/interrupt pipeline with mepc/mcause/mtval save and mtvec dispatch
-- **Execution profiler** — instruction frequency and hot-address analysis
-- **Trace recorder** — per-instruction state capture with address filtering and ring-buffer
-
-## How It Works
-
-### CPU Core (`cpu.py`)
-
-The CPU implements a fetch-decode-execute cycle on the RV32I ISA. Each instruction is decoded from its 32-bit encoding by examining the opcode, funct3, and funct7 fields. The register file has 32 entries with x0 hardwired to zero. Traps (exceptions) update the CSR file and redirect execution to the trap vector (mtvec).
-
-### Memory (`memory.py`)
-
-Memory is organized as a list of non-overlapping regions, each with base address, size, and permissions (r/w/x). Alignment is enforced for half-word and word accesses. MMIO is supported via read/write callbacks on any region.
-
-### Assembler (`assembler.py`)
-
-A two-pass assembler: Pass 1 collects labels and computes addresses while expanding pseudo-instructions. Pass 2 resolves label references and encodes all instructions to 32-bit machine code.
-
-### CSR File (`csrs.py`)
-
-Implements the Zicsr extension with machine-mode CSRs. Read-only CSRs (mvendorid, marchid, mimpid, mhartid) are protected. Atomic read-modify-write operations (CSRRS/CSRRC) are supported.
-
-### Debugger (`debugger.py`)
-
-An interactive REPL with commands for stepping, continuing, setting breakpoints/watchpoints, inspecting registers and memory, disassembling, and profiling. Supports undo (reverse single-step) via state history.
-
-## Usage
-
-### Python API
-
-```python
-from riscv_emu import CPU, Memory, MemoryRegion, Assembler
-
-# Assemble a program
-asm = Assembler(base_addr=0x20000000)
-source = """
-    li x5, 42
-    li x6, 8
-    add x7, x5, x6
-"""
-code, labels = asm.assemble(source, base_addr=0x20000000)
-
-# Load into memory and run
-mem = Memory([MemoryRegion(0x20000000, 0x100000, "rwx", data=code)])
-mem.add_region(MemoryRegion(0x7F000000, 0x01000000, "rw"))
-cpu = CPU(memory=mem, pc=0x20000000)
-cpu.set_reg(2, 0x7F000000 + 0x01000000 - 16)  # Stack pointer
-
-count = cpu.run(max_instructions=100)
-print(f"Executed {count} instructions")
-print(f"x7 = {cpu.get_reg(7)}")  # x7 = 50
-```
-
-### Command Line
-
-```bash
-# Install
-pip install -e .
-
-# Assemble a source file
-riscv-emu asm programs/fibonacci.asm -o fib.bin
-
-# Run a binary
-riscv-emu run fib.bin --base-addr 0x20000000
-
-# Run with tracing
-riscv-emu run fib.bin --trace
-
-# Run with profiling
-riscv-emu run fib.bin --profile
-
-# Interactive debugger
-riscv-emu debug fib.bin
-
-# Disassemble a binary
-riscv-emu dis fib.bin --count 20
-```
-
-### Debugger Commands
-
-```
-(riscv-dbg) step 1           # Single-step 1 instruction
-(riscv-dbg) continue 1000    # Run 1000 instructions
-(riscv-dbg) break 0x20000010 # Set breakpoint
-(riscv-dbg) regs             # Show registers
-(riscv-dbg) mem 0x20000000 64 # Hexdump memory
-(riscv-dbg) dis 0x20000000 10 # Disassemble 10 instructions
-(riscv-dbg) profile report   # Show profiling data
-(riscv-dbg) quit              # Exit
-```
-
-### Sample Programs
-
-The `programs/` directory contains:
-- **fibonacci.asm** — Recursive Fibonacci computation
-- **memtest.asm** — Memory write/read/verify test
-- **bubble_sort.asm** — Bubble sort over an in-memory array
-
-### MMIO Example
-
-```python
-# UART at 0x10000000
-output = []
-def uart_write(addr, value, size):
-    output.append(chr(value))
-
-mem = Memory([MemoryRegion(0x10000000, 16, "rw", io_write=uart_write)])
-cpu = CPU(memory=mem, pc=0x20000000)
-# Program that writes to UART...
-```
+- **Complete RV32I base instruction set** — 40 instructions including LUI, AUIPC, JAL, JALR, all branches, loads, stores, and ALU ops
+- **RV32M extension** — MUL, MULH, MULHSU, MULHU, DIV, DIVU, REM, REMU (with proper division-by-zero and overflow handling)
+- **Zicsr extension** — CSRRW, CSRRS, CSRRC, CSRRWI, CSRRSI, CSRRCI with standard M-mode CSRs
+- **Two-pass assembler** — labels, `.word`/`.string`/`.byte` directives, 15+ pseudo-instructions (LI, LA, MV, NOP, NOT, NEG, J, RET, CALL, BGT, BLE, BGTU, BLEU, BEQZ, BNEZ, etc.)
+- **Disassembler** — converts binary instructions back to human-readable assembly with named registers
+- **ELF32 loader** — load raw binaries, flat assembled binaries, and ELF32 little-endian executables
+- **Interactive debugger** — breakpoints, watchpoints, single-step, register/memory inspection/modification, disassembly, continue, quit
+- **UART MMIO** — QEMU-virt compatible UART at 0x10000000 for character output
+- **Execution profiler** — instruction frequency, hot addresses, runtime statistics
+- **Trace recorder** — ring buffer, address filtering, register change tracking, statistics
+- **Proper trap handling** — ECALL/EBREAK, misaligned access, privilege mode transitions, mtvec vectoring
+- **Division-by-zero** — DIV/DIVU return -1/0xFFFFFFFF, REM/REMU return dividend per spec
 
 ## Architecture
 
 ```
 riscv_emu/
-├── __init__.py      # Package exports
-├── cpu.py           # RV32I CPU core (fetch/decode/execute, trap handling)
-├── memory.py        # Sparse memory system (regions, permissions, MMIO)
-├── csrs.py          # CSR file (Zicsr extension, machine-mode CSRs)
-├── assembler.py     # Two-pass assembler (RV32I + pseudo-instructions)
-├── loader.py        # ELF32 and raw binary loader
-├── debugger.py      # Interactive GDB-like debugger
-├── profiler.py      # Execution profiler
-├── tracer.py        # Instruction trace recorder
-└── cli.py           # Command-line interface
+├── __init__.py       # Package exports
+├── cpu.py            # CPU core (RV32I + RV32M + Zicsr)
+├── memory.py         # Sparse memory with regions, permissions, MMIO
+├── csrs.py           # Control and Status Register file
+├── assembler.py      # Two-pass assembler with pseudo-instructions
+├── disassembler.py   # Instruction disassembler
+├── loader.py         # Binary and ELF32 loader
+├── debugger.py       # Interactive GDB-like debugger
+├── profiler.py       # Execution profiler
+├── tracer.py         # Trace recorder
+└── cli.py            # Command-line interface
 ```
 
-## Testing
+## Installation
+
+```bash
+pip install -e .
+```
+
+## Usage
+
+### Assemble and run a program
+
+```bash
+# Assemble source code
+riscv-emu asm programs/fibonacci.asm -o fibonacci.bin
+
+# Run the assembled binary
+riscv-emu run fibonacci.bin --trace
+
+# Run with profiling
+riscv-emu run fibonacci.bin --profile
+
+# Show UART output
+riscv-emu run programs/hello_uart.bin --uart
+```
+
+### Interactive debugging
+
+```bash
+riscv-emu debug fibonacci.bin
+(riscv-dbg) break 0x20000010
+(riscv-dbg) continue
+(riscv-dbg) step 5
+(riscv-dbg) regs
+(riscv-dbg) mem 0x20010000 16
+(riscv-dbg) disassemble
+```
+
+### Disassemble a binary
+
+```bash
+riscv-emu dis fibonacci.bin --count 50
+```
+
+### Assemble with disassembly output
+
+```bash
+riscv-emu asm programs/fibonacci.asm --disassemble
+```
+
+## Python API
+
+```python
+from riscv_emu import CPU, Memory, MemoryRegion, Assembler, disassemble
+
+# Create memory and CPU
+mem = Memory([MemoryRegion(0x20000000, 0x100000, "rwx")])
+mem.add_region(MemoryRegion(0x7F000000, 0x01000000, "rw"))
+mem.add_region(MemoryRegion(0x10000000, 8, "rw"))  # UART MMIO
+
+# Assemble and load
+asm = Assembler(base_addr=0x20000000)
+code, labels = asm.assemble("""
+    li a0, 10
+    jal ra, fib
+    ecall
+    
+fib:
+    addi sp, sp, -16
+    sw ra, 12(sp)
+    ...
+""", base_addr=0x20000000)
+mem.write_bytes(0x20000000, bytes(code))
+
+# Run
+cpu = CPU(memory=mem, pc=0x20000000)
+cpu.set_reg(2, 0x7F000000 + 0x01000000 - 16)
+count = cpu.run(max_instructions=10000)
+print(f"Executed {count} instructions, a0 = {cpu.get_reg(10)}")
+print(f"UART output: {cpu.uart_output}")
+
+# Disassemble
+insn = mem.read_word(0x20000000)
+print(disassemble(insn, 0x20000000))
+```
+
+## Instruction Set
+
+### RV32I Base (40 instructions)
+LUI, AUIPC, JAL, JALR, BEQ, BNE, BLT, BGE, BLTU, BGEU, LB, LH, LW, LBU, LHU, SB, SH, SW, ADDI, SLTI, SLTIU, XORI, ORI, ANDI, SLLI, SRLI, SRAI, ADD, SUB, SLL, SLT, SLTU, XOR, SRL, SRA, OR, AND, FENCE, ECALL, EBREAK
+
+### RV32M Extension (8 instructions)
+MUL, MULH, MULHSU, MULHU, DIV, DIVU, REM, REMU
+
+### Zicsr Extension (6 instructions)
+CSRRW, CSRRS, CSRRC, CSRRWI, CSRRSI, CSRRCI
+
+### Pseudo-Instructions
+NOP, MV, NOT, NEG, LI, LA, J, RET, CALL, BEQZ, BNEZ, BGT, BLE, BGTU, BLEU
+
+## Supported CSRs
+
+| CSR      | Address  | Description              |
+|----------|----------|--------------------------|
+| mstatus  | 0x300    | Machine status           |
+| misa     | 0x301    | ISA and extensions        |
+| mie      | 0x304    | Machine interrupt enable |
+| mtvec    | 0x305    | Machine trap vector      |
+| mscratch | 0x340    | Machine scratch          |
+| mepc     | 0x341    | Machine exception PC     |
+| mcause   | 0x342    | Machine cause            |
+| mtval    | 0x343    | Machine trap value       |
+| mip      | 0x344    | Machine interrupt pending|
+| cycle    | 0xC00    | Cycle counter            |
+| instret  | 0xC02    | Instructions retired     |
+
+## Memory Map
+
+| Region           | Size    | Permissions | Description       |
+|------------------|---------|-------------|-------------------|
+| 0x20000000       | 1 MB    | RWX         | Code/data        |
+| 0x7F000000       | 16 MB   | RW          | Stack            |
+| 0x10000000       | 8 B     | RW          | UART MMIO        |
+
+## Test Suite
 
 ```bash
 pip install pytest
 pytest tests/ -v
 ```
 
-## License
+101 tests covering: memory operations, CSR read/write, assembler encoding, CPU instruction execution, branch behavior, load/store, JAL/JALR, ECALL/EBREAK, UART MMIO, RV32M multiply/divide, and disassembly.
 
-MIT
+## Known Issues (Resolved)
+
+See Phase 3 bug fixes in git history.

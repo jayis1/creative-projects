@@ -38,6 +38,15 @@ class Assembler:
         "sra":  (0b0110011, 0b101, 0b0100000),
         "or":   (0b0110011, 0b110, 0b0000000),
         "and":  (0b0110011, 0b111, 0b0000000),
+        # RV32M extension (funct7=0b0000001)
+        "mul":   (0b0110011, 0b000, 0b0000001),
+        "mulh":  (0b0110011, 0b001, 0b0000001),
+        "mulhsu":(0b0110011, 0b010, 0b0000001),
+        "mulhu": (0b0110011, 0b011, 0b0000001),
+        "div":   (0b0110011, 0b100, 0b0000001),
+        "divu":  (0b0110011, 0b101, 0b0000001),
+        "rem":   (0b0110011, 0b110, 0b0000001),
+        "remu":  (0b0110011, 0b111, 0b0000001),
     }
 
     I_TYPE_OPS = {
@@ -149,19 +158,37 @@ class Assembler:
                (funct3 << 12) | (imm4_1 << 8) | (imm11 << 7) | 0b1100011
 
     def _encode_u_type(self, rd: int, imm: int) -> int:
-        """Encode U-type instruction. The immediate is the 20-bit upper value
-        that gets placed in bits [31:12] of the destination register.
-        So lui x5, 0x12345 produces x5 = 0x12345000.
-        Also accepts full 32-bit values where lower 12 bits are zero.
+        """Encode U-type instruction (LUI/AUIPC).
+
+        In RISC-V, the U-type immediate is the upper 20-bit value that gets
+        placed in bits [31:12]. So `lui rd, N` means `rd = N << 12`.
+
+        However, we also accept the full 32-bit form (e.g., 0x20010000) as a
+        convenience, detecting it when lower 12 bits are zero and the value
+        appears to be a shifted 20-bit quantity.
         """
-        # If lower 12 bits are zero and upper bits are nonzero, it's likely
-        # a full 32-bit value already in the correct format. Otherwise treat
-        # as the 20-bit upper value to be shifted.
-        if (imm & 0xFFF) == 0 and (imm >> 12) != 0:
-            # Full 32-bit form: e.g., 0x20010000
-            return (imm & 0xFFFFF000) | (rd << 7) | 0b0110111
+        # If the value looks like a pre-shifted 32-bit value (lower 12 bits zero
+        # and it's large enough to be a full address), use it as-is.
+        # Otherwise treat it as the 20-bit upper value to be shifted.
+        if (imm & 0xFFF) == 0 and imm != 0 and (imm >> 12) <= 0xFFFFF:
+            # Could be either form. Check if the 20-bit interpretation gives
+            # a different result than the 32-bit interpretation.
+            # If (imm >> 12) == (imm & 0xFFFFF000) >> 12, they're equivalent.
+            # Otherwise, prefer the 32-bit form (value as-is).
+            # Heuristic: if the value has more than 20 significant bits,
+            # it's likely meant as a full 32-bit value.
+            bit_length = imm.bit_length()
+            if bit_length > 20:
+                # Likely a full 32-bit value already in position
+                return (imm & 0xFFFFF000) | (rd << 7) | 0b0110111
+            else:
+                # Likely a 20-bit upper value to be shifted
+                return ((imm << 12) & 0xFFFFF000) | (rd << 7) | 0b0110111
+        elif (imm & 0xFFF) == 0 and imm == 0:
+            # lui rd, 0 — both forms give 0
+            return (rd << 7) | 0b0110111
         else:
-            # 20-bit upper value: e.g., 0x20010 -> shift to produce 0x20010000
+            # Has non-zero lower 12 bits — must be a 20-bit upper value
             return ((imm << 12) & 0xFFFFF000) | (rd << 7) | 0b0110111
 
     def _encode_j_type(self, rd: int, imm: int) -> int:
@@ -257,6 +284,9 @@ class Assembler:
                 self.current_addr += 4
             elif mnemonic == "j":
                 expanded.append((lineno, f"jal x0, {operands.strip()}"))
+                self.current_addr += 4
+            elif mnemonic == "ret":
+                expanded.append((lineno, "jalr x0, x1, 0"))
                 self.current_addr += 4
             elif mnemonic == "call":
                 # call = auipc x1, offset[31:12] + jalr x1, x1, offset[11:0]
@@ -470,11 +500,10 @@ class Assembler:
                 raise AssembleError(f"Line {lineno}: AUIPC requires 2 operands")
             rd = self.parse_register(operands[0])
             imm = self.parse_immediate(operands[1], self.labels)
-            # Use same heuristic as LUI for upper immediate
-            if (imm & 0xFFF) == 0 and (imm >> 12) != 0:
-                return (imm & 0xFFFFF000) | (rd << 7) | 0b0010111
-            else:
-                return ((imm << 12) & 0xFFFFF000) | (rd << 7) | 0b0010111
+            # Use same heuristic as LUI for the upper immediate
+            insn = self._encode_u_type(rd, imm)
+            # Replace opcode: AUIPC is 0b0010111, LUI is 0b0110111
+            return (insn & ~0x7F) | 0b0010111
 
         # JAL
         if mnemonic == "jal":

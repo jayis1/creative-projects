@@ -1,12 +1,13 @@
 """CPU core for the RISC-V RV32I emulator.
 
-Implements the full RV32I base integer instruction set plus Zicsr extension.
-Handles fetch-decode-execute cycle, trap handling, and privilege modes.
+Implements the full RV32I base integer instruction set, Zicsr extension,
+and RV32M (multiply/divide) extension. Handles fetch-decode-execute cycle,
+trap handling, and privilege modes.
 """
 
 from __future__ import annotations
 import struct
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Callable
 
 from .memory import Memory, MemoryError
 from .csrs import (
@@ -27,6 +28,16 @@ class Trap(Exception):
         self.cause = cause
         self.tval = tval
 
+    def __repr__(self):
+        cause_names = {
+            0: "MISALIGNED_FETCH", 1: "FETCH_ACCESS", 2: "ILLEGAL_INSN",
+            3: "BREAKPOINT", 4: "MISALIGNED_LOAD", 5: "LOAD_ACCESS",
+            6: "MISALIGNED_STORE", 7: "STORE_ACCESS",
+            8: "ECALL_U", 11: "ECALL_M",
+        }
+        name = cause_names.get(self.cause, f"CAUSE_{self.cause}")
+        return f"Trap({name}, tval=0x{self.tval:08x})"
+
 
 class CPUHalt(Exception):
     """Raised when the CPU executes a halt instruction or runs out of instructions."""
@@ -34,7 +45,7 @@ class CPUHalt(Exception):
 
 
 class CPU:
-    """RISC-V RV32I CPU emulator.
+    """RISC-V RV32I + RV32M CPU emulator.
 
     Attributes:
         regs: General-purpose registers x0-x31 (x0 always 0).
@@ -59,11 +70,17 @@ class CPU:
         "s8", "s9", "s10", "s11", "t3", "t4", "t5", "t6",
     ]
 
+    # UART MMIO address (QEMU virt machine style)
+    UART_BASE = 0x10000000
+    UART_THR = UART_BASE       # Transmit Holding Register
+    UART_LSR = UART_BASE + 5  # Line Status Register (bit 5 = THRE)
+
     def __init__(
         self,
         memory: Optional[Memory] = None,
         pc: int = 0x20000000,
         hart_id: int = 0,
+        enable_m_ext: bool = True,
     ):
         self.regs = [0] * self.NUM_REGS
         self.pc = pc
@@ -72,10 +89,27 @@ class CPU:
         self.priv = self.PRIV_M
         self._halted = False
         self._instructions_executed = 0
+        self._enable_m_ext = enable_m_ext
         # Callback for ECALL
-        self.ecall_callback = None
-        # MMIO UART at 0x10000000 (qemu-virt style)
+        self.ecall_callback: Optional[Callable] = None
+        # MMIO UART output buffer
         self._uart_buf: List[int] = []
+        self._uart_output: str = ""
+
+    @property
+    def halted(self) -> bool:
+        """Whether the CPU has halted."""
+        return self._halted
+
+    @property
+    def instructions_executed(self) -> int:
+        """Total number of instructions executed."""
+        return self._instructions_executed
+
+    @property
+    def uart_output(self) -> str:
+        """Get all UART output as a string."""
+        return self._uart_output
 
     def set_reg(self, rd: int, value: int) -> None:
         """Set register, keeping x0 hardwired to 0."""
@@ -103,6 +137,19 @@ class CPU:
         """Mask to 32 bits."""
         return value & 0xFFFFFFFF
 
+    def _handle_uart_write(self, addr: int, value: int) -> None:
+        """Handle writes to the MMIO UART region."""
+        if addr == self.UART_THR:
+            ch = value & 0xFF
+            self._uart_buf.append(ch)
+            self._uart_output += chr(ch) if 0x20 <= ch < 0x7F or ch in (0x0A, 0x0D) else f"\\x{ch:02x}"
+
+    def _handle_uart_read(self, addr: int) -> int:
+        """Handle reads from the MMIO UART region."""
+        if addr == self.UART_LSR:
+            return 0x60  # THR empty + transmitter empty
+        return 0
+
     def step(self) -> None:
         """Execute a single instruction. Raises Trap on exceptions, CPUHalt on stop."""
         if self._halted:
@@ -128,8 +175,6 @@ class CPU:
 
         # Update counters
         self._instructions_executed += 1
-        self.csrs.increment_counter(CSR_MIE, 0)  # no-op placeholder
-        # Actually count cycle/instret
         self.csrs._regs[0xC00] = (self.csrs._regs.get(0xC00, 0) + 1) & 0xFFFFFFFF  # cycle
         self.csrs._regs[0xC02] = (self.csrs._regs.get(0xC02, 0) + 1) & 0xFFFFFFFF  # instret
 
@@ -256,7 +301,11 @@ class CPU:
 
         elif opcode == 0x03:  # Load
             addr = self.mask32(self.get_reg(rs1) + imm_i)
-            if funct3 == 0b000:  # LB
+            # Check for MMIO UART reads
+            if self.UART_BASE <= addr < self.UART_BASE + 8:
+                val = self._handle_uart_read(addr)
+                self.set_reg(rd, val)
+            elif funct3 == 0b000:  # LB
                 val = self.memory.read_byte(addr)
                 self.set_reg(rd, self.sign_extend(val, 8) & 0xFFFFFFFF)
             elif funct3 == 0b001:  # LH
@@ -276,7 +325,10 @@ class CPU:
         elif opcode == 0x23:  # Store
             addr = self.mask32(self.get_reg(rs1) + imm_s)
             val = self.get_reg(rs2)
-            if funct3 == 0b000:  # SB
+            # Check for MMIO UART writes
+            if self.UART_BASE <= addr < self.UART_BASE + 8:
+                self._handle_uart_write(addr, val)
+            elif funct3 == 0b000:  # SB
                 self.memory.write_byte(addr, val)
             elif funct3 == 0b001:  # SH
                 self.memory.write_half(addr, val)
@@ -320,7 +372,51 @@ class CPU:
             a_s = self.get_reg_signed(rs1)
             b_s = self.get_reg_signed(rs2)
 
-            if funct3 == 0b000:
+            if funct7 == 0x01 and self._enable_m_ext:
+                # RV32M extension: MUL/DIV
+                if funct3 == 0b000:  # MUL
+                    result = self.mask32(a * b)
+                elif funct3 == 0b001:  # MULH
+                    result = self.mask32((a_s * b_s) >> 32)
+                elif funct3 == 0b010:  # MULHSU
+                    result = self.mask32((a_s * b) >> 32)
+                elif funct3 == 0b011:  # MULHU
+                    result = self.mask32((a * b) >> 32)
+                elif funct3 == 0b100:  # DIV
+                    if b == 0:
+                        result = 0xFFFFFFFF  # Division by zero returns -1
+                    elif a_s == -0x80000000 and b_s == -1:
+                        result = self.mask32(a_s)  # Overflow returns dividend
+                    else:
+                        # Python division truncates toward negative infinity; C/RISC-V truncates toward zero
+                        q = abs(a_s) // abs(b_s)
+                        if (a_s < 0) != (b_s < 0):
+                            q = -q
+                        result = self.mask32(q)
+                elif funct3 == 0b101:  # DIVU
+                    if b == 0:
+                        result = 0xFFFFFFFF
+                    else:
+                        result = a // b
+                elif funct3 == 0b110:  # REM
+                    if b == 0:
+                        result = a  # Remainder with zero divisor returns dividend
+                    elif a_s == -0x80000000 and b_s == -1:
+                        result = 0  # Overflow: remainder is zero
+                    else:
+                        # Use truncating division for consistent remainder
+                        q = abs(a_s) // abs(b_s)
+                        if (a_s < 0) != (b_s < 0):
+                            q = -q
+                        result = self.mask32(a_s - q * b_s)
+                elif funct3 == 0b111:  # REMU
+                    if b == 0:
+                        result = a
+                    else:
+                        result = a % b
+                else:
+                    raise Trap(CAUSE_ILLEGAL_INSN, insn)
+            elif funct3 == 0b000:
                 if funct7 == 0x00:  # ADD
                     result = self.mask32(a + b)
                 elif funct7 == 0x20:  # SUB
@@ -361,6 +457,8 @@ class CPU:
                 if insn == 0x00100073:  # EBREAK
                     raise Trap(CAUSE_BREAKPOINT, self.pc)
                 elif insn == 0x00000073:  # ECALL
+                    if self.ecall_callback:
+                        self.ecall_callback(self)
                     if self.priv == self.PRIV_U:
                         raise Trap(CAUSE_ECALL_U, 0)
                     else:
@@ -397,17 +495,13 @@ class CPU:
             else:
                 raise Trap(CAUSE_ILLEGAL_INSN, insn)
 
-        elif opcode == 0x1B:  # RV32I-only: MUL/DIV extension not implemented
-            # This is actually the COMPRESSED instruction space in full RVC,
-            # but for RV32I only, treat as illegal
-            raise Trap(CAUSE_ILLEGAL_INSN, insn)
-
         else:
             raise Trap(CAUSE_ILLEGAL_INSN, insn)
 
     def state_dump(self) -> str:
         """Return a string dump of CPU state."""
-        lines = [f"PC: 0x{self.pc:08x}  Priv: {'M' if self.priv == 3 else 'U'}"]
+        lines = [f"PC: 0x{self.pc:08x}  Priv: {'M' if self.priv == 3 else 'U'}  "
+                 f"Insns: {self._instructions_executed}"]
         for i in range(0, 32, 4):
             parts = []
             for j in range(4):
