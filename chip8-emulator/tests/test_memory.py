@@ -1,7 +1,7 @@
 """Tests for CHIP-8 memory subsystem."""
 
 import pytest
-from chip8_emulator.memory import Memory, MemoryError, FONT_START, PROGRAM_START, MEMORY_SIZE
+from chip8_emulator.memory import Memory, Chip8MemoryError, FONT_START, PROGRAM_START, MEMORY_SIZE
 
 
 class TestMemoryInit:
@@ -56,22 +56,22 @@ class TestMemoryReadWrite:
 
     def test_write_out_of_range_value(self):
         mem = Memory()
-        with pytest.raises(MemoryError):
+        with pytest.raises(Chip8MemoryError):
             mem.write(0x300, 0x100)
 
     def test_read_out_of_range_address(self):
         mem = Memory()
-        with pytest.raises(MemoryError):
+        with pytest.raises(Chip8MemoryError):
             mem.read(MEMORY_SIZE)
 
     def test_write_out_of_range_address(self):
         mem = Memory()
-        with pytest.raises(MemoryError):
+        with pytest.raises(Chip8MemoryError):
             mem.write(MEMORY_SIZE, 0x00)
 
     def test_read_word_out_of_range(self):
         mem = Memory()
-        with pytest.raises(MemoryError):
+        with pytest.raises(Chip8MemoryError):
             mem.read_word(MEMORY_SIZE - 1)
 
     def test_boundary_write(self):
@@ -112,12 +112,12 @@ class TestMemoryRomLoading:
     def test_load_rom_overflow(self):
         mem = Memory()
         huge_rom = bytes(5000)
-        with pytest.raises(MemoryError):
+        with pytest.raises(Chip8MemoryError):
             mem.load_rom(huge_rom)
 
     def test_load_rom_invalid_offset(self):
         mem = Memory()
-        with pytest.raises(MemoryError):
+        with pytest.raises(Chip8MemoryError):
             mem.load_rom(bytes(10), 4090)  # 4090 + 10 > 4096
 
 
@@ -131,10 +131,10 @@ class TestFontSpriteAddr:
 
     def test_invalid_digit(self):
         mem = Memory()
-        with pytest.raises(MemoryError):
+        with pytest.raises(Chip8MemoryError):
             mem.font_sprite_addr(16)
 
     def test_negative_digit(self):
         mem = Memory()
-        with pytest.raises(MemoryError):
+        with pytest.raises(Chip8MemoryError):
             mem.font_sprite_addr(-1)

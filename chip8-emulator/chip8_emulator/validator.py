@@ -137,7 +137,7 @@ def validate_rom(path: str) -> ValidationResult:
         opcode = (data[i] << 8) | data[i + 1]
         prefix = (opcode >> 12) & 0xF
         # Check for clearly invalid prefixes
-        if prefix == 0 and opcode not in (0x00E0, 0x00EE) and (opcode & 0x0FFF) != 0:
+        if prefix == 0 and opcode not in (0x00E0, 0x00EE, 0x00FD, 0x00FF, 0x00FB, 0x00FC) and not (opcode & 0xFFF0) == 0x00C0 and (opcode & 0x0FFF) != 0:
             # 0NNN (machine code call) — acceptable but unusual
             pass
         elif prefix == 5 and (opcode & 0xF) != 0:
@@ -154,7 +154,7 @@ def validate_rom(path: str) -> ValidationResult:
                 invalid_count += 1
         elif prefix == 0xF:
             kk = opcode & 0xFF
-            if kk not in (0x07, 0x0A, 0x15, 0x18, 0x1E, 0x29, 0x33, 0x55, 0x65):
+            if kk not in (0x07, 0x0A, 0x15, 0x18, 0x1E, 0x29, 0x30, 0x33, 0x55, 0x65, 0x75, 0x85):
                 invalid_count += 1
 
     if invalid_count > 0 and invalid_count > result.num_instructions // 4:

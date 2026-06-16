@@ -29,8 +29,8 @@ PROGRAM_START = 0x200  # Where ROMs are loaded
 MEMORY_SIZE = 4096  # 4 KiB
 
 
-class MemoryError(Exception):
-    """Raised on invalid memory access."""
+class Chip8MemoryError(Exception):
+    """Raised on invalid memory access in the CHIP-8 emulator."""
 
 
 class Memory:
@@ -62,7 +62,7 @@ class Memory:
         """Write a single byte to *addr*."""
         self._check_addr(addr)
         if not 0 <= value <= 0xFF:
-            raise MemoryError(f"Value {value:#04x} out of byte range")
+            raise Chip8MemoryError(f"Value {value:#04x} out of byte range")
         self._mem[addr] = value
 
     def read_word(self, addr: int) -> int:
@@ -78,13 +78,13 @@ class Memory:
     def load_rom(self, data: bytes, offset: int = PROGRAM_START) -> None:
         """Load a ROM image into memory starting at *offset*.
 
-        Raises ``MemoryError`` if the ROM would overflow the address space
+        Raises ``Chip8MemoryError`` if the ROM would overflow the address space
         or the offset is invalid.
         """
         if offset < 0 or offset >= len(self._mem):
-            raise MemoryError(f"Invalid ROM load offset: {offset:#06x}")
+            raise Chip8MemoryError(f"Invalid ROM load offset: {offset:#06x}")
         if offset + len(data) > len(self._mem):
-            raise MemoryError(
+            raise Chip8MemoryError(
                 f"ROM ({len(data)} bytes) overflows memory at offset {offset:#06x}"
             )
         for i, b in enumerate(data):
@@ -103,7 +103,7 @@ class Memory:
     def font_sprite_addr(self, digit: int) -> int:
         """Return the address of the font sprite for hex *digit* (0–F)."""
         if not 0 <= digit <= 0xF:
-            raise MemoryError(f"Invalid font digit: {digit:#x}")
+            raise Chip8MemoryError(f"Invalid font digit: {digit:#x}")
         return FONT_START + digit * 5
 
     # ------------------------------------------------------------------
@@ -112,7 +112,7 @@ class Memory:
 
     def _check_addr(self, addr: int) -> None:
         if not 0 <= addr < len(self._mem):
-            raise MemoryError(f"Address {addr:#06x} out of range [0, {len(self._mem) - 1:#06x})")
+            raise Chip8MemoryError(f"Address {addr:#06x} out of range [0, {len(self._mem) - 1:#06x})")
 
     # ------------------------------------------------------------------
     # Dunder

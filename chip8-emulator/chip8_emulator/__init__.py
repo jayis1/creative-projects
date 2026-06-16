@@ -12,7 +12,7 @@ from .cpu import CPU
 from .debugger import Debugger
 from .display import Display
 from .keypad import Keypad
-from .memory import Memory
+from .memory import Memory, Chip8MemoryError
 from .opcodes import OpcodeTable
 from .sound import SoundTimer
 from .timer import DelayTimer
@@ -24,6 +24,7 @@ __all__ = [
     "Display",
     "Keypad",
     "Memory",
+    "Chip8MemoryError",
     "OpcodeTable",
     "DelayTimer",
     "SoundTimer",

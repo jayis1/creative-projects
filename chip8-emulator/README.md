@@ -172,9 +172,10 @@ python -m pytest tests/test_cpu.py -v
 python -m pytest tests/test_extensions.py -v
 python -m pytest tests/test_debugger.py -v
 python -m pytest tests/test_validator.py -v
+python -m pytest tests/test_bugfixes.py -v
 ```
 
-The test suite includes 178 tests covering:
+The test suite includes 196 tests covering:
 - All CPU opcodes
 - Memory, display, keypad, and timer modules
 - SUPER-CHIP extensions (scrolling, RPL flags, large fonts, extended mode)
@@ -183,6 +184,26 @@ The test suite includes 178 tests covering:
 - CLI disassembler
 - Built-in test ROMs
 - Cycle counting and step callbacks
+- Bug fixes (see Known Issues below)
+
+## Known Issues (Resolved)
+
+### Bug 1: MemoryError shadowing built-in (Fixed)
+`chip8_emulator.memory.MemoryError` shadowed the Python built-in `MemoryError`. Renamed to `Chip8MemoryError` to avoid confusion and allow separate exception handling.
+
+### Bug 2: Validator incorrectly flagging SUPER-CHIP opcodes (Fixed)
+The ROM validator did not recognize SUPER-CHIP opcodes (Fx30, Fx75, Fx85, 00FD, 00FF, 00FB, 00FC, 00Cn) as valid, causing spurious "invalid opcode" warnings. Added all SUPER-CHIP opcodes to the validator's known-opcode list.
+
+### Bug 3: Debugger step() bypassing CPU opcode storage (Fixed)
+The debugger's `step()` method called `cpu._fetch()` and `cpu._decode_and_execute()` directly, bypassing `cpu.step()` which stores the current opcode in `self._opcode`. This meant opcode field extractors (`_x`, `_y`, `_kk`, `_nnn`, `_n`) read stale values. Fixed by having the debugger call `cpu.step()` instead.
+
+### Edge Cases Verified (No Bug)
+- **ADD/SUB with VF as destination**: VF correctly receives the carry/borrow flag, not the arithmetic result (verified by tests).
+- **Fx55/Fx65 with x=0xF**: Correctly stores/loads VF as part of the register range.
+- **Fx1E (ADD I, Vx)**: Correctly wraps I at 0xFFF.
+- **DRW with n=0**: Draws zero rows, no collision.
+- **scroll_down(0)**: No-op as expected.
+- **BNNN extended mode**: Correctly uses Vx instead of V0 for offset.
 
 ## Implementation Notes
 
