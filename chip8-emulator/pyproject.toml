@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chip8-emulator"
+version = "1.0.0"
+description = "Full-featured CHIP-8 virtual machine emulator with all 35 standard opcodes"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+keywords = ["chip-8", "emulator", "interpreter", "virtual-machine", "retro"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Topic :: Emulators",
+]
+
+[tool.setuptools.packages.find]
+include = ["chip8_emulator*"]
+
+[project.scripts]
+chip8-emulator = "chip8_emulator.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
