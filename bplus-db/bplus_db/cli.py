@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 import os
 
@@ -12,7 +11,7 @@ from .database import Database
 
 def interactive_shell(db: Database) -> None:
     """Run an interactive shell for querying the database."""
-    print("B+ Tree Database Shell")
+    print("B+ Tree Database Shell v2.0")
     print("Type 'help' for commands, 'quit' to exit.")
     print(f"Database: {len(db)} keys, order={db._tree.order}")
     print()
@@ -48,7 +47,10 @@ Available commands:
   PREFIX <prefix>                           - Prefix scan
   STATS                                     - Show database stats
   TREE                                      - Show tree structure
-  SAVE [path]                               - Save to disk
+  VALIDATE                                  - Validate tree invariants
+  KEYS                                      - List all keys
+  SAVE [path]                               - Save to disk (JSON)
+  SAVEBIN [path]                            - Save to disk (binary)
   HELP                                      - Show this help
   QUIT                                      - Exit shell
 """)
@@ -58,6 +60,19 @@ Available commands:
                 print(f"  {k}: {v}")
         elif cmd == "tree":
             print(db.tree_structure())
+        elif cmd == "validate":
+            violations = db.validate()
+            if violations:
+                print("VIOLATIONS FOUND:")
+                for v in violations:
+                    print(f"  - {v}")
+            else:
+                print("Tree is valid. No violations found.")
+        elif cmd == "keys":
+            keys = db.keys()
+            for k in keys:
+                print(f"  {k!r}")
+            print(f"({len(keys)} keys)")
         elif line.upper().startswith("SELECT") or line.upper().startswith("INSERT") or line.upper().startswith("DELETE") or line.upper().startswith("COUNT"):
             try:
                 result = db.execute(line)
@@ -66,6 +81,7 @@ Available commands:
                 elif isinstance(result, list):
                     for k, v in result:
                         print(f"  {k!r} => {v!r}")
+                    print(f"({len(result)} results)")
                 else:
                     print(f"  {result}")
             except Exception as e:
@@ -105,6 +121,14 @@ Available commands:
             for k, v in results:
                 print(f"  {k!r} => {v!r}")
             print(f"({len(results)} results)")
+        elif cmd.startswith("savebin"):
+            parts = line.split(None, 1)
+            path = parts[1] if len(parts) > 1 else None
+            try:
+                db.save_binary(path)
+                print("Saved (binary).")
+            except Exception as e:
+                print(f"Error saving: {e}")
         elif cmd.startswith("save"):
             parts = line.split(None, 1)
             path = parts[1] if len(parts) > 1 else None
@@ -119,7 +143,7 @@ Available commands:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="B+ Tree Database Engine",
+        description="B+ Tree Database Engine v2.0",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -127,6 +151,7 @@ Examples:
   bplus-db shell -d mydb.json       Open database file
   bplus-db execute "SELECT * FROM db WHERE key >= 'a'"
   bplus-db load data.json           Load and inspect a database
+  bplus-db validate data.json       Validate tree invariants
         """,
     )
     subparsers = parser.add_subparsers(dest="command", help="Command to run")
@@ -145,6 +170,10 @@ Examples:
     # Load command
     load_parser = subparsers.add_parser("load", help="Load a database file")
     load_parser.add_argument("file", help="Database file to load")
+
+    # Validate command
+    validate_parser = subparsers.add_parser("validate", help="Validate tree invariants")
+    validate_parser.add_argument("file", help="Database file to validate")
 
     args = parser.parse_args()
 
@@ -170,6 +199,7 @@ Examples:
             if isinstance(result, list):
                 for k, v in result:
                     print(f"{k!r} => {v!r}")
+                print(f"({len(result)} results)")
             else:
                 print(result)
 
@@ -178,6 +208,17 @@ Examples:
         print(f"Loaded database from {args.file}")
         print(f"Keys: {len(db)}")
         print(f"Stats: {db.stats()}")
+
+    elif args.command == "validate":
+        db = Database.load(args.file)
+        violations = db.validate()
+        if violations:
+            print(f"FOUND {len(violations)} VIOLATIONS:")
+            for v in violations:
+                print(f"  - {v}")
+            sys.exit(1)
+        else:
+            print("Tree is valid. No violations found.")
 
 
 if __name__ == "__main__":

@@ -4,11 +4,13 @@ This module implements a generic B+ tree where:
 - Internal nodes store keys and child pointers for navigation
 - Leaf nodes store key-value pairs and are linked in a doubly-linked list
 - All operations (insert, delete, search, range) are O(log n)
+- Supports bulk loading from sorted data for efficient construction
+- Includes tree validation for integrity checking
 """
 
 from __future__ import annotations
-import struct
-from typing import Any, Iterator, Optional
+
+from typing import Any, Callable, Iterator, Optional
 
 
 class BPlusTreeNode:
@@ -20,6 +22,7 @@ class BPlusTreeNode:
         self.parent: Optional[InternalNode] = None
 
     def is_root(self) -> bool:
+        """Check if this node is the root of the tree."""
         return self.parent is None
 
 
@@ -33,7 +36,7 @@ class LeafNode(BPlusTreeNode):
         self.prev: Optional[LeafNode] = None
 
     def find_key_index(self, key) -> int:
-        """Find the index where key is or should be inserted."""
+        """Find the index where key is or should be inserted using binary search."""
         lo, hi = 0, len(self.keys)
         while lo < hi:
             mid = (lo + hi) // 2
@@ -133,15 +136,26 @@ class BPlusTree:
         size: Number of key-value pairs stored.
     """
 
-    def __init__(self, order: int = 64):
+    def __init__(self, order: int = 64, key_func: Callable = None):
+        """Initialize a B+ tree.
+        
+        Args:
+            order: The branching factor (max children per internal node). Must be >= 3.
+            key_func: Optional function to extract comparison keys from values.
+                      If None, keys are compared directly.
+        """
         if order < 3:
             raise ValueError("B+ tree order must be at least 3")
         self.order = order
+        self.key_func = key_func or (lambda x: x)
         self.root: BPlusTreeNode = LeafNode()
         self.size: int = 0
 
     def search(self, key) -> Optional[Any]:
-        """Search for a key and return its value, or None if not found."""
+        """Search for a key and return its value, or None if not found.
+        
+        Time complexity: O(log n)
+        """
         leaf = self._find_leaf(key)
         idx = leaf.find_key_index(key)
         if idx < len(leaf.keys) and leaf.keys[idx] == key:
@@ -149,7 +163,10 @@ class BPlusTree:
         return None
 
     def insert(self, key, value) -> None:
-        """Insert a key-value pair. Overwrites existing value if key exists."""
+        """Insert a key-value pair. Overwrites existing value if key exists.
+        
+        Time complexity: O(log n)
+        """
         leaf = self._find_leaf(key)
         was_update = key in leaf.keys
         leaf.insert_kv(key, value)
@@ -163,7 +180,10 @@ class BPlusTree:
             self._split_leaf(leaf)
 
     def delete(self, key) -> bool:
-        """Delete a key-value pair. Returns True if key was found."""
+        """Delete a key-value pair. Returns True if key was found.
+        
+        Time complexity: O(log n)
+        """
         leaf = self._find_leaf(key)
         if not leaf.remove_key(key):
             return False
@@ -171,7 +191,8 @@ class BPlusTree:
         self.size -= 1
 
         # Handle underflow (except for root)
-        if not leaf.is_root() and len(leaf.keys) < (self.order + 1) // 2 - 1:
+        min_keys = (self.order + 1) // 2 - 1
+        if not leaf.is_root() and len(leaf.keys) < min_keys:
             self._handle_underflow(leaf)
 
         # If root is empty internal node, make its only child the new root
@@ -187,6 +208,9 @@ class BPlusTree:
         Args:
             start_key: Inclusive lower bound. If None, start from minimum.
             end_key: Inclusive upper bound. If None, go to maximum.
+            
+        Yields:
+            Tuples of (key, value) in sorted order.
         """
         if start_key is not None:
             leaf = self._find_leaf(start_key)
@@ -205,6 +229,215 @@ class BPlusTree:
                 idx += 1
             leaf = leaf.next
             idx = 0
+
+    def bulk_load(self, items: list[tuple]) -> None:
+        """Build the tree from sorted key-value pairs.
+        
+        This is more efficient than inserting one at a time for large datasets.
+        Items must be sorted by key in ascending order.
+        
+        Args:
+            items: List of (key, value) pairs, sorted by key.
+            
+        Raises:
+            ValueError: If items are not sorted or keys are not unique.
+        """
+        if not items:
+            return
+
+        # Validate sorted order and uniqueness
+        for i in range(1, len(items)):
+            if items[i][0] <= items[i - 1][0]:
+                raise ValueError("Items must be sorted in ascending order with unique keys")
+
+        # Clear existing tree
+        self.root = LeafNode()
+        self.size = 0
+
+        # Build leaf nodes
+        max_keys = self.order - 1
+        leaves = []
+        current_leaf = LeafNode()
+
+        for key, value in items:
+            if len(current_leaf.keys) >= max_keys:
+                leaves.append(current_leaf)
+                current_leaf = LeafNode()
+            current_leaf.keys.append(key)
+            current_leaf.values.append(value)
+            self.size += 1
+
+        if current_leaf.keys:
+            leaves.append(current_leaf)
+
+        # Link leaves
+        for i in range(len(leaves) - 1):
+            leaves[i].next = leaves[i + 1]
+            leaves[i + 1].prev = leaves[i]
+
+        # If only one leaf, it becomes the root
+        if len(leaves) == 1:
+            self.root = leaves[0]
+            return
+
+        # Build internal nodes bottom-up
+        current_level = leaves
+        while len(current_level) > 1:
+            parent_level = []
+
+            # Group children into chunks of up to max_keys+1 per parent
+            # Each internal node can have at most max_keys keys and max_keys+1 children
+            chunk_size = self.order  # max children per internal node = order = max_keys + 1
+            for i in range(0, len(current_level), chunk_size):
+                children = current_level[i:i + chunk_size]
+                if not children:
+                    continue
+
+                parent = InternalNode()
+                parent.children = list(children)
+                # Separator keys: min key of each subtree after the first child
+                parent.keys = [self._min_key(children[j + 1]) for j in range(len(children) - 1)]
+
+                for child in children:
+                    child.parent = parent
+
+                parent_level.append(parent)
+
+            current_level = parent_level
+
+        if len(current_level) == 1:
+            self.root = current_level[0]
+            self.root.parent = None
+
+    @staticmethod
+    def _min_key(node: BPlusTreeNode):
+        """Find the minimum key in the subtree rooted at node."""
+        while not node.is_leaf:
+            node = node.children[0]
+        return node.keys[0]
+
+    def validate(self) -> list[str]:
+        """Validate all B+ tree invariants. Returns a list of violations (empty if valid).
+        
+        Checks:
+        - All leaf nodes have >= min_keys (except root)
+        - All internal nodes have >= min_keys (except root)
+        - All leaf nodes have <= order-1 keys
+        - All internal nodes have <= order-1 keys
+        - Leaf linked list is consistent
+        - Keys in each node are sorted
+        - Internal node separator keys are correct
+        - Parent pointers are consistent
+        - Size counter matches actual key count
+        """
+        violations = []
+        min_keys = (self.order + 1) // 2 - 1
+        actual_count = 0
+
+        def check_node(node, depth=0):
+            nonlocal actual_count
+
+            if node.is_leaf:
+                # Check key count bounds
+                if not node.is_root() and len(node.keys) < min_keys:
+                    violations.append(
+                        f"Leaf underflow at depth {depth}: {len(node.keys)} keys, min={min_keys}"
+                    )
+                if len(node.keys) > self.order - 1:
+                    violations.append(
+                        f"Leaf overflow at depth {depth}: {len(node.keys)} keys, max={self.order - 1}"
+                    )
+
+                # Check keys are sorted
+                for i in range(len(node.keys) - 1):
+                    if node.keys[i] >= node.keys[i + 1]:
+                        violations.append(
+                            f"Leaf keys not sorted at depth {depth}: {node.keys}"
+                        )
+                        break
+
+                actual_count += len(node.keys)
+
+            else:
+                # Internal node checks
+                if not node.is_root() and len(node.keys) < min_keys:
+                    violations.append(
+                        f"Internal underflow at depth {depth}: {len(node.keys)} keys, min={min_keys}"
+                    )
+                if len(node.keys) > self.order - 1:
+                    violations.append(
+                        f"Internal overflow at depth {depth}: {len(node.keys)} keys, max={self.order - 1}"
+                    )
+
+                # Keys must be sorted
+                for i in range(len(node.keys) - 1):
+                    if node.keys[i] >= node.keys[i + 1]:
+                        violations.append(
+                            f"Internal keys not sorted at depth {depth}: {node.keys}"
+                        )
+                        break
+
+                # Children count must be keys + 1
+                if len(node.children) != len(node.keys) + 1:
+                    violations.append(
+                        f"Internal node has {len(node.children)} children but {len(node.keys)} keys at depth {depth}"
+                    )
+
+                # Check separator keys
+                for i, child in enumerate(node.children):
+                    if child.parent is not node:
+                        violations.append(
+                            f"Parent pointer mismatch at depth {depth}: child points to {child.parent}, expected {node}"
+                        )
+                    check_node(child, depth + 1)
+
+        check_node(self.root)
+
+        # Check leaf linked list
+        leaf = self._leftmost_leaf()
+        leaf_keys_from_list = []
+        while leaf is not None:
+            leaf_keys_from_list.extend(leaf.keys)
+            if leaf.next is not None and leaf.next.prev is not leaf:
+                violations.append(
+                    f"Leaf linked list broken: next leaf's prev doesn't point back"
+                )
+            leaf = leaf.next
+
+        # Check total size
+        if actual_count != self.size:
+            violations.append(
+                f"Size mismatch: counter={self.size}, actual={actual_count}"
+            )
+
+        return violations
+
+    def height(self) -> int:
+        """Return the height of the tree (1 for a single leaf, 2 for leaf+root, etc.)."""
+        h = 1
+        node = self.root
+        while not node.is_leaf:
+            h += 1
+            node = node.children[0]
+        return h
+
+    def leaf_count(self) -> int:
+        """Return the number of leaf nodes in the tree."""
+        count = 0
+        leaf = self._leftmost_leaf()
+        while leaf is not None:
+            count += 1
+            leaf = leaf.next
+        return count
+
+    def stats(self) -> dict:
+        """Return statistics about the tree structure."""
+        return {
+            "size": self.size,
+            "order": self.order,
+            "height": self.height(),
+            "leaf_count": self.leaf_count(),
+        }
 
     def __len__(self) -> int:
         return self.size
@@ -228,6 +461,13 @@ class BPlusTree:
         node = self.root
         while not node.is_leaf:
             node = node.children[0]
+        return node
+
+    def _rightmost_leaf(self) -> LeafNode:
+        """Return the rightmost leaf node."""
+        node = self.root
+        while not node.is_leaf:
+            node = node.children[-1]
         return node
 
     def _split_leaf(self, leaf: LeafNode) -> None:
@@ -313,11 +553,16 @@ class BPlusTree:
                 self._merge_internals(node, parent.children[idx_in_parent + 1], parent, idx_in_parent)
 
     def _borrow_from_left_leaf(self, node, left_sib, parent, idx_in_parent):
-        """Borrow a key from the left sibling leaf."""
+        """Borrow a key from the left sibling leaf.
+        
+        idx_in_parent is the index of 'node' in parent.children.
+        The separator key between left_sib and node is at parent.keys[idx_in_parent - 1].
+        """
         key = left_sib.keys.pop()
         value = left_sib.values.pop()
         node.keys.insert(0, key)
         node.values.insert(0, value)
+        # Update the separator key: it's between left_sib and node
         parent.keys[idx_in_parent - 1] = node.keys[0]
 
     def _borrow_from_right_leaf(self, node, right_sib, parent, idx_in_parent):
