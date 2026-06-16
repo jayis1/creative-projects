@@ -19,6 +19,6 @@ A monorepo of AI-generated creative coding projects. Each project lives in its o
 | [basic-interpreter](./basic-interpreter) | Full-featured BASIC language interpreter: modular package (lexer, parser, AST, interpreter, config, CLI, REPL), 40+ built-in functions, FOR/NEXT/WHILE/WEND/DO/LOOP/SELECT CASE/ON ERROR, arrays, file I/O, PRINT USING, argparse CLI, TOML config, comprehensive pytest suite, pip-installable, 75+ tests |
 | [compression-engine](./compression-engine) | From-scratch data compression engine: 8 codecs (Huffman, LZ77, BWT, DEFLATE, RLE, Delta, LZW, Arithmetic), codec pipelines, analysis tools, benchmarking, CRC32 integrity, config system, CLI, abstract base class, 203 tests, pip-installable |
 | [chip8-emulator](./chip8-emulator) | CHIP-8 VM emulator: 35 opcodes, SUPER-CHIP extensions, built-in assembler, execution profiler, trace recorder, step-through debugger, ROM validator, config files (YAML/JSON/TOML), CLI, 293 tests, pip-installable |
-| [prolog-engine](./prolog-engine) | Mini-Prolog logic programming engine: Robinson's unification with occurs-check, backtracking search, precedence-climbing parser, 30+ built-in predicates, arithmetic evaluation, list operations, interactive REPL, CLI, 75 tests, pip-installable |
+| [prolog-engine](./prolog-engine) | Mini-Prolog logic programming engine v2.0: Robinson's unification w/ occurs-check, backtracking, 60+ built-ins (string/atom ops, list aggregation), config files (YAML/JSON/TOML), colorized REPL, structured exceptions, logging, engine statistics, 195 tests, pip-installable |
 
 ---

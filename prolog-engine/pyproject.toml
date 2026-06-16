@@ -4,25 +4,37 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "prolog-engine"
-version = "1.0.0"
-description = "A mini-Prolog logic programming engine in pure Python"
+version = "2.0.0"
+description = "A complete mini-Prolog logic programming engine in pure Python"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.11"
-keywords = ["prolog", "logic-programming", "unification", "backtracking", "inference-engine"]
+keywords = ["prolog", "logic-programming", "unification", "backtracking", "inference-engine", "symbolic-ai"]
+authors = [
+    {name = "Creative Projects", email = "dev@creative-projects.dev"},
+]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
     "Intended Audience :: Education",
+    "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Interpreters",
+    "Topic :: Software Development :: Libraries :: Python Modules",
 ]
+
+[project.optional-dependencies]
+yaml = ["pyyaml>=6.0"]
+dev = ["pytest>=7.0", "pytest-cov>=4.0"]
 
 [project.scripts]
 prolog-engine = "prolog_engine.cli:main"
+prolog-repl = "prolog_engine.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["prolog_engine*"]
@@ -31,3 +43,12 @@ include = ["prolog_engine*"]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
+addopts = "-v --tb=short"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]

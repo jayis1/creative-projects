@@ -1,29 +1,24 @@
-"""Prolog inference engine with backtracking search and predicate indexing."""
+"""Prolog inference engine with backtracking search and predicate indexing.
+
+This is the core solver implementing depth-first SLD resolution with
+backtracking, predicate indexing for efficient clause lookup, and a
+configurable execution environment.
+"""
 
 from __future__ import annotations
 
-from typing import List, Optional, Callable, Dict, Any, Set
+import logging
+from typing import List, Optional, Callable, Dict, Set, Any, Iterator
 from collections import defaultdict
+
 from prolog_engine.ast_nodes import (
     Atom, Variable, Number, String, Compound, Clause, Query, Program, Term,
     variables_in, term_to_str, substitute,
 )
 from prolog_engine.unifier import Unifier, Substitution, UnificationError
+from prolog_engine.errors import EngineError, EvaluationError
 
-
-class EngineError(Exception):
-    """Raised when the engine encounters an error during evaluation."""
-    pass
-
-
-class EvaluationError(EngineError):
-    """Raised when an arithmetic expression cannot be evaluated.
-    
-    In standard Prolog, this is an evaluation error (e.g., unknown function,
-    non-numeric argument). In our implementation, these are caught by builtins
-    and converted to failure (no solutions), since that's more user-friendly.
-    """
-    pass
+logger = logging.getLogger(__name__)
 
 
 class Engine:
@@ -36,34 +31,72 @@ class Engine:
     - Arithmetic evaluation
     - Tracing mode for debugging
     - Dynamic clause management (assert/retract)
+    - Configurable depth and solution limits
+
+    Example:
+        >>> from prolog_engine import create_engine
+        >>> engine = create_engine()
+        >>> engine.load_source("parent(tom, bob).")
+        >>> results = engine.query("?- parent(X, Y).")
+        >>> for r in results:
+        ...     print(engine.format_solution(r))
+        X = tom, Y = bob
     """
 
-    def __init__(self):
+    def __init__(
+        self,
+        max_depth: int = 1000,
+        max_solutions: int = 10000,
+        trace: bool = False,
+    ):
+        """Initialize a new Prolog engine.
+
+        Args:
+            max_depth: Maximum inference depth to prevent infinite loops.
+            max_solutions: Maximum number of solutions before raising an error.
+            trace: Enable trace mode for debugging.
+        """
         self._clauses: List[Clause] = []
         # Index: "name/arity" -> list of clause indices in self._clauses
         self._index: Dict[str, List[int]] = defaultdict(list)
         self._builtins: Dict[str, Callable] = {}
         self._var_counter = 0
-        self._trace = False
-        self._max_depth = 1000
-        self._max_solutions = 10000  # safety limit
+        self._trace = trace
+        self._max_depth = max_depth
+        self._max_solutions = max_solutions
         self._solution_count = 0
+        logger.debug("Engine initialized (max_depth=%d, max_solutions=%d)",
+                     max_depth, max_solutions)
 
     # ------------------------------------------------------------------
     # Knowledge base management
     # ------------------------------------------------------------------
 
     def add_clause(self, clause: Clause) -> None:
-        """Add a clause to the knowledge base and update the index."""
+        """Add a clause to the knowledge base and update the index.
+
+        Args:
+            clause: The Clause to add.
+
+        Raises:
+            TypeError: If clause is not a Clause instance.
+        """
+        if not isinstance(clause, Clause):
+            raise TypeError(f"Expected Clause, got {type(clause).__name__}")
         idx = len(self._clauses)
         self._clauses.append(clause)
         key = f"{clause.head.name}/{clause.head.arity}"
         self._index[key].append(idx)
+        logger.debug("Added clause: %s", clause)
 
     def remove_clause(self, clause: Clause) -> bool:
         """Remove the first clause matching the given clause from the KB.
 
-        Returns True if a clause was removed, False otherwise.
+        Args:
+            clause: The Clause to remove.
+
+        Returns:
+            True if a clause was removed, False otherwise.
         """
         for i, c in enumerate(self._clauses):
             if c == clause:
@@ -71,13 +104,20 @@ class Engine:
                 self._clauses.pop(i)
                 # Rebuild index (simplest correct approach)
                 self._rebuild_index()
+                logger.debug("Removed clause: %s", clause)
                 return True
         return False
 
     def retract_clause_by_head(self, head: Compound) -> bool:
         """Remove the first clause whose head matches the given compound.
 
-        Uses unification to find matching clauses. Returns True if removed.
+        Uses unification to find matching clauses.
+
+        Args:
+            head: A Compound term to match against clause heads.
+
+        Returns:
+            True if a clause was removed, False otherwise.
         """
         key = f"{head.name}/{head.arity}"
         if key not in self._index:
@@ -89,6 +129,7 @@ class Engine:
                 # Found a match — remove it
                 self._clauses.pop(idx)
                 self._rebuild_index()
+                logger.debug("Retracted clause with head: %s", term_to_str(head))
                 return True
             except UnificationError:
                 continue
@@ -102,29 +143,62 @@ class Engine:
             self._index[key].append(i)
 
     def load_program(self, program: Program) -> None:
-        """Load all clauses from a Program object."""
+        """Load all clauses from a Program object.
+
+        Args:
+            program: A Program instance containing clauses.
+        """
         for clause in program.clauses:
             self.add_clause(clause)
+        logger.info("Loaded %d clause(s) from program", len(program.clauses))
 
     def load_source(self, source: str) -> None:
-        """Parse and load Prolog source code."""
+        """Parse and load Prolog source code.
+
+        Args:
+            source: A string of Prolog source code.
+
+        Raises:
+            PrologError: If the source cannot be parsed.
+        """
         from prolog_engine.parser import Parser
         parser = Parser.from_source(source)
         program = parser.parse_program()
         self.load_program(program)
 
+    def load_file(self, filepath: str) -> None:
+        """Load and parse a Prolog source file.
+
+        Args:
+            filepath: Path to the .pl file to load.
+
+        Raises:
+            FileNotFoundError: If the file doesn't exist.
+            PrologError: If the file cannot be parsed.
+        """
+        with open(filepath, "r") as f:
+            source = f.read()
+        self.load_source(source)
+        logger.info("Loaded clauses from file: %s", filepath)
+
     def clear(self) -> None:
-        """Clear the knowledge base and reset."""
+        """Clear the knowledge base and reset variable counter."""
         self._clauses.clear()
         self._index.clear()
         self._var_counter = 0
+        logger.debug("Engine cleared")
 
     @property
     def clauses(self) -> List[Clause]:
+        """Return a copy of the current clause list."""
         return list(self._clauses)
 
     def predicate_index(self) -> Dict[str, int]:
-        """Return a summary of predicates and their clause counts."""
+        """Return a summary of predicates and their clause counts.
+
+        Returns:
+            Dict mapping "name/arity" to number of clauses.
+        """
         return {key: len(indices) for key, indices in self._index.items()}
 
     # ------------------------------------------------------------------
@@ -134,10 +208,16 @@ class Engine:
     def register_builtin(self, name_arity: str, func: Callable) -> None:
         """Register a built-in predicate.
 
-        name_arity should be like "is/2" or "=/2".
-        func signature: (engine, args, subst) -> iterable of Substitution
+        Args:
+            name_arity: Predicate indicator like "is/2" or "=/2".
+            func: Callable with signature (engine, args, subst) -> iterable of Substitution.
         """
         self._builtins[name_arity] = func
+        logger.debug("Registered builtin: %s", name_arity)
+
+    def get_builtins(self) -> Dict[str, Callable]:
+        """Return a copy of the currently registered built-ins."""
+        return dict(self._builtins)
 
     # ------------------------------------------------------------------
     # Built-in calling helper
@@ -145,7 +225,17 @@ class Engine:
 
     @staticmethod
     def _call_builtin(key: str, args: tuple, subst: Substitution, engine: "Engine"):
-        """Call a builtin, ensuring it returns an iterable of Substitutions."""
+        """Call a builtin, ensuring it returns an iterable of Substitutions.
+
+        Args:
+            key: Built-in predicate indicator (e.g., "is/2").
+            args: Arguments to the built-in.
+            subst: Current substitution.
+            engine: The engine instance.
+
+        Yields:
+            Substitution objects for each successful resolution.
+        """
         builtin_func = engine._builtins[key]
         result = builtin_func(engine, args, subst)
         if result is None:
@@ -162,24 +252,49 @@ class Engine:
     # ------------------------------------------------------------------
 
     def query(self, source: str) -> List[Substitution]:
-        """Execute a Prolog query string and return all solutions."""
+        """Execute a Prolog query string and return all solutions.
+
+        Args:
+            source: A Prolog query string (e.g., "?- father(X, Y).").
+
+        Returns:
+            List of Substitution objects representing solutions.
+        """
         from prolog_engine.parser import Parser
         parser = Parser.from_source(source)
         query_obj = parser.parse_query()
         self._solution_count = 0
-        return list(self.execute(query_obj))
+        results = list(self.execute(query_obj))
+        logger.info("Query '%s' returned %d solution(s)",
+                     source.strip(), len(results))
+        return results
 
     def query_one(self, source: str) -> Optional[Substitution]:
-        """Execute a Prolog query and return the first solution, or None."""
+        """Execute a Prolog query and return the first solution, or None.
+
+        Args:
+            source: A Prolog query string.
+
+        Returns:
+            First Substitution if a solution exists, None otherwise.
+        """
         from prolog_engine.parser import Parser
         parser = Parser.from_source(source)
         query_obj = parser.parse_query()
         for subst in self.execute(query_obj):
+            logger.debug("query_one found solution")
             return subst
         return None
 
-    def execute(self, query: Query) -> Any:
-        """Execute a Query object, yielding Substitutions."""
+    def execute(self, query: Query) -> Iterator[Substitution]:
+        """Execute a Query object, yielding Substitutions.
+
+        Args:
+            query: A Query object containing goal terms.
+
+        Yields:
+            Substitution objects for each solution found.
+        """
         goals = query.goals
         subst = Substitution()
         self._solution_count = 0
@@ -189,10 +304,34 @@ class Engine:
     # Core solver
     # ------------------------------------------------------------------
 
-    def _solve(self, goals: list, goal_index: int, subst: Substitution, depth: int) -> Any:
-        """Solve goals[goal_index:] under the given substitution."""
+    def _solve(
+        self,
+        goals: list,
+        goal_index: int,
+        subst: Substitution,
+        depth: int,
+    ) -> Iterator[Substitution]:
+        """Solve goals[goal_index:] under the given substitution.
+
+        Uses depth-first SLD resolution with backtracking.
+        Implements predicate indexing for efficient clause lookup.
+
+        Args:
+            goals: List of goal terms to solve.
+            goal_index: Current position in the goals list.
+            subst: Current substitution environment.
+            depth: Current inference depth (for stack overflow protection).
+
+        Yields:
+            Substitution objects for each solution.
+
+        Raises:
+            EngineError: If max depth or max solutions exceeded.
+        """
         if depth > self._max_depth:
-            raise EngineError(f"Maximum inference depth ({self._max_depth}) exceeded")
+            raise EngineError(
+                f"Maximum inference depth ({self._max_depth}) exceeded"
+            )
 
         # All goals solved
         if goal_index >= len(goals):
@@ -291,7 +430,17 @@ class Engine:
     # ------------------------------------------------------------------
 
     def _rename_clause(self, clause: Clause) -> Clause:
-        """Rename variables in a clause to avoid capture."""
+        """Rename variables in a clause to avoid capture.
+
+        Each time a clause is used in resolution, its variables are
+        renamed with fresh names to prevent variable capture.
+
+        Args:
+            clause: The clause to rename.
+
+        Returns:
+            A new Clause with renamed variables.
+        """
         mapping: dict[Variable, Variable] = {}
         new_head = self._rename_term(clause.head, mapping)
         if clause.is_fact:
@@ -301,7 +450,15 @@ class Engine:
         return Clause(new_head, new_body)
 
     def _rename_term(self, term: Term, mapping: dict[Variable, Variable]) -> Term:
-        """Rename variables in a term using the given mapping."""
+        """Rename variables in a term using the given mapping.
+
+        Args:
+            term: The term to rename.
+            mapping: Dict mapping old variables to new ones.
+
+        Returns:
+            A new term with renamed variables.
+        """
         if isinstance(term, Variable):
             if term not in mapping:
                 self._var_counter += 1
@@ -313,7 +470,14 @@ class Engine:
         return term
 
     def copy_term(self, term: Term) -> Term:
-        """Create a fresh copy of a term with new variables."""
+        """Create a fresh copy of a term with new variables.
+
+        Args:
+            term: The term to copy.
+
+        Returns:
+            A new term with fresh variable names.
+        """
         mapping: dict[Variable, Variable] = {}
         return self._rename_term(term, mapping)
 
@@ -323,18 +487,57 @@ class Engine:
 
     @property
     def trace(self) -> bool:
+        """Whether trace mode is enabled."""
         return self._trace
 
     @trace.setter
     def trace(self, value: bool) -> None:
+        """Enable or disable trace mode."""
         self._trace = value
+        logger.info("Trace mode %s", "enabled" if value else "disabled")
+
+    # ------------------------------------------------------------------
+    # Configuration
+    # ------------------------------------------------------------------
+
+    @property
+    def max_depth(self) -> int:
+        """Maximum inference depth."""
+        return self._max_depth
+
+    @max_depth.setter
+    def max_depth(self, value: int) -> None:
+        """Set maximum inference depth."""
+        if value < 1:
+            raise ValueError("max_depth must be at least 1")
+        self._max_depth = value
+
+    @property
+    def max_solutions(self) -> int:
+        """Maximum number of solutions before raising an error."""
+        return self._max_solutions
+
+    @max_solutions.setter
+    def max_solutions(self, value: int) -> None:
+        """Set maximum number of solutions."""
+        if value < 1:
+            raise ValueError("max_solutions must be at least 1")
+        self._max_solutions = value
 
     # ------------------------------------------------------------------
     # Pretty-printing solutions
     # ------------------------------------------------------------------
 
     def format_solution(self, subst: Substitution, original_goals: list | None = None) -> str:
-        """Format a substitution as a human-readable solution string."""
+        """Format a substitution as a human-readable solution string.
+
+        Args:
+            subst: The substitution to format.
+            original_goals: Optional list of goals to extract variables from.
+
+        Returns:
+            A formatted string like "X = tom, Y = bob" or "yes".
+        """
         if not subst:
             return "yes"
 
@@ -364,7 +567,23 @@ class Engine:
     # ------------------------------------------------------------------
 
     def evaluate(self, term: Term, subst: Substitution) -> Number:
-        """Evaluate an arithmetic expression to a Number."""
+        """Evaluate an arithmetic expression to a Number.
+
+        Supports: +, -, *, /, //, mod, rem, **, ^, abs, max, min,
+        sqrt, sin, cos, tan, log, exp, floor, ceiling, round,
+        and constants pi, e.
+
+        Args:
+            term: The term to evaluate.
+            subst: Current substitution environment.
+
+        Returns:
+            A Number representing the evaluated result.
+
+        Raises:
+            EngineError: If division by zero or other runtime error.
+            EvaluationError: If the term cannot be evaluated.
+        """
         term = subst.apply(term)
 
         if isinstance(term, Number):
@@ -455,3 +674,23 @@ class Engine:
             raise EvaluationError(f"Unknown arithmetic constant: {term.name}")
 
         raise EngineError(f"Cannot evaluate {term} as arithmetic")
+
+    # ------------------------------------------------------------------
+    # Statistics
+    # ------------------------------------------------------------------
+
+    def statistics(self) -> Dict[str, Any]:
+        """Return engine statistics.
+
+        Returns:
+            Dict with keys: clauses, predicates, builtins, max_depth,
+            max_solutions, trace.
+        """
+        return {
+            "clauses": len(self._clauses),
+            "predicates": self.predicate_index(),
+            "builtins": len(self._builtins),
+            "max_depth": self._max_depth,
+            "max_solutions": self._max_solutions,
+            "trace": self._trace,
+        }

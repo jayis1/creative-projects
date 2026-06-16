@@ -1,16 +1,18 @@
 """Built-in predicates for the mini-Prolog engine.
 
-Comprehensive library of ~50 built-in predicates covering:
-- Unification and comparison
-- Type checking
-- Control flow (cut, not, once, forall, repeat)
-- Arithmetic (is, comparisons, math functions)
-- List operations (member, append, length, reverse, sort, nth, etc.)
-- Term inspection (functor, arg, copy_term, =..)
-- Dynamic database (assertz, asserta, retract)
-- Meta-logical (bagof, setof, findall)
-- I/O (write, writeln, nl)
-- Numeric generation (between, succ, plus)
+Comprehensive library of ~60 built-in predicates covering:
+- Unification and comparison (=/2, \\=/2, ==/2, \\==/2)
+- Type checking (var/1, atom/1, number/1, compound/1, ground/1, ...)
+- Control flow (true/0, fail/0, !/0, not/1, \\+/1, once/1, forall/2, repeat/0, halt/0)
+- Arithmetic (is/2, </2, >/2, =</2, >=/2)
+- Numeric generation (between/3, succ/2, plus/3)
+- List operations (member/2, append/3, length/2, reverse/2, sort/2, msort/2,
+  nth0/3, nth1/3, last/2, max_list/2, min_list/2, sum_list/2)
+- Term inspection (functor/3, arg/3, copy_term/2, =../2, variables/2, numbervars/3)
+- Dynamic database (assertz/1, asserta/1, retract/1, clause/2)
+- Meta-logical (findall/3, bagof/3, setof/3)
+- String/atom manipulation (atom_length/2, atom_concat/3, sub_atom/5, char_code/2)
+- I/O (write/1, writeln/1, nl/0, write_canonical/1)
 """
 
 from __future__ import annotations
@@ -1004,7 +1006,6 @@ def _write_canonical(term: Term) -> str:
     """Write term in canonical operator-free form."""
     if isinstance(term, Compound):
         if term.name == "." and term.arity == 2:
-            # List in canonical form: .(a, .(b, []))
             args_str = ",".join(_write_canonical(a) for a in term.args)
             return f".({args_str})"
         if term.arity == 0:
@@ -1015,11 +1016,258 @@ def _write_canonical(term: Term) -> str:
 
 
 # ------------------------------------------------------------------
+# String manipulation builtins
+# ------------------------------------------------------------------
+
+def builtin_atom_length(engine: "Engine", args: tuple, subst: Substitution):
+    """atom_length/2 — atom_length(Atom, Length)."""
+    atom_term = subst.apply(args[0])
+    len_term = subst.apply(args[1])
+
+    if isinstance(atom_term, Atom):
+        length = len(atom_term.name)
+        if isinstance(len_term, Variable):
+            new_subst = subst.copy()
+            new_subst[len_term] = Number(length)
+            yield new_subst
+        elif isinstance(len_term, Number):
+            if len_term.value == length:
+                yield subst
+    elif isinstance(atom_term, Variable) and isinstance(len_term, Number):
+        return
+
+
+def builtin_atom_concat(engine: "Engine", args: tuple, subst: Substitution):
+    """atom_concat/3 — atom_concat(Atom1, Atom2, Result)."""
+    a1 = subst.apply(args[0])
+    a2 = subst.apply(args[1])
+    result = subst.apply(args[2])
+
+    if isinstance(a1, Atom) and isinstance(a2, Atom):
+        combined = Atom(a1.name + a2.name)
+        try:
+            yield Unifier.unify(result, combined, subst.copy())
+        except UnificationError:
+            return
+    elif isinstance(result, Atom):
+        name = result.name
+        for i in range(len(name) + 1):
+            part1 = Atom(name[:i])
+            part2 = Atom(name[i:])
+            try:
+                s = Unifier.unify(a1, part1, subst.copy())
+                s = Unifier.unify(a2, part2, s)
+                yield s
+            except UnificationError:
+                continue
+
+
+def builtin_sub_atom(engine: "Engine", args: tuple, subst: Substitution):
+    """sub_atom/5 — sub_atom(Atom, Before, Length, After, SubAtom)."""
+    atom_term = subst.apply(args[0])
+    before_term = subst.apply(args[1])
+    length_term = subst.apply(args[2])
+    after_term = subst.apply(args[3])
+    sub_term = subst.apply(args[4])
+
+    if isinstance(atom_term, Atom):
+        name = atom_term.name
+        n = len(name)
+        for b in range(n + 1):
+            for length in range(n - b + 1):
+                after = n - b - length
+                sub = name[b:b + length]
+                try:
+                    s = subst.copy()
+                    if isinstance(before_term, Variable):
+                        s[before_term] = Number(b)
+                    elif isinstance(before_term, Number) and before_term.value != b:
+                        continue
+                    if isinstance(length_term, Variable):
+                        s[length_term] = Number(length)
+                    elif isinstance(length_term, Number) and length_term.value != length:
+                        continue
+                    if isinstance(after_term, Variable):
+                        s[after_term] = Number(after)
+                    elif isinstance(after_term, Number) and after_term.value != after:
+                        continue
+                    sub_atom = Atom(sub)
+                    s2 = Unifier.unify(sub_term, sub_atom, s)
+                    yield s2
+                except UnificationError:
+                    continue
+
+
+def builtin_char_code(engine: "Engine", args: tuple, subst: Substitution):
+    """char_code/2 — char_code(Char, Code)."""
+    char_term = subst.apply(args[0])
+    code_term = subst.apply(args[1])
+
+    if isinstance(char_term, Atom) and len(char_term.name) == 1:
+        code = ord(char_term.name)
+        if isinstance(code_term, Variable):
+            new_subst = subst.copy()
+            new_subst[code_term] = Number(code)
+            yield new_subst
+        elif isinstance(code_term, Number):
+            if code_term.value == code:
+                yield subst
+    elif isinstance(code_term, Number):
+        code_val = int(code_term.value)
+        if 0 <= code_val <= 0x10FFFF:
+            char = Atom(chr(code_val))
+            try:
+                yield Unifier.unify(char_term, char, subst.copy())
+            except UnificationError:
+                return
+
+
+# ------------------------------------------------------------------
+# Additional list builtins
+# ------------------------------------------------------------------
+
+def builtin_max_list(engine: "Engine", args: tuple, subst: Substitution):
+    """max_list/2 — max_list(List, Max). Maximum element of a list."""
+    lst_term = subst.apply(args[0])
+    max_term = subst.apply(args[1])
+
+    if not isinstance(lst_term, Variable):
+        elements = _list_to_python(lst_term)
+        if not elements:
+            return
+        max_val = None
+        for e in elements:
+            if isinstance(e, Number):
+                if max_val is None or e.value > max_val:
+                    max_val = e.value
+        if max_val is not None:
+            try:
+                yield Unifier.unify(max_term, Number(max_val), subst.copy())
+            except UnificationError:
+                return
+
+
+def builtin_min_list(engine: "Engine", args: tuple, subst: Substitution):
+    """min_list/2 — min_list(List, Min). Minimum element of a list."""
+    lst_term = subst.apply(args[0])
+    min_term = subst.apply(args[1])
+
+    if not isinstance(lst_term, Variable):
+        elements = _list_to_python(lst_term)
+        if not elements:
+            return
+        min_val = None
+        for e in elements:
+            if isinstance(e, Number):
+                if min_val is None or e.value < min_val:
+                    min_val = e.value
+        if min_val is not None:
+            try:
+                yield Unifier.unify(min_term, Number(min_val), subst.copy())
+            except UnificationError:
+                return
+
+
+def builtin_sum_list(engine: "Engine", args: tuple, subst: Substitution):
+    """sum_list/2 — sum_list(List, Sum). Sum of all numeric elements."""
+    lst_term = subst.apply(args[0])
+    sum_term = subst.apply(args[1])
+
+    if not isinstance(lst_term, Variable):
+        elements = _list_to_python(lst_term)
+        total = 0.0
+        for e in elements:
+            if isinstance(e, Number):
+                total += e.value
+            else:
+                return
+        try:
+            yield Unifier.unify(sum_term, Number(total), subst.copy())
+        except UnificationError:
+            return
+
+
+# ------------------------------------------------------------------
+# Additional term inspection builtins
+# ------------------------------------------------------------------
+
+def builtin_term_variables(engine: "Engine", args: tuple, subst: Substitution):
+    """variables/2 — variables(Term, VarList)."""
+    term = subst.apply(args[0])
+    var_list_term = subst.apply(args[1])
+
+    vars_in_term = list(variables_in(term))
+    seen = set()
+    unique_vars = []
+    for v in vars_in_term:
+        if v not in seen:
+            seen.add(v)
+            unique_vars.append(v)
+
+    var_list = _python_to_list(unique_vars)
+    try:
+        yield Unifier.unify(var_list_term, var_list, subst.copy())
+    except UnificationError:
+        return
+
+
+def builtin_numbervars(engine: "Engine", args: tuple, subst: Substitution):
+    """numbervars/3 — numbervars(Term, Start, End)."""
+    term = subst.apply(args[0])
+    start_term = subst.apply(args[1])
+    end_term = subst.apply(args[2])
+
+    if isinstance(start_term, Number):
+        start_val = int(start_term.value)
+        vars_in_term = list(variables_in(term))
+        seen = set()
+        unique_vars = []
+        for v in vars_in_term:
+            if v not in seen:
+                seen.add(v)
+                unique_vars.append(v)
+
+        end_val = start_val + len(unique_vars)
+        if isinstance(end_term, Variable):
+            new_subst = subst.copy()
+            new_subst[end_term] = Number(end_val)
+            yield new_subst
+        elif isinstance(end_term, Number) and end_term.value == end_val:
+            yield subst
+
+
+# ------------------------------------------------------------------
+# Additional control flow builtins
+# ------------------------------------------------------------------
+
+def builtin_halt(engine: "Engine", args: tuple, subst: Substitution):
+    """halt/0 — Exit the Prolog engine."""
+    import sys
+    sys.exit(0)
+
+
+# ------------------------------------------------------------------
 # Registration
 # ------------------------------------------------------------------
 
 def register_builtins(engine: "Engine") -> None:
-    """Register all built-in predicates with the engine."""
+    """Register all built-in predicates with the engine.
+
+    This registers ~60 built-in predicates covering:
+    - Unification and comparison
+    - Type checking
+    - Control flow
+    - Arithmetic and numeric generation
+    - List operations
+    - Term inspection
+    - Dynamic database
+    - Meta-logical
+    - String/atom manipulation
+    - I/O
+    """
+    import logging
+    logger = logging.getLogger(__name__ + ".register_builtins")
+
     # Unification & comparison
     engine.register_builtin("=/2", builtin_unify)
     engine.register_builtin("\\=/2", builtin_not_unify)
@@ -1052,6 +1300,7 @@ def register_builtins(engine: "Engine") -> None:
     engine.register_builtin("once/1", builtin_once)
     engine.register_builtin("forall/2", builtin_forall)
     engine.register_builtin("repeat/0", builtin_repeat)
+    engine.register_builtin("halt/0", builtin_halt)
 
     # Numeric generation
     engine.register_builtin("between/3", builtin_between)
@@ -1068,12 +1317,17 @@ def register_builtins(engine: "Engine") -> None:
     engine.register_builtin("last/2", builtin_last)
     engine.register_builtin("sort/2", builtin_sort)
     engine.register_builtin("msort/2", builtin_msort)
+    engine.register_builtin("max_list/2", builtin_max_list)
+    engine.register_builtin("min_list/2", builtin_min_list)
+    engine.register_builtin("sum_list/2", builtin_sum_list)
 
     # Term inspection
     engine.register_builtin("functor/3", builtin_functor)
     engine.register_builtin("arg/3", builtin_arg)
     engine.register_builtin("copy_term/2", builtin_copy_term)
     engine.register_builtin("=../2", builtin_univ)
+    engine.register_builtin("variables/2", builtin_term_variables)
+    engine.register_builtin("numbervars/3", builtin_numbervars)
 
     # Dynamic database
     engine.register_builtin("assertz/1", builtin_assertz)
@@ -1086,8 +1340,16 @@ def register_builtins(engine: "Engine") -> None:
     engine.register_builtin("bagof/3", builtin_bagof)
     engine.register_builtin("setof/3", builtin_setof)
 
+    # String/atom manipulation
+    engine.register_builtin("atom_length/2", builtin_atom_length)
+    engine.register_builtin("atom_concat/3", builtin_atom_concat)
+    engine.register_builtin("sub_atom/5", builtin_sub_atom)
+    engine.register_builtin("char_code/2", builtin_char_code)
+
     # I/O
     engine.register_builtin("write/1", builtin_write)
     engine.register_builtin("writeln/1", builtin_writeln)
     engine.register_builtin("nl/0", builtin_nl)
     engine.register_builtin("write_canonical/1", builtin_write_canonical)
+
+    logger.info("Registered %d built-in predicates", len(engine.get_builtins()))
