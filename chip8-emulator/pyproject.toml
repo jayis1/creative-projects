@@ -4,22 +4,39 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chip8-emulator"
-version = "1.0.0"
-description = "Full-featured CHIP-8 virtual machine emulator with all 35 standard opcodes"
+version = "2.0.0"
+description = "Full-featured CHIP-8 virtual machine emulator with SUPER-CHIP extensions, assembler, profiler, and debugger"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
-keywords = ["chip-8", "emulator", "interpreter", "virtual-machine", "retro"]
+keywords = ["chip-8", "emulator", "interpreter", "virtual-machine", "retro", "assembler", "debugger"]
 classifiers = [
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Emulators",
+    "Topic :: Software Development :: Assemblers",
+    "Topic :: System :: Emulators",
+    "Development Status :: 5 - Production/Stable",
 ]
 
-[tool.setuptools.packages.find]
-include = ["chip8_emulator*"]
+[project.optional-dependencies]
+yaml = ["pyyaml>=6.0"]
+toml = ["tomli>=2.0; python_version < '3.11'"]
+dev = ["pytest>=7.0", "pytest-cov>=4.0"]
 
 [project.scripts]
 chip8-emulator = "chip8_emulator.cli:main"
 
+[tool.setuptools.packages.find]
+include = ["chip8_emulator*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true

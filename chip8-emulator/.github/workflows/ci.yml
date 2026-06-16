@@ -1,0 +1,121 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'chip8-emulator/**'
+  pull_request:
+    branches: [main, master]
+    paths:
+      - 'chip8-emulator/**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.11', '3.12', '3.13']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        working-directory: chip8-emulator
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,yaml]"
+
+      - name: Lint with basic checks
+        working-directory: chip8-emulator
+        run: |
+          python -c "import chip8_emulator; print(f'Import OK, version {chip8_emulator.__version__}')"
+
+      - name: Run tests
+        working-directory: chip8-emulator
+        run: |
+          python -m pytest tests/ -v --tb=short
+
+      - name: Test CLI
+        working-directory: chip8-emulator
+        run: |
+          chip8-emulator --help
+          chip8-emulator config --generate yaml > /dev/null
+
+      - name: Test assembler
+        working-directory: chip8-emulator
+        run: |
+          python -c "
+          from chip8_emulator.assembler import assemble
+          result = assemble('CLS\\nLD V0, 5\\nJP 0x200')
+          assert result.ok, f'Assembly failed: {result.errors}'
+          print(f'Assembled {len(result.rom)} bytes')
+          "
+
+      - name: Test tracer
+        working-directory: chip8-emulator
+        run: |
+          python -c "
+          from chip8_emulator import CPU
+          from chip8_emulator.tracer import Tracer
+          cpu = CPU()
+          t = Tracer(cpu)
+          t.attach()
+          from chip8_emulator.roms import maze_rom
+          cpu.load_rom(maze_rom())
+          cpu.run(cycles=10)
+          t.detach()
+          print(f'Traced {t.stats.total_cycles} cycles')
+          "
+
+      - name: Test recorder
+        working-directory: chip8-emulator
+        run: |
+          python -c "
+          from chip8_emulator import CPU
+          from chip8_emulator.recorder import Recorder
+          from chip8_emulator.roms import add_test_rom
+          cpu = CPU()
+          rec = Recorder(cpu)
+          rec._rom_data = add_test_rom()
+          rec.attach()
+          rec.start()
+          cpu.load_rom(add_test_rom())
+          cpu.run(cycles=10)
+          rec.stop()
+          rec.detach()
+          print(f'Recorded {rec.step_count} steps')
+          "
+
+  coverage:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        working-directory: chip8-emulator
+        run: |
+          pip install -e ".[dev,yaml]"
+          pip install pytest-cov
+
+      - name: Run tests with coverage
+        working-directory: chip8-emulator
+        run: |
+          python -m pytest tests/ --cov=chip8_emulator --cov-report=term-missing --cov-report=xml
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: chip8-emulator/coverage.xml

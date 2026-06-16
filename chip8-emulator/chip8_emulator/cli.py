@@ -1,18 +1,26 @@
-"""CHIP-8 Emulator — command-line interface, disassembler, debugger, and validator."""
+"""CHIP-8 Emulator — command-line interface, disassembler, debugger, validator, and assembler."""
 
 from __future__ import annotations
 
 import argparse
+import json
+import logging
 import sys
 import time
 from pathlib import Path
 
+from .assembler import Assembler, AssemblerError, assemble
+from .config import EmulatorConfig, generate_default_config, load_config
 from .cpu import CPU, CpuError
 from .debugger import Debugger
 from .display import Display
 from .keypad import Keypad
 from .memory import Memory
+from .recorder import Recorder
+from .tracer import Tracer
 from .validator import validate_rom
+
+logger = logging.getLogger(__name__)
 
 
 def disassemble(data: bytes, start: int = 0x200) -> None:
@@ -21,7 +29,7 @@ def disassemble(data: bytes, start: int = 0x200) -> None:
     while i + 1 < len(data):
         opcode = (data[i] << 8) | data[i + 1]
         addr = start + i
-        disasm = _disassemble_opcode(opcode, _build_mnemonic_table())
+        disasm = _disassemble_opcode(opcode)
         print(f"  {addr:04X}:  {opcode:04X}    {disasm}")
         i += 2
 
@@ -196,8 +204,17 @@ def main(argv: list[str] | None = None) -> None:
     """CLI entry point."""
     parser = argparse.ArgumentParser(
         prog="chip8-emulator",
-        description="CHIP-8 emulator, disassembler, debugger, and validator",
+        description="CHIP-8 emulator, disassembler, debugger, validator, and assembler",
     )
+    parser.add_argument(
+        "-v", "--verbose", action="store_true",
+        help="Enable verbose logging",
+    )
+    parser.add_argument(
+        "--config", type=str, default=None,
+        help="Path to config file (YAML/JSON/TOML)",
+    )
+
     sub = parser.add_subparsers(dest="command", help="Sub-command")
 
     # Run
@@ -211,10 +228,14 @@ def main(argv: list[str] | None = None) -> None:
                        help="Enable SUPER-CHIP extensions")
     run_p.add_argument("--dump-display", action="store_true",
                        help="Print the display on halt")
+    run_p.add_argument("--dump-registers", action="store_true",
+                       help="Print register state on halt")
 
     # Disassemble
     dis_p = sub.add_parser("disasm", help="Disassemble a CHIP-8 ROM")
     dis_p.add_argument("rom", type=Path, help="Path to .ch8 ROM file")
+    dis_p.add_argument("--offset", type=int, default=0x200,
+                       help="Starting address (default: 0x200)")
 
     # Validate
     val_p = sub.add_parser("validate", help="Validate a CHIP-8 ROM")
@@ -227,16 +248,83 @@ def main(argv: list[str] | None = None) -> None:
                        help="Enable SUPER-CHIP extensions")
     dbg_p.add_argument("-n", "--steps", type=int, default=10,
                        help="Number of steps to run (default: 10)")
+    dbg_p.add_argument("-b", "--breakpoint", type=lambda x: int(x, 0),
+                       action="append", default=[],
+                       help="Add breakpoint at address (e.g. 0x210)")
+
+    # Profile
+    prof_p = sub.add_parser("profile", help="Profile a CHIP-8 ROM execution")
+    prof_p.add_argument("rom", type=Path, help="Path to .ch8 ROM file")
+    prof_p.add_argument("-c", "--cycles", type=int, default=1000,
+                        help="Number of cycles to profile (default: 1000)")
+    prof_p.add_argument("--super-chip", action="store_true",
+                        help="Enable SUPER-CHIP extensions")
+    prof_p.add_argument("--json", action="store_true",
+                        help="Output profiling data as JSON")
+
+    # Record
+    rec_p = sub.add_parser("record", help="Record a CHIP-8 execution trace")
+    rec_p.add_argument("rom", type=Path, help="Path to .ch8 ROM file")
+    rec_p.add_argument("-o", "--output", type=str, required=True,
+                       help="Output JSON trace file")
+    rec_p.add_argument("-c", "--cycles", type=int, default=5000,
+                       help="Number of cycles to record (default: 5000)")
+    rec_p.add_argument("--super-chip", action="store_true",
+                       help="Enable SUPER-CHIP extensions")
+
+    # Assemble
+    asm_p = sub.add_parser("asm", help="Assemble CHIP-8 source code into a ROM")
+    asm_p.add_argument("source", type=Path, help="Path to .ch8asm source file")
+    asm_p.add_argument("-o", "--output", type=str, default=None,
+                       help="Output ROM file (default: <source>.ch8)")
+    asm_p.add_argument("--origin", type=lambda x: int(x, 0), default=0x200,
+                       help="Origin address (default: 0x200)")
+
+    # Config
+    cfg_p = sub.add_parser("config", help="Generate or show config")
+    cfg_p.add_argument("--generate", type=str, choices=["yaml", "json", "toml"],
+                       default=None,
+                       help="Generate a default config file")
+    cfg_p.add_argument("--show", type=str, default=None,
+                       help="Show current config from file")
 
     args = parser.parse_args(argv)
+
+    # Setup logging
+    log_level = logging.DEBUG if args.verbose else logging.WARNING
+    logging.basicConfig(level=log_level, format="%(name)s: %(message)s")
+
+    # Load config
+    config = EmulatorConfig()
+    if args.config:
+        try:
+            config = load_config(args.config)
+            config.apply_logging()
+        except (FileNotFoundError, ValueError, ImportError) as e:
+            print(f"Warning: Could not load config: {e}", file=sys.stderr)
 
     if args.command is None:
         parser.print_help()
         sys.exit(1)
 
+    if args.command == "config":
+        if args.generate:
+            print(generate_default_config(args.generate))
+        elif args.show:
+            try:
+                cfg = load_config(args.show)
+                print(json.dumps(cfg.to_dict(), indent=2))  # type: ignore
+            except Exception as e:
+                print(f"Error loading config: {e}", file=sys.stderr)
+                sys.exit(1)
+        else:
+            print("Use --generate or --show with the config command")
+            sys.exit(1)
+        return
+
     if args.command == "disasm":
         rom_data = args.rom.read_bytes()
-        disassemble(rom_data)
+        disassemble(rom_data, start=args.offset)
         return
 
     if args.command == "validate":
@@ -244,10 +332,59 @@ def main(argv: list[str] | None = None) -> None:
         print(result)
         sys.exit(0 if result.ok else 1)
 
+    if args.command == "asm":
+        source = args.source.read_text()
+        result = assemble(source, origin=args.origin)
+        if result.errors:
+            for err in result.errors:
+                print(f"Error: {err}", file=sys.stderr)
+            sys.exit(1)
+        if result.warnings:
+            for warn in result.warnings:
+                print(f"Warning: {warn}", file=sys.stderr)
+        output_path = args.output or str(args.source.with_suffix(".ch8"))
+        Path(output_path).write_bytes(result.rom)
+        print(f"Assembled {len(result.rom)} bytes → {output_path}")
+        if result.symbols:
+            print("Symbols:")
+            for name, addr in sorted(result.symbols.items()):
+                print(f"  {name}: 0x{addr:04X}")
+        return
+
+    if args.command == "profile":
+        cpu = CPU(super_chip=args.super_chip)
+        cpu.load_rom_from_file(str(args.rom))
+        tracer = Tracer(cpu)
+        tracer.attach()
+        cpu.run(cycles=args.cycles)
+        tracer.detach()
+        if args.json:
+            print(tracer.stats.to_json())
+        else:
+            print(tracer.summary())
+        return
+
+    if args.command == "record":
+        cpu = CPU(super_chip=args.super_chip)
+        cpu.load_rom_from_file(str(args.rom))
+        recorder = Recorder(cpu)
+        recorder._rom_data = bytes(cpu.memory._mem[0x200:0x200 + len(args.rom.read_bytes())])
+        recorder.attach()
+        recorder.start()
+        cpu.run(cycles=args.cycles)
+        recorder.stop()
+        recorder.detach()
+        recorder.save(args.output)
+        print(f"Recorded {recorder.step_count} steps → {args.output}")
+        return
+
     if args.command == "debug":
         cpu = CPU(super_chip=args.super_chip)
         cpu.load_rom_from_file(str(args.rom))
         debugger = Debugger(cpu)
+
+        for bp in args.breakpoint:
+            debugger.add_breakpoint(bp)
 
         print(f"Debugging {args.rom} ({args.steps} steps)")
         print(f"Initial state:\n{debugger.dump_registers()}")
@@ -290,7 +427,15 @@ def main(argv: list[str] | None = None) -> None:
             print("\nHalted by user")
 
         if args.dump_display:
+            print("\nDisplay:")
             print(cpu.display.render())
+
+        if args.dump_registers:
+            dbg = Debugger(cpu)
+            print("\nRegisters:")
+            print(dbg.dump_registers())
+
+        print(f"\nTotal cycles: {cpu.cycles}")
 
 
 if __name__ == "__main__":
