@@ -20,9 +20,10 @@ from prolog_engine.ast_nodes import (
     Atom, Variable, Number, String, Compound, Term, term_to_str, variables_in,
 )
 from prolog_engine.unifier import Unifier, Substitution, UnificationError
+from prolog_engine.engine import EngineError, EvaluationError
 
 if TYPE_CHECKING:
-    from prolog_engine.engine import Engine
+    from prolog_engine.engine import Engine, EngineError
 
 
 # ------------------------------------------------------------------
@@ -52,6 +53,10 @@ def builtin_is(engine: "Engine", args: tuple, subst: Substitution):
     left = subst.apply(args[0])
     try:
         result = engine.evaluate(args[1], subst)
+    except EvaluationError:
+        return  # Unknown function/constant → fail
+    except EngineError:
+        raise  # Let real engine errors (division by zero) propagate
     except Exception:
         return
     if isinstance(left, Variable):
@@ -68,6 +73,10 @@ def builtin_arith_eq(engine: "Engine", args: tuple, subst: Substitution):
     try:
         left = engine.evaluate(args[0], subst)
         right = engine.evaluate(args[1], subst)
+    except EvaluationError:
+        return  # Unknown function → fail
+    except EngineError:
+        raise  # Real errors propagate
     except Exception:
         return
     if left.value == right.value:
@@ -79,6 +88,10 @@ def builtin_arith_neq(engine: "Engine", args: tuple, subst: Substitution):
     try:
         left = engine.evaluate(args[0], subst)
         right = engine.evaluate(args[1], subst)
+    except EvaluationError:
+        return
+    except EngineError:
+        raise
     except Exception:
         return
     if left.value != right.value:
@@ -90,6 +103,10 @@ def builtin_lt(engine: "Engine", args: tuple, subst: Substitution):
     try:
         left = engine.evaluate(args[0], subst)
         right = engine.evaluate(args[1], subst)
+    except EvaluationError:
+        return
+    except EngineError:
+        raise
     except Exception:
         return
     if left.value < right.value:
@@ -101,6 +118,10 @@ def builtin_le(engine: "Engine", args: tuple, subst: Substitution):
     try:
         left = engine.evaluate(args[0], subst)
         right = engine.evaluate(args[1], subst)
+    except EvaluationError:
+        return
+    except EngineError:
+        raise
     except Exception:
         return
     if left.value <= right.value:
@@ -112,6 +133,10 @@ def builtin_gt(engine: "Engine", args: tuple, subst: Substitution):
     try:
         left = engine.evaluate(args[0], subst)
         right = engine.evaluate(args[1], subst)
+    except EvaluationError:
+        return
+    except EngineError:
+        raise
     except Exception:
         return
     if left.value > right.value:
@@ -123,6 +148,10 @@ def builtin_ge(engine: "Engine", args: tuple, subst: Substitution):
     try:
         left = engine.evaluate(args[0], subst)
         right = engine.evaluate(args[1], subst)
+    except EvaluationError:
+        return
+    except EngineError:
+        raise
     except Exception:
         return
     if left.value >= right.value:
@@ -283,6 +312,10 @@ def builtin_between(engine: "Engine", args: tuple, subst: Substitution):
     try:
         low = engine.evaluate(args[0], subst)
         high = engine.evaluate(args[1], subst)
+    except EvaluationError:
+        return
+    except EngineError:
+        raise
     except Exception:
         return
     val_term = subst.apply(args[2])

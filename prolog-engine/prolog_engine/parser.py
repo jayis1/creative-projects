@@ -54,6 +54,7 @@ class Parser:
     def __init__(self, tokens: list[Token]):
         self._tokens = tokens
         self._pos = 0
+        self._anon_var_counter = 0  # for generating unique anonymous variables
 
     # ------------------------------------------------------------------
     # Public API
@@ -190,6 +191,16 @@ class Parser:
         """Parse a primary term (atom, variable, number, compound, list, parens)."""
         tok = self._current()
 
+        # Handle unary minus/plus (e.g., -3, +5)
+        if tok.type == TokenType.ATOM and tok.value == "-":
+            self._advance()
+            operand = self._parse_primary()
+            return Compound("-", (operand,))
+        if tok.type == TokenType.ATOM and tok.value == "+":
+            self._advance()
+            operand = self._parse_primary()
+            return operand  # unary plus is identity
+
         if tok.type == TokenType.NUMBER:
             self._advance()
             val = float(tok.value)
@@ -201,6 +212,10 @@ class Parser:
 
         if tok.type == TokenType.VARIABLE:
             self._advance()
+            # Anonymous variable "_" must be unique each time
+            if tok.value == "_":
+                self._anon_var_counter += 1
+                return Variable(f"__anon_{self._anon_var_counter}")
             return Variable(tok.value)
 
         if tok.type == TokenType.ATOM:

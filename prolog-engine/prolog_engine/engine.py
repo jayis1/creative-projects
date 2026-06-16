@@ -16,6 +16,16 @@ class EngineError(Exception):
     pass
 
 
+class EvaluationError(EngineError):
+    """Raised when an arithmetic expression cannot be evaluated.
+    
+    In standard Prolog, this is an evaluation error (e.g., unknown function,
+    non-numeric argument). In our implementation, these are caught by builtins
+    and converted to failure (no solutions), since that's more user-friendly.
+    """
+    pass
+
+
 class Engine:
     """Mini-Prolog inference engine with backtracking search.
 
@@ -226,7 +236,6 @@ class Engine:
                 return
 
             # Find matching clauses using the index
-            matching_keys = [builtin_key]
             matching_indices = self._index.get(builtin_key, [])
 
             for idx in matching_indices:
@@ -391,11 +400,15 @@ class Engine:
             if name == "//" and len(vals) == 2:
                 if vals[1] == 0:
                     raise EngineError("Division by zero")
-                return Number(int(vals[0]) // int(vals[1]))
+                # Prolog integer division rounds toward zero
+                result = int(vals[0]) / int(vals[1])
+                return Number(float(int(result)))
             if name == "mod" and len(vals) == 2:
                 return Number(int(vals[0]) % int(vals[1]))
             if name == "rem" and len(vals) == 2:
-                return Number(int(vals[0]) % int(vals[1]))
+                # Prolog rem: remainder from toward-zero division
+                a, b = int(vals[0]), int(vals[1])
+                return Number(float(a - (int(a / b)) * b))
             if name == "abs" and len(vals) == 1:
                 return Number(abs(vals[0]))
             if name == "max" and len(vals) == 2:
@@ -432,13 +445,13 @@ class Engine:
             if name == "round" and len(vals) == 1:
                 return Number(float(round(vals[0])))
 
-            raise EngineError(f"Unknown arithmetic function: {name}/{len(vals)}")
+            raise EvaluationError(f"Unknown arithmetic function: {name}/{len(vals)}")
 
         if isinstance(term, Atom):
             if term.name == "pi":
                 return Number(3.141592653589793)
             if term.name == "e":
                 return Number(2.718281828459045)
-            raise EngineError(f"Unknown arithmetic constant: {term.name}")
+            raise EvaluationError(f"Unknown arithmetic constant: {term.name}")
 
         raise EngineError(f"Cannot evaluate {term} as arithmetic")

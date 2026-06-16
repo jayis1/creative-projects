@@ -173,6 +173,28 @@ python -m pytest tests/ -v
 - **Atom vs 0-arity compound**: Atoms and 0-arity compounds are handled interchangeably in goal resolution.
 - **Generator-based builtins**: All builtins are Python generators that yield substitutions for success and return (yield nothing) for failure, naturally integrating with the backtracking engine.
 
+## Known Issues (Resolved)
+
+The following bugs were found and fixed during development:
+
+1. **Anonymous variable reuse** — Multiple `_` in the same query were treated as the same variable instead of independent variables. **Fix**: Parser generates unique internal names (`__anon_N`) for each `_`.
+
+2. **Unary minus not supported** — `X is -3.` would fail to parse because `-` was only treated as an infix operator. **Fix**: Added unary minus/plus handling in `_parse_primary()`.
+
+3. **Integer division rounding** — Python's `//` rounds toward -infinity, but Prolog's `//` rounds toward zero. For example, `7 // -2` gave -4 (Python) instead of -3 (Prolog). **Fix**: Changed to use `int(a / b)` which rounds toward zero.
+
+4. **Division by zero swallowed** — The `is/2` builtin caught all exceptions including `EngineError`, silently swallowing division-by-zero errors. **Fix**: Introduced `EvaluationError` (subclass of `EngineError`) for non-evaluable expressions, which is caught as failure. Real `EngineError` (division by zero, depth exceeded) now propagates correctly.
+
+5. **Bare `except Exception` masking errors** — All arithmetic builtins used bare `except Exception` which could mask real programming errors. **Fix**: Replaced with specific exception handling: `EvaluationError` → fail, `EngineError` → propagate.
+
+6. **Atom-as-rule-head resolution bug** — Rules with atom heads (e.g., `loop :- loop.`) were treated as facts in the Atom goal handler, skipping the body. **Fix**: Added proper fact/rule dispatch for atom goals.
+
+7. **`=..` (univ) operator not parseable** — The `=..` operator couldn't be tokenized because `.` was lexed separately. **Fix**: Added special multi-character token handling in the lexer for `=..`.
+
+8. **Dead code** — `matching_keys` variable was computed but never used in the engine's compound goal resolution. **Fix**: Removed.
+
+9. **`rem` operator semantics** — `rem` used Python's `%` which differs from Prolog's `rem` for negative numbers. **Fix**: Changed to compute remainder from toward-zero division.
+
 ## License
 
 MIT

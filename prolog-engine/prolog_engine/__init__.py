@@ -12,7 +12,7 @@ from prolog_engine.ast_nodes import (
     Program,
 )
 from prolog_engine.unifier import Unifier, Substitution
-from prolog_engine.engine import Engine
+from prolog_engine.engine import Engine, EngineError, EvaluationError
 from prolog_engine.builtins import register_builtins
 
 __version__ = "1.0.0"
@@ -23,7 +23,7 @@ __all__ = [
     "Atom", "Variable", "Number", "String", "Compound", "Clause", "Query",
     "Program",
     "Unifier", "Substitution",
-    "Engine",
+    "Engine", "EngineError", "EvaluationError",
     "register_builtins",
 ]
 
