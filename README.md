@@ -18,5 +18,6 @@ A monorepo of AI-generated creative coding projects. Each project lives in its o
 | [cryptanalysis-toolkit](./cryptanalysis-toolkit) | Classical cipher toolkit: 12 ciphers (Caesar, substitution, Vigenère, affine, Playfair, rail fence, columnar transposition, autokey, Beaufort, Porta, XOR, Enigma), frequency analysis, IC, Friedman test, Kasiski examination, pattern matching, n-gram scoring, automatic breaking (Caesar/affine/Vigenère/substitution/XOR), hill climbing, CLI, 115 tests |
 | [basic-interpreter](./basic-interpreter) | Full-featured BASIC language interpreter: modular package (lexer, parser, AST, interpreter, config, CLI, REPL), 40+ built-in functions, FOR/NEXT/WHILE/WEND/DO/LOOP/SELECT CASE/ON ERROR, arrays, file I/O, PRINT USING, argparse CLI, TOML config, comprehensive pytest suite, pip-installable, 75+ tests |
 | [compression-engine](./compression-engine) | From-scratch data compression engine: 8 codecs (Huffman, LZ77, BWT, DEFLATE, RLE, Delta, LZW, Arithmetic), codec pipelines, analysis tools, benchmarking, CRC32 integrity, config system, CLI, abstract base class, 203 tests, pip-installable |
+| [chip8-emulator](./chip8-emulator) | CHIP-8 VM emulator: all 35 opcodes, SUPER-CHIP extensions (scroll, extended mode, large fonts, RPL flags), step-through debugger, ROM validator, disassembler, cycle counter, CLI, 178 tests, pip-installable |
 
 ---

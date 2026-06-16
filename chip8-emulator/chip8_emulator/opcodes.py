@@ -62,9 +62,12 @@ class OpcodeTable:
         self._table[0xF018] = cpu.op_Fx18   # LD ST, Vx
         self._table[0xF01E] = cpu.op_Fx1E   # ADD I, Vx
         self._table[0xF029] = cpu.op_Fx29   # LD F, Vx
+        self._table[0xF030] = cpu.op_Fx30   # LD HF, Vx (SUPER-CHIP)
         self._table[0xF033] = cpu.op_Fx33   # LD B, Vx
         self._table[0xF055] = cpu.op_Fx55   # LD [I], Vx
         self._table[0xF065] = cpu.op_Fx65   # LD Vx, [I]
+        self._table[0xF075] = cpu.op_Fx75   # LD R, Vx (SUPER-CHIP)
+        self._table[0xF085] = cpu.op_Fx85   # LD Vx, R (SUPER-CHIP)
 
     # ------------------------------------------------------------------
     # Dunder

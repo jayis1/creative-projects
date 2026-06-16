@@ -1,10 +1,18 @@
-"""CHIP-8 CPU — fetch-decode-execute loop with all 35 standard opcodes."""
+"""CHIP-8 CPU — fetch-decode-execute loop with all 35 standard opcodes.
+
+Supports standard CHIP-8 and common SUPER-CHIP extensions:
+  - Extended mode (not yet display-related, but flag is tracked)
+  - Scroll down (00Cn), scroll left (00FB), scroll right (00FC)
+  - Exit interpreter (00FD), enable extended mode (00FF)
+  - Large font sprites (Fx30)
+  - Save/Load flags (Fx75/Fx85)
+"""
 
 from __future__ import annotations
 
 import logging
 import random
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 from .display import Display
 from .keypad import Keypad
@@ -17,6 +25,7 @@ logger = logging.getLogger(__name__)
 
 STACK_SIZE = 16  # Standard CHIP-8 call stack depth
 NUM_REGISTERS = 16  # V0–VF
+SUPERCHIP_STACK_SIZE = 24  # SUPER-CHIP extends stack to 24
 
 
 class CpuError(Exception):
@@ -24,16 +33,19 @@ class CpuError(Exception):
 
 
 class CPU:
-    """CHIP-8 central processing unit.
+    """CHIP-8 central processing unit with SUPER-CHIP extensions.
 
     Attributes:
         V: 16 general-purpose 8-bit registers (V0–VF).
         I: 16-bit address register.
         pc: Program counter.
         sp: Stack pointer.
-        stack: 16-level return address stack.
+        stack: Return address stack (16 or 24 entries).
         dt: Delay timer.
         st: Sound timer.
+        cycles: Total instruction cycles executed since last reset.
+        extended_mode: Whether SUPER-CHIP extended mode is active.
+        r: 8 SUPER-CHIP flag registers (RPL flags).
     """
 
     def __init__(
@@ -41,21 +53,33 @@ class CPU:
         memory: Optional[Memory] = None,
         display: Optional[Display] = None,
         keypad: Optional[Keypad] = None,
+        *,
+        super_chip: bool = False,
+        on_step: Optional[Callable[["CPU", int], None]] = None,
     ) -> None:
         self.memory = memory or Memory()
         self.display = display or Display()
         self.keypad = keypad or Keypad()
+
+        # Configuration
+        self.super_chip = super_chip
+        self._max_stack = SUPERCHIP_STACK_SIZE if super_chip else STACK_SIZE
+        self._on_step = on_step
 
         # Registers
         self.V: List[int] = [0] * NUM_REGISTERS  # V0–VF
         self.I: int = 0  # Address register
         self.pc: int = PROGRAM_START  # Program counter
         self.sp: int = 0  # Stack pointer (next free slot)
-        self.stack: List[int] = [0] * STACK_SIZE
+        self.stack: List[int] = [0] * self._max_stack
 
         # Timers
         self.dt = DelayTimer()
         self.st = SoundTimer()
+
+        # SUPER-CHIP extension state
+        self.extended_mode: bool = False
+        self.r: List[int] = [0] * 8  # RPL flag registers (R0–R7)
 
         # Opcode dispatch table
         self._opcodes = OpcodeTable(self)
@@ -66,6 +90,7 @@ class CPU:
         # State
         self._running: bool = False
         self._rng = random.Random()
+        self.cycles: int = 0  # Cycle counter
 
     # ------------------------------------------------------------------
     # Public API
@@ -87,19 +112,32 @@ class CPU:
         self.I = 0
         self.pc = PROGRAM_START
         self.sp = 0
-        self.stack = [0] * STACK_SIZE
+        self.stack = [0] * self._max_stack
         self.dt.set(0)
         self.st.set(0)
         self.display.clear()
+        self.extended_mode = False
+        self.r = [0] * 8
         self._running = False
+        self.cycles = 0
 
-    def step(self) -> None:
-        """Fetch, decode, and execute a single instruction."""
+    def step(self) -> int:
+        """Fetch, decode, and execute a single instruction.
+
+        Returns the opcode that was executed.
+        """
         self._opcode = self._fetch()
         self._decode_and_execute(self._opcode)
+        self.cycles += 1
+        if self._on_step is not None:
+            self._on_step(self, self._opcode)
+        return self._opcode
 
-    def run(self, cycles: int = 0) -> None:
-        """Run *cycles* instruction cycles (0 = run until halted)."""
+    def run(self, cycles: int = 0) -> int:
+        """Run *cycles* instruction cycles (0 = run until halted).
+
+        Returns the number of cycles executed.
+        """
         self._running = True
         count = 0
         while self._running:
@@ -107,6 +145,7 @@ class CPU:
             count += 1
             if cycles > 0 and count >= cycles:
                 break
+        return count
 
     def halt(self) -> None:
         """Stop the CPU."""
@@ -150,11 +189,21 @@ class CPU:
                 raise CpuError(f"Unknown F-prefixed opcode: {opcode:04X}")
             handler()
         elif prefix == 0x0:
-            # 0-prefixed: need exact match for 00E0 and 00EE
+            # 0-prefixed: check for SUPER-CHIP extensions, then 00E0, 00EE
             if opcode == 0x00E0:
                 self.op_00E0()
             elif opcode == 0x00EE:
                 self.op_00EE()
+            elif opcode == 0x00FD and self.super_chip:
+                self.op_00FD()
+            elif opcode == 0x00FF and self.super_chip:
+                self.op_00FF()
+            elif (opcode & 0xFFF0) == 0x00C0 and self.super_chip:
+                self.op_00Cn(opcode & 0xF)
+            elif opcode == 0x00FB and self.super_chip:
+                self.op_00FB()
+            elif opcode == 0x00FC and self.super_chip:
+                self.op_00FC()
             else:
                 self.op_0NNN()
         else:
@@ -207,6 +256,30 @@ class CPU:
     def op_0NNN(self) -> None:
         """0NNN — SYS addr. Machine code call (ignored on modern systems)."""
         logger.debug("Ignoring machine code call: %04X", self._opcode)
+
+    # ------------------------------------------------------------------
+    # SUPER-CHIP extension opcodes
+    # ------------------------------------------------------------------
+
+    def op_00FD(self) -> None:
+        """00FD — EXIT. Exit interpreter (SUPER-CHIP)."""
+        self.halt()
+
+    def op_00FF(self) -> None:
+        """00FF — Enable extended mode (SUPER-CHIP)."""
+        self.extended_mode = True
+
+    def op_00Cn(self, n: int) -> None:
+        """00Cn — Scroll down n lines (SUPER-CHIP)."""
+        self.display.scroll_down(n)
+
+    def op_00FB(self) -> None:
+        """00FB — Scroll left 4 pixels (SUPER-CHIP)."""
+        self.display.scroll_left()
+
+    def op_00FC(self) -> None:
+        """00FC — Scroll right 4 pixels (SUPER-CHIP)."""
+        self.display.scroll_right()
 
     # ------------------------------------------------------------------
     # Opcode handlers — 1-prefixed
@@ -302,7 +375,7 @@ class CPU:
     def op_8xy6(self) -> None:
         """8xy6 — SHR Vx {, Vy}. VF = LSB; Vx >>= 1.
 
-        Uses CHIP-48 convention (shift Vx, not Vy).
+        Uses CHIP-48 convention (shift Vx directly, not Vy).
         """
         lsb = self.V[self._x] & 1
         self.V[self._x] = self.V[self._x] >> 1
@@ -317,7 +390,7 @@ class CPU:
     def op_8xyE(self) -> None:
         """8xyE — SHL Vx {, Vy}. VF = MSB; Vx <<= 1.
 
-        Uses CHIP-48 convention (shift Vx, not Vy).
+        Uses CHIP-48 convention (shift Vx directly, not Vy).
         """
         msb = (self.V[self._x] >> 7) & 1
         self.V[self._x] = (self.V[self._x] << 1) & 0xFF
@@ -346,7 +419,13 @@ class CPU:
 
     def op_Bxxx(self) -> None:
         """BNNN — JP V0, addr. PC = NNN + V0."""
-        self.pc = (self._nnn + self.V[0]) & 0xFFF
+        if self.extended_mode:
+            # SUPER-CHIP: BXNN — JP Vx, addr where x = top nibble
+            x = (self._opcode >> 8) & 0xF
+            self.pc = (self._opcode & 0x0FFF) + self.V[x]
+        else:
+            self.pc = (self._opcode & 0x0FFF) + self.V[0]
+        self.pc &= 0xFFF
 
     # ------------------------------------------------------------------
     # Opcode handlers — C-prefixed
@@ -395,8 +474,6 @@ class CPU:
 
     def op_Fx0A(self) -> None:
         """Fx0A — LD Vx, K. Wait for key press."""
-        # In a real emulator with event loop, this would block.
-        # For headless mode, we scan pressed keys.
         for key in range(16):
             if self.keypad.is_pressed(key):
                 self.V[self._x] = key
@@ -417,8 +494,21 @@ class CPU:
         self.I = (self.I + self.V[self._x]) & 0xFFF
 
     def op_Fx29(self) -> None:
-        """Fx29 — LD F, Vx. Set I to sprite location for digit Vx."""
+        """Fx29 — LD F, Vx. Set I to font sprite location for digit Vx."""
         self.I = self.memory.font_sprite_addr(self.V[self._x] & 0xF)
+
+    def op_Fx30(self) -> None:
+        """Fx30 — LD HF, Vx. Set I to 10-byte font sprite (SUPER-CHIP).
+
+        Uses the large (10-row) font sprites for digits 0–9.
+        """
+        digit = self.V[self._x] & 0xF
+        if 0 <= digit <= 9:
+            # SUPER-CHIP large fonts start at 0x090
+            self.I = 0x090 + digit * 10
+        else:
+            # Fall back to standard font for A–F
+            self.I = self.memory.font_sprite_addr(digit)
 
     def op_Fx33(self) -> None:
         """Fx33 — LD B, Vx. Store BCD of Vx at I, I+1, I+2."""
@@ -441,13 +531,25 @@ class CPU:
             self.V[i] = self.memory.read(self.I + i)
         # Modern convention: I is NOT incremented
 
+    def op_Fx75(self) -> None:
+        """Fx75 — LD R, Vx. Store V0..Vx in RPL flags (SUPER-CHIP)."""
+        x = min(self._x, 7)
+        for i in range(x + 1):
+            self.r[i] = self.V[i]
+
+    def op_Fx85(self) -> None:
+        """Fx85 — LD Vx, R. Load V0..Vx from RPL flags (SUPER-CHIP)."""
+        x = min(self._x, 7)
+        for i in range(x + 1):
+            self.V[i] = self.r[i]
+
     # ------------------------------------------------------------------
     # Stack helpers
     # ------------------------------------------------------------------
 
     def _call(self, addr: int) -> None:
         """Push return address and jump to *addr*."""
-        if self.sp >= STACK_SIZE:
+        if self.sp >= self._max_stack:
             raise CpuError("Stack overflow")
         self.stack[self.sp] = self.pc
         self.sp += 1
@@ -467,5 +569,5 @@ class CPU:
     def __repr__(self) -> str:
         return (
             f"CPU(pc={self.pc:#06x}, I={self.I:#06x}, "
-            f"sp={self.sp}, V={[hex(v) for v in self.V]})"
+            f"sp={self.sp}, cycles={self.cycles})"
         )

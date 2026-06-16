@@ -1,132 +1,193 @@
 # CHIP-8 Emulator
 
-A full-featured CHIP-8 virtual machine emulator in Python, implementing all 35 standard opcodes with a clean, modular architecture.
+A full-featured CHIP-8 virtual machine emulator in Python, supporting all 35 standard opcodes plus SUPER-CHIP extensions.
 
-## What is CHIP-8?
+## Features
 
-CHIP-8 is a simple interpreted programming language from the late 1970s, originally designed for the COSMAC VIP and Telmac 1800 computers. It's one of the most popular targets for emulator development due to its small instruction set (35 opcodes), simple 64×32 monochrome display, and 16-key hex keypad. Classic games like Pong, Space Invaders, Tetris, and Pac-Man were ported to CHIP-8.
+### Core Emulation
+- **Complete opcode set**: All 35 standard CHIP-8 opcodes implemented
+- **4 KiB address space** with font sprites pre-loaded at 0x050–0x09F
+- **64×32 monochrome display** with XOR sprite drawing and pixel wrapping
+- **16-key hex keypad** (0–F) with press/release tracking
+- **Delay timer** and **sound timer** at 60 Hz with configurable beeping
+- **16-entry call stack** (24 in SUPER-CHIP mode)
+- **16 general-purpose 8-bit registers** (V0–VF) and 16-bit address register (I)
 
-## How It Works
+### SUPER-CHIP Extensions
+- **Extended mode flag** (00FF) for 128×64 display mode support
+- **Scroll operations**: scroll down N lines (00Cn), scroll left (00FB), scroll right (00FC)
+- **Exit interpreter** (00FD) — halts the CPU
+- **Large font sprites** (Fx30) — 10-row fonts for digits 0–9 starting at 0x090
+- **RPL flag registers** (Fx75/Fx85) — save/load 8 persistent flag registers
+- **Extended jump** (BxNN) — in extended mode, uses Vx instead of V0 for offset
+- **24-entry stack** in SUPER-CHIP mode (vs. standard 16)
 
-The emulator implements a complete CHIP-8 virtual machine:
-
-- **Memory**: 4 KiB address space with built-in font sprites at `0x050–0x09F`, ROMs loaded at `0x200`
-- **CPU**: 16 8-bit registers (V0–VF), 16-bit address register (I), program counter, 16-level call stack
-- **Display**: 64×32 monochrome buffer with XOR sprite drawing and collision detection
-- **Timers**: Delay timer and sound timer, both counting down at 60 Hz
-- **Keypad**: 16-key hex input with configurable physical key mapping
-- **Opcodes**: All 35 standard CHIP-8 instructions fully implemented
-
-### Opcode Groups
-
-| Prefix | Instructions | Description |
-|--------|-------------|-------------|
-| `0xxx` | `00E0`, `00EE` | Clear screen, return from subroutine |
-| `1xxx` | `1NNN` | Jump to address |
-| `2xxx` | `2NNN` | Call subroutine |
-| `3xxx` | `3xkk` | Skip if register equals byte |
-| `4xxx` | `4xkk` | Skip if register not equals byte |
-| `5xxx` | `5xy0` | Skip if register equals register |
-| `6xxx` | `6xkk` | Load byte into register |
-| `7xxx` | `7xkk` | Add byte to register (no carry) |
-| `8xxx` | `8xy0–8xyE` | Register arithmetic: LD, OR, AND, XOR, ADD, SUB, SHR, SUBN, SHL |
-| `9xxx` | `9xy0` | Skip if register not equals register |
-| `Axxx` | `ANNN` | Load address into I |
-| `Bxxx` | `BNNN` | Jump to address + V0 |
-| `Cxxx` | `Cxkk` | Random byte AND mask |
-| `Dxxx` | `Dxyn` | Draw sprite at (Vx, Vy) |
-| `Exxx` | `Ex9E`, `ExA1` | Skip if key pressed / not pressed |
-| `Fxxx` | `Fx07–Fx65` | Timer, key wait, font, BCD, register save/load |
-
-### Design Decisions
-
-- **8xy6/8xyE**: Uses CHIP-48/SUPER-CHIP convention (shift Vx directly, not Vy)
-- **Fx55/Fx65**: Modern convention (I is NOT auto-incremented)
-- **8xy1/8xy2/8xy3**: No VF reset (modern behavior)
-
-## Usage
-
-### As a Library
-
-```python
-from chip8_emulator import CPU, Display, Keypad, Memory
-
-# Create and configure
-cpu = CPU()
-cpu.load_rom_from_file("game.ch8")
-
-# Step through instructions
-cpu.step()
-cpu.step()
-
-# Run for N cycles
-cpu.run(cycles=100)
-
-# Inspect state
-print(f"PC: {cpu.pc:#06x}, V0: {cpu.V[0]:#04x}")
-print(f"Display:\n{cpu.display.render()}")
-
-# Simulate key input
-cpu.keypad.press(0x5)  # Press hex key 5
-```
-
-### Command Line
-
-```bash
-# Run a ROM (with display dump on exit)
-chip8-emulator run game.ch8 --dump-display
-
-# Run with speed limit
-chip8-emulator run game.ch8 --speed 500
-
-# Disassemble a ROM
-chip8-emulator disasm game.ch8
-
-# Validate a ROM
-chip8-emulator validate game.ch8
-```
-
-### Built-in Test ROMs
-
-```python
-from chip8_emulator.roms import ALL_ROMS
-
-# Get a test ROM
-rom = ALL_ROMS["hello"]()
-cpu = CPU()
-cpu.load_rom(rom)
-```
-
-Available test ROMs: `maze`, `counter`, `ibm_logo`, `hello`, `add_test`, `bcd_test`, `draw_test`, `key_test`, `scroll_test`
-
-## Installation
-
-```bash
-pip install -e .
-```
-
-## Testing
-
-```bash
-pytest tests/ -v
-```
+### Developer Tools
+- **Debugger**: Step-through execution with breakpoints, register/memory/display inspection, and opcode tracing
+- **ROM Validator**: Detects empty ROMs, oversized ROMs, odd byte counts, common issues, and near-limit warnings
+- **Disassembler**: Full mnemonic disassembly for all opcodes including SUPER-CHIP extensions
+- **CLI**: Run, debug, disassemble, and validate ROMs from the command line
+- **Cycle counter**: Track total instructions executed since reset
+- **Step callback**: Optional `on_step` callback for custom monitoring or profiling
 
 ## Architecture
 
 ```
 chip8_emulator/
-├── __init__.py      # Package exports
-├── cpu.py           # CPU fetch-decode-execute loop + all opcode handlers
-├── display.py       # 64×32 monochrome display with XOR drawing
-├── keypad.py        # 16-key hex keypad with configurable mapping
-├── memory.py        # 4 KiB address space + font sprites
-├── opcodes.py       # Opcode dispatch table
-├── sound.py         # Sound timer (60 Hz countdown)
-├── timer.py         # Delay timer (60 Hz countdown)
-├── cli.py           # CLI runner + disassembler
+├── __init__.py      # Package init, version, exports
+├── cpu.py           # CPU with fetch-decode-execute, all opcodes
+├── memory.py        # 4 KiB RAM, font sprites, ROM loading
+├── display.py       # 64×32 display, XOR drawing, scrolling
+├── keypad.py        # 16-key hex keypad
+├── timer.py         # Delay timer at 60 Hz
+├── sound.py         # Sound timer with beep state
+├── opcodes.py       # Dispatch table for opcode lookup
+├── debugger.py      # Step-through debugger
+├── validator.py     # ROM validation and analysis
+├── cli.py           # Command-line interface
 └── roms.py          # Built-in test ROMs
 ```
 
-## License
+## Usage
 
-MIT
+### Command Line
+
+```bash
+# Run a ROM
+chip8-emulator run roms/maze.ch8
+
+# Run with cycle limit and display dump
+chip8-emulator run roms/maze.ch8 --cycles 1000 --dump-display
+
+# Disassemble a ROM
+chip8-emulator disasm roms/maze.ch8
+
+# Validate a ROM
+chip8-emulator validate roms/maze.ch8
+
+# Debug a ROM step-by-step
+chip8-emulator debug roms/maze.ch8 --steps 20
+
+# Enable SUPER-CHIP mode
+chip8-emulator run roms/maze.ch8 --super-chip
+```
+
+### Python API
+
+```python
+from chip8_emulator import CPU, Memory, Display, Keypad, Debugger, validate_rom
+
+# Create and run a CPU
+cpu = CPU()
+cpu.load_rom_from_file("roms/maze.ch8")
+cpu.run(cycles=1000)
+
+# SUPER-CHIP mode
+cpu = CPU(super_chip=True)
+cpu.load_rom_from_file("roms/scroll_test.ch8")
+
+# Step-by-step with cycle tracking
+cpu = CPU()
+cpu.load_rom_from_file("roms/maze.ch8")
+while cpu.cycles < 5000:
+    cpu.step()
+
+# Monitor with on_step callback
+def on_step(cpu, opcode):
+    print(f"PC={cpu.pc:04X} opcode={opcode:04X}")
+
+cpu = CPU(on_step=on_step)
+cpu.load_rom_from_file("roms/maze.ch8")
+cpu.run(cycles=100)
+
+# Use the debugger
+dbg = Debugger(cpu)
+dbg.add_breakpoint(0x200)
+dbg.enable_trace()
+dbg.step()
+print(dbg.dump_registers())
+print(dbg.dump_display())
+
+# Validate a ROM
+result = validate_rom("roms/maze.ch8")
+print(result)  # Shows errors, warnings, info
+```
+
+## Opcode Reference
+
+| Opcode | Mnemonic | Description |
+|--------|----------|-------------|
+| 00E0 | CLS | Clear display |
+| 00EE | RET | Return from subroutine |
+| 0NNN | SYS addr | System call (ignored) |
+| 1NNN | JP addr | Jump to address |
+| 2NNN | CALL addr | Call subroutine |
+| 3xkk | SE Vx, byte | Skip if Vx == kk |
+| 4xkk | SNE Vx, byte | Skip if Vx != kk |
+| 5xy0 | SE Vx, Vy | Skip if Vx == Vy |
+| 6xkk | LD Vx, byte | Set Vx = kk |
+| 7xkk | ADD Vx, byte | Vx += kk (no carry) |
+| 8xy0 | LD Vx, Vy | Vx = Vy |
+| 8xy1 | OR Vx, Vy | Vx \|= Vy |
+| 8xy2 | AND Vx, Vy | Vx &= Vy |
+| 8xy3 | XOR Vx, Vy | Vx ^= Vy |
+| 8xy4 | ADD Vx, Vy | Vx += Vy (carry in VF) |
+| 8xy5 | SUB Vx, Vy | Vx -= Vy (borrow in VF) |
+| 8xy6 | SHR Vx | Vx >>= 1 (LSB in VF) |
+| 8xy7 | SUBN Vx, Vy | Vx = Vy - Vx (borrow in VF) |
+| 8xyE | SHL Vx | Vx <<= 1 (MSB in VF) |
+| 9xy0 | SNE Vx, Vy | Skip if Vx != Vy |
+| ANNN | LD I, addr | I = NNN |
+| BNNN | JP V0, addr | PC = NNN + V0 |
+| Cxkk | RND Vx, byte | Vx = random & kk |
+| Dxyn | DRW Vx, Vy, n | Draw n-byte sprite at (Vx, Vy) |
+| Ex9E | SKP Vx | Skip if key Vx pressed |
+| ExA1 | SKNP Vx | Skip if key Vx not pressed |
+| Fx07 | LD Vx, DT | Vx = delay timer |
+| Fx0A | LD Vx, K | Wait for key press |
+| Fx15 | LD DT, Vx | delay timer = Vx |
+| Fx18 | LD ST, Vx | sound timer = Vx |
+| Fx1E | ADD I, Vx | I += Vx |
+| Fx29 | LD F, Vx | I = font sprite for digit Vx |
+| Fx30 | LD HF, Vx | I = large font sprite (SUPER-CHIP) |
+| Fx33 | LD B, Vx | Store BCD of Vx at I |
+| Fx55 | LD [I], Vx | Store V0..Vx starting at I |
+| Fx65 | LD Vx, [I] | Load V0..Vx starting at I |
+| Fx75 | LD R, Vx | Save V0..Vx to RPL flags (SUPER-CHIP) |
+| Fx85 | LD Vx, R | Load V0..Vx from RPL flags (SUPER-CHIP) |
+| 00FD | EXIT | Exit interpreter (SUPER-CHIP) |
+| 00FF | EXMODE | Enable extended mode (SUPER-CHIP) |
+| 00Cn | SCROLL DOWN n | Scroll display down n lines (SUPER-CHIP) |
+| 00FB | SCROLL LEFT | Scroll display left 4 pixels (SUPER-CHIP) |
+| 00FC | SCROLL RIGHT | Scroll display right 4 pixels (SUPER-CHIP) |
+
+## Testing
+
+```bash
+# Run all tests
+python -m pytest tests/ -v
+
+# Run specific test file
+python -m pytest tests/test_cpu.py -v
+python -m pytest tests/test_extensions.py -v
+python -m pytest tests/test_debugger.py -v
+python -m pytest tests/test_validator.py -v
+```
+
+The test suite includes 178 tests covering:
+- All CPU opcodes
+- Memory, display, keypad, and timer modules
+- SUPER-CHIP extensions (scrolling, RPL flags, large fonts, extended mode)
+- Debugger (breakpoints, tracing, state inspection)
+- ROM validator
+- CLI disassembler
+- Built-in test ROMs
+- Cycle counting and step callbacks
+
+## Implementation Notes
+
+- Uses **CHIP-48 shift convention**: SHR/SHL operate on Vx directly (not Vy)
+- Uses **modern I convention**: Fx55/Fx65 do NOT increment I
+- Sprites wrap at display boundaries using modular arithmetic
+- Timer `set()` clamps values to 0–255 (handles negative inputs correctly)
+- All register values are masked to 0–255 to prevent overflow

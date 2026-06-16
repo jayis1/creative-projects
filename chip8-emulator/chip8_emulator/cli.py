@@ -1,4 +1,4 @@
-"""CHIP-8 Emulator — command-line interface and disassembler."""
+"""CHIP-8 Emulator — command-line interface, disassembler, debugger, and validator."""
 
 from __future__ import annotations
 
@@ -8,19 +8,20 @@ import time
 from pathlib import Path
 
 from .cpu import CPU, CpuError
+from .debugger import Debugger
 from .display import Display
 from .keypad import Keypad
 from .memory import Memory
+from .validator import validate_rom
 
 
 def disassemble(data: bytes, start: int = 0x200) -> None:
     """Print a disassembly listing of CHIP-8 ROM *data*."""
-    mnemonics = _build_mnemonic_table()
     i = 0
     while i + 1 < len(data):
         opcode = (data[i] << 8) | data[i + 1]
         addr = start + i
-        disasm = _disassemble_opcode(opcode, mnemonics)
+        disasm = _disassemble_opcode(opcode, _build_mnemonic_table())
         print(f"  {addr:04X}:  {opcode:04X}    {disasm}")
         i += 2
 
@@ -60,13 +61,21 @@ def _build_mnemonic_table() -> dict:
         "Fx18": "LD ST, V{x}",
         "Fx1E": "ADD I, V{x}",
         "Fx29": "LD F, V{x}",
+        "Fx30": "LD HF, V{x}",
         "Fx33": "LD B, V{x}",
         "Fx55": "LD [I], V{x}",
         "Fx65": "LD V{x}, [I]",
+        "Fx75": "LD R, V{x}",
+        "Fx85": "LD V{x}, R",
+        "00FD": "EXIT",
+        "00FF": "EXMODE",
+        "00Cn": "SCROLL DOWN",
+        "00FB": "SCROLL LEFT",
+        "00FC": "SCROLL RIGHT",
     }
 
 
-def _disassemble_opcode(opcode: int, table: dict) -> str:
+def _disassemble_opcode(opcode: int, table: dict | None = None) -> str:
     """Disassemble a single opcode into a human-readable string."""
     nnn = opcode & 0x0FFF
     kk = opcode & 0xFF
@@ -79,6 +88,16 @@ def _disassemble_opcode(opcode: int, table: dict) -> str:
         return "CLS"
     if opcode == 0x00EE:
         return "RET"
+    if opcode == 0x00FD:
+        return "EXIT (SUPER-CHIP)"
+    if opcode == 0x00FF:
+        return "EXMODE (SUPER-CHIP)"
+    if opcode == 0x00FB:
+        return "SCROLL LEFT (SUPER-CHIP)"
+    if opcode == 0x00FC:
+        return "SCROLL RIGHT (SUPER-CHIP)"
+    if (opcode & 0xFFF0) == 0x00C0:
+        return f"SCROLL DOWN {n} (SUPER-CHIP)"
 
     prefix = (opcode >> 12) & 0xF
 
@@ -147,12 +166,18 @@ def _disassemble_opcode(opcode: int, table: dict) -> str:
             return f"ADD I, V{x:X}"
         if kk == 0x29:
             return f"LD F, V{x:X}"
+        if kk == 0x30:
+            return f"LD HF, V{x:X} (SUPER-CHIP)"
         if kk == 0x33:
             return f"LD B, V{x:X}"
         if kk == 0x55:
             return f"LD [I], V{x:X}"
         if kk == 0x65:
             return f"LD V{x:X}, [I]"
+        if kk == 0x75:
+            return f"LD R, V{x:X} (SUPER-CHIP)"
+        if kk == 0x85:
+            return f"LD V{x:X}, R (SUPER-CHIP)"
         return f"??? ({opcode:04X})"
 
     return f"??? ({opcode:04X})"
@@ -171,7 +196,7 @@ def main(argv: list[str] | None = None) -> None:
     """CLI entry point."""
     parser = argparse.ArgumentParser(
         prog="chip8-emulator",
-        description="CHIP-8 emulator and disassembler",
+        description="CHIP-8 emulator, disassembler, debugger, and validator",
     )
     sub = parser.add_subparsers(dest="command", help="Sub-command")
 
@@ -182,6 +207,8 @@ def main(argv: list[str] | None = None) -> None:
                        help="Max cycles to run (0=infinite)")
     run_p.add_argument("-s", "--speed", type=int, default=700,
                        help="Instructions per second (default: 700)")
+    run_p.add_argument("--super-chip", action="store_true",
+                       help="Enable SUPER-CHIP extensions")
     run_p.add_argument("--dump-display", action="store_true",
                        help="Print the display on halt")
 
@@ -192,6 +219,14 @@ def main(argv: list[str] | None = None) -> None:
     # Validate
     val_p = sub.add_parser("validate", help="Validate a CHIP-8 ROM")
     val_p.add_argument("rom", type=Path, help="Path to .ch8 ROM file")
+
+    # Debug
+    dbg_p = sub.add_parser("debug", help="Debug a CHIP-8 ROM step-by-step")
+    dbg_p.add_argument("rom", type=Path, help="Path to .ch8 ROM file")
+    dbg_p.add_argument("--super-chip", action="store_true",
+                       help="Enable SUPER-CHIP extensions")
+    dbg_p.add_argument("-n", "--steps", type=int, default=10,
+                       help="Number of steps to run (default: 10)")
 
     args = parser.parse_args(argv)
 
@@ -205,15 +240,35 @@ def main(argv: list[str] | None = None) -> None:
         return
 
     if args.command == "validate":
-        rom_data = args.rom.read_bytes()
-        print(f"ROM size: {len(rom_data)} bytes")
-        if len(rom_data) > 4096 - 0x200:
-            print("WARNING: ROM exceeds available memory")
-        print(f"Instructions: {len(rom_data) // 2}")
+        result = validate_rom(str(args.rom))
+        print(result)
+        sys.exit(0 if result.ok else 1)
+
+    if args.command == "debug":
+        cpu = CPU(super_chip=args.super_chip)
+        cpu.load_rom_from_file(str(args.rom))
+        debugger = Debugger(cpu)
+
+        print(f"Debugging {args.rom} ({args.steps} steps)")
+        print(f"Initial state:\n{debugger.dump_registers()}")
+        print()
+
+        for i in range(args.steps):
+            opcode = debugger.step()
+            desc = _disassemble_opcode(opcode)
+            print(f"Step {i + 1}: {desc}")
+            print(debugger.dump_registers())
+            if debugger.should_break():
+                print(f"*** Breakpoint hit at {cpu.pc:04X}")
+                break
+            print()
+
+        print("\nDisplay:")
+        print(debugger.dump_display())
         return
 
     if args.command == "run":
-        cpu = CPU()
+        cpu = CPU(super_chip=getattr(args, 'super_chip', False))
         cpu.load_rom_from_file(str(args.rom))
         cycles = args.cycles if args.cycles > 0 else 0
         interval = 1.0 / args.speed if args.speed > 0 else 0
