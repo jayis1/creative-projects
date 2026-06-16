@@ -305,9 +305,13 @@ class Assembler:
                     self.current_addr += 4
                 else:
                     # Need LUI + ADDI
-                    upper = (imm + 0x800) & 0xFFFFF000  # Adjust for sign extension
+                    # upper bits (bits [31:12]) of the target value, adjusted
+                    # for sign extension of the addi immediate
+                    upper = (imm + 0x800) & 0xFFFFF000
                     lower = imm - upper
-                    expanded.append((lineno, f"lui {rd}, {upper}"))
+                    # Pass the upper 20-bit field value (unshifted) to lui
+                    upper_field = (upper >> 12) & 0xFFFFF
+                    expanded.append((lineno, f"lui {rd}, {upper_field}"))
                     expanded.append((lineno, f"addi {rd}, {rd}, {lower}"))
                     self.current_addr += 8
             elif mnemonic == "la":

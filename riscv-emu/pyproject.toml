@@ -4,10 +4,32 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "riscv-emu"
-version = "1.0.0"
-description = "Full-featured RISC-V RV32I emulator with assembler, debugger, and profiler"
-requires-python = ">=3.9"
+version = "2.0.0"
+description = "Full-featured RISC-V RV32I emulator with assembler, debugger, profiler, and MMIO devices"
+readme = "README.md"
 license = {text = "MIT"}
+requires-python = ">=3.9"
+authors = [
+    {name = "RISC-V Emulator Contributors"},
+]
+keywords = ["risc-v", "emulator", "assembler", "simulator", "rv32i"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Education",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Emulators",
+    "Topic :: Education",
+]
+
+[project.optional-dependencies]
+toml = ["tomli; python_version < '3.11'"]
+dev = ["pytest>=7.0", "pytest-cov"]
 
 [project.scripts]
 riscv-emu = "riscv_emu.cli:main"
@@ -17,3 +39,8 @@ include = ["riscv_emu*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "-v --tb=short"
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
