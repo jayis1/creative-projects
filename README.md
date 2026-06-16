@@ -21,6 +21,6 @@ A monorepo of AI-generated creative coding projects. Each project lives in its o
 | [chip8-emulator](./chip8-emulator) | CHIP-8 VM emulator: 35 opcodes, SUPER-CHIP extensions, built-in assembler, execution profiler, trace recorder, step-through debugger, ROM validator, config files (YAML/JSON/TOML), CLI, 293 tests, pip-installable |
 || [prolog-engine](./prolog-engine) | Mini-Prolog logic programming engine v2.0: Robinson's unification w/ occurs-check, backtracking, 60+ built-ins (string/atom ops, list aggregation), config files (YAML/JSON/TOML), colorized REPL, structured exceptions, logging, engine statistics, 195 tests, pip-installable |
 || [riscv-emu](./riscv-emu) | RISC-V RV32I emulator v2.0: RV32I+RV32M+Zicsr, two-pass assembler, disassembler, ELF32 loader, interactive debugger, profiler, tracer, UART/CLINT MMIO devices, config system, state serialization, structured logging, 159 tests, pip-installable |
-| [bplus-db](./bplus-db) | B+ Tree database engine: range queries, prefix scans, ACID-like transactions, WAL, bulk loading, merge/diff, JSON/binary persistence, SQL-like query language, tree validation, CLI, 112 tests |
+| [bplus-db](./bplus-db) | B+ Tree database engine: range queries, prefix scans, ACID-like transactions, WAL, bulk loading, merge/diff, JSON/binary persistence, SQL-like query language, tree validation, CLI, 118 tests |
 
 ---

@@ -189,11 +189,15 @@ class Database:
             self._stats["puts"] += 1
 
     def get(self, key: str, default: Any = None) -> Any:
-        """Retrieve a value by key, returning default if not found."""
+        """Retrieve a value by key, returning default if not found.
+        
+        Note: If the stored value is None, this returns None (not the default).
+        The default is only returned when the key doesn't exist.
+        """
         with self._lock:
             self._stats["gets"] += 1
             result = self._tree.search(key)
-            if result is None:
+            if result is BPlusTree._NOT_FOUND:
                 return default
             return self._serializer.deserialize_value(result)
 
@@ -497,7 +501,7 @@ class Database:
         with self._lock:
             for key, val in other._tree.range_query():
                 existing = self._tree.search(key)
-                if existing is None:
+                if existing is BPlusTree._NOT_FOUND:
                     self._tree.insert(key, val)
                     merged += 1
                 elif conflict == "theirs":

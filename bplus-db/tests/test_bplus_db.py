@@ -28,7 +28,7 @@ class TestBPlusTree:
 
     def test_search_nonexistent(self):
         tree = BPlusTree(order=4)
-        assert tree.search("missing") is None
+        assert tree.search("missing") is BPlusTree._NOT_FOUND
 
     def test_update_existing_key(self):
         tree = BPlusTree(order=4)
@@ -82,7 +82,7 @@ class TestBPlusTree:
         tree.insert("b", 2)
         tree.insert("c", 3)
         assert tree.delete("b") is True
-        assert tree.search("b") is None
+        assert tree.search("b") is BPlusTree._NOT_FOUND
         assert tree.size == 2
 
     def test_delete_nonexistent(self):
@@ -271,7 +271,7 @@ class TestBPlusTreeBulkLoad:
         items = [("a", 1), ("b", 2), ("c", 3)]
         tree.bulk_load(items)
         assert tree.size == 3
-        assert tree.search("x") is None
+        assert tree.search("x") is BPlusTree._NOT_FOUND
 
     def test_bulk_load_validates_tree(self):
         tree = BPlusTree(order=4)
@@ -957,3 +957,73 @@ class TestConcurrency:
 
         assert len(errors) == 0
         assert db.stats()["total_keys"] == 500
+
+
+# ── Bug Fix Regression Tests ──────────────────────────────────────
+
+class TestBugFixes:
+    """Regression tests for bugs found and fixed in Phase 3."""
+
+    def test_search_returns_sentinel_not_none(self):
+        """Bug: search() used to return None for 'not found', which conflated
+        with stored None values. Fixed to return _NOT_FOUND sentinel."""
+        tree = BPlusTree(order=4)
+        # Key not in tree should return _NOT_FOUND, not None
+        assert tree.search("missing") is BPlusTree._NOT_FOUND
+        # But we can store None as a value
+        tree.insert("key", None)
+        result = tree.search("key")
+        assert result is None  # Stored None, not "not found"
+        assert result is not BPlusTree._NOT_FOUND
+
+    def test_database_get_with_none_value(self):
+        """Bug: Database.get() used to return default for stored None values.
+        Now correctly distinguishes 'not found' from 'stored None'."""
+        db = Database(order=4)
+        db.put("null_key", None)
+        assert db.get("null_key") is None  # Not the default "fallback"
+        assert db.get("null_key", default="fallback") is None  # Still None, not "fallback"
+        assert db.get("missing_key", default="fallback") == "fallback"
+
+    def test_bulk_load_creates_valid_tree_all_orders(self):
+        """Bug: bulk_load created underflow nodes for certain sizes and orders.
+        Fixed with proper redistribution algorithm."""
+        for order in [3, 4, 5, 8, 16, 32, 64]:
+            for n in [5, 7, 10, 15, 50, 99, 100, 200, 500]:
+                tree = BPlusTree(order=order)
+                items = [("k%04d" % i, i) for i in range(n)]
+                tree.bulk_load(items)
+                violations = tree.validate()
+                assert violations == [], \
+                    f"Violations for order={order}, n={n}: {violations}"
+                # Verify all keys are found
+                for i in range(n):
+                    assert tree.search("k%04d" % i) == i
+
+    def test_key_func_parameter_removed(self):
+        """Bug: key_func parameter was accepted but never used (dead code).
+        Fixed by removing the parameter entirely."""
+        with pytest.raises(TypeError):
+            BPlusTree(order=4, key_func=lambda x: x.lower())
+
+    def test_merge_with_none_values(self):
+        """Bug: merge() used tree.search() == None to check if key exists,
+        which fails when the stored value is None. Fixed to use _NOT_FOUND."""
+        db1 = Database(order=4)
+        db1.put("a", None)
+        db1.put("b", 2)
+        db2 = Database(order=4)
+        db2.put("a", 99)
+        db2.put("c", 3)
+        # Merge with "theirs" strategy should overwrite None
+        db1.merge(db2, conflict="theirs")
+        assert db1.get("a") == 99
+        assert db1.get("b") == 2
+        assert db1.get("c") == 3
+
+    def test_delete_then_search_returns_sentinel(self):
+        """Verify that after deleting a key, search returns _NOT_FOUND."""
+        tree = BPlusTree(order=4)
+        tree.insert("x", 1)
+        assert tree.delete("x") is True
+        assert tree.search("x") is BPlusTree._NOT_FOUND

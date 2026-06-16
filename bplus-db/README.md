@@ -173,4 +173,17 @@ bplus-db> QUIT
 - **SQL-like query language** for ad-hoc queries
 - **Thread-safe** operations with reentrant locking
 - **Interactive shell** with shorthand and SQL commands
-- **Comprehensive test suite** (112 tests)
+- **Comprehensive test suite** (118 tests)
+
+## Known Issues (Resolved)
+
+| Issue | Description | Fix |
+|-------|-------------|-----|
+| Bulk load underflow | `bulk_load()` created B+ trees with underflow nodes (fewer than minimum keys) for certain order/size combinations | Rewrote redistribution algorithm: leaves redistribute from penultimate leaf, internal nodes use iterative donor-based redistribution ensuring all non-root nodes meet minimum fill |
+| `search()` None ambiguity | `BPlusTree.search()` returned `None` for "key not found", conflating with stored `None` values | Introduced `BPlusTree._NOT_FOUND` sentinel; `search()` now returns `_NOT_FOUND` instead of `None` |
+| `Database.get()` None confusion | `Database.get()` returned `default` for stored `None` values because it checked `result is None` | Updated to check `result is BPlusTree._NOT_FOUND`; now `get("key_with_none")` correctly returns `None` |
+| `merge()` None conflict | `Database.merge()` used `search() is None` to detect missing keys, which failed when values were `None` | Updated to use `_NOT_FOUND` sentinel |
+| Dead `key_func` parameter | `BPlusTree.__init__` accepted `key_func` parameter but never used it — misleading API | Removed the parameter entirely |
+| Internal node separator key | `_borrow_from_left_leaf` used wrong index for parent separator key | Fixed: separator key between children[i-1] and children[i] is at `parent.keys[i-1]`, not `parent.keys[i]` |
+| Bulk load internal nodes | `bulk_load()` built internal nodes incorrectly using `children[j+1].keys[0]` which fails for multi-level trees | Fixed with `_min_key()` helper that descends to find the actual minimum key in any subtree |
+| Query parser regex | `(?i)` inline flag inside combined alternation pattern caused `re` errors | Moved `re.IGNORECASE` to `re.compile()` flags |

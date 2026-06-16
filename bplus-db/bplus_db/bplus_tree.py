@@ -10,7 +10,7 @@ This module implements a generic B+ tree where:
 
 from __future__ import annotations
 
-from typing import Any, Callable, Iterator, Optional
+from typing import Any, Iterator, Optional
 
 
 class BPlusTreeNode:
@@ -136,31 +136,35 @@ class BPlusTree:
         size: Number of key-value pairs stored.
     """
 
-    def __init__(self, order: int = 64, key_func: Callable = None):
+    def __init__(self, order: int = 64):
         """Initialize a B+ tree.
         
         Args:
             order: The branching factor (max children per internal node). Must be >= 3.
-            key_func: Optional function to extract comparison keys from values.
-                      If None, keys are compared directly.
         """
         if order < 3:
             raise ValueError("B+ tree order must be at least 3")
         self.order = order
-        self.key_func = key_func or (lambda x: x)
         self.root: BPlusTreeNode = LeafNode()
         self.size: int = 0
 
-    def search(self, key) -> Optional[Any]:
-        """Search for a key and return its value, or None if not found.
+    # Sentinel for "key not found" — needed because None is a valid stored value
+    _NOT_FOUND = object()
+
+    def search(self, key):
+        """Search for a key and return its value, or _NOT_FOUND if not found.
         
         Time complexity: O(log n)
+        
+        Note: Returns BPlusTree._NOT_FOUND (a sentinel object) rather than None,
+        because None can be a legitimate stored value. Use ``key in tree`` to
+        check existence, or compare the result against BPlusTree._NOT_FOUND.
         """
         leaf = self._find_leaf(key)
         idx = leaf.find_key_index(key)
         if idx < len(leaf.keys) and leaf.keys[idx] == key:
             return leaf.values[idx]
-        return None
+        return BPlusTree._NOT_FOUND
 
     def insert(self, key, value) -> None:
         """Insert a key-value pair. Overwrites existing value if key exists.
@@ -236,6 +240,9 @@ class BPlusTree:
         This is more efficient than inserting one at a time for large datasets.
         Items must be sorted by key in ascending order.
         
+        Uses a bottom-up construction that ensures all nodes (except root) meet
+        the minimum fill requirement of ceil(order/2) - 1 keys.
+        
         Args:
             items: List of (key, value) pairs, sorted by key.
             
@@ -254,8 +261,12 @@ class BPlusTree:
         self.root = LeafNode()
         self.size = 0
 
-        # Build leaf nodes
         max_keys = self.order - 1
+        min_keys = (self.order + 1) // 2 - 1  # Minimum keys for non-root nodes
+
+        # Build leaf nodes ensuring minimum fill (except possibly the last)
+        # Strategy: fill all nodes to max, then redistribute from the last node
+        # to ensure all non-root nodes have at least min_keys.
         leaves = []
         current_leaf = LeafNode()
 
@@ -270,6 +281,20 @@ class BPlusTree:
         if current_leaf.keys:
             leaves.append(current_leaf)
 
+        # If the last leaf has fewer than min_keys and there are other leaves,
+        # redistribute keys from the previous leaf to ensure minimum fill.
+        if len(leaves) > 1 and len(leaves[-1].keys) < min_keys:
+            # Steal keys from the penultimate leaf
+            penultimate = leaves[-2]
+            deficit = min_keys - len(leaves[-1].keys)
+            # Move 'deficit' keys/values from the penultimate leaf to the last
+            stolen_keys = penultimate.keys[-deficit:]
+            stolen_values = penultimate.values[-deficit:]
+            penultimate.keys = penultimate.keys[:-deficit]
+            penultimate.values = penultimate.values[:-deficit]
+            leaves[-1].keys = stolen_keys + leaves[-1].keys
+            leaves[-1].values = stolen_values + leaves[-1].values
+
         # Link leaves
         for i in range(len(leaves) - 1):
             leaves[i].next = leaves[i + 1]
@@ -280,28 +305,63 @@ class BPlusTree:
             self.root = leaves[0]
             return
 
-        # Build internal nodes bottom-up
+        # Build internal nodes bottom-up, ensuring minimum fill
         current_level = leaves
         while len(current_level) > 1:
             parent_level = []
+            max_children = self.order
+            min_children = min_keys + 1  # = ceil(order/2)
 
-            # Group children into chunks of up to max_keys+1 per parent
-            # Each internal node can have at most max_keys keys and max_keys+1 children
-            chunk_size = self.order  # max children per internal node = order = max_keys + 1
-            for i in range(0, len(current_level), chunk_size):
-                children = current_level[i:i + chunk_size]
-                if not children:
-                    continue
-
+            n = len(current_level)
+            if n <= max_children:
+                # All children fit in a single root node (which has no minimum fill)
                 parent = InternalNode()
-                parent.children = list(children)
-                # Separator keys: min key of each subtree after the first child
-                parent.keys = [self._min_key(children[j + 1]) for j in range(len(children) - 1)]
-
-                for child in children:
+                parent.children = list(current_level)
+                parent.keys = [self._min_key(current_level[j + 1]) for j in range(len(current_level) - 1)]
+                for child in current_level:
                     child.parent = parent
-
                 parent_level.append(parent)
+            else:
+                # Multiple internal nodes needed.
+                # Fill nodes to max_children, then if the last group is too small,
+                # move one child at a time from the end of the penultimate group
+                # to the beginning of the last group until the last group meets
+                # the minimum fill requirement. This preserves sorted order because
+                # the moved child's min key is between the two groups.
+                groups = []
+                i = 0
+                while i < n:
+                    end = min(i + max_children, n)
+                    groups.append(list(current_level[i:end]))
+                    i = end
+
+                # Redistribute: move children from penultimate group to last group
+                # Each move preserves sorted order since the moved child's key range
+                # falls between the penultimate and last groups.
+                if len(groups) > 1 and len(groups[-1]) < min_children:
+                    deficit = min_children - len(groups[-1])
+                    # We can only take from groups that have more than min_children
+                    # (i.e., at least min_children + 1 to stay valid after removal)
+                    for _ in range(deficit):
+                        # Find the nearest preceding group that has > min_children
+                        donor_idx = None
+                        for j in range(len(groups) - 2, -1, -1):
+                            if len(groups[j]) > min_children:
+                                donor_idx = j
+                                break
+                        if donor_idx is None:
+                            break  # All groups are at minimum; can't redistribute
+                        # Move last child from donor to front of last group
+                        moved = groups[donor_idx].pop()
+                        groups[-1].insert(0, moved)
+
+                for group in groups:
+                    parent = InternalNode()
+                    parent.children = list(group)
+                    parent.keys = [self._min_key(group[j + 1]) for j in range(len(group) - 1)]
+                    for child in group:
+                        child.parent = parent
+                    parent_level.append(parent)
 
             current_level = parent_level
 
@@ -443,7 +503,7 @@ class BPlusTree:
         return self.size
 
     def __contains__(self, key) -> bool:
-        return self.search(key) is not None
+        return self.search(key) is not BPlusTree._NOT_FOUND
 
     def __iter__(self) -> Iterator[tuple]:
         yield from self.range_query()
