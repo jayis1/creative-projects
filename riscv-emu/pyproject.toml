@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "riscv-emu"
+version = "1.0.0"
+description = "Full-featured RISC-V RV32I emulator with assembler, debugger, and profiler"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+
+[project.scripts]
+riscv-emu = "riscv_emu.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["riscv_emu*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
