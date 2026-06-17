@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "quantum-sim"
+version = "1.0.0"
+description = "A from-scratch quantum circuit simulator with state-vector and density-matrix backends"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Creative Projects" }]
+dependencies = ["numpy>=1.21"]
+
+[project.scripts]
+quantum-sim = "quantum_sim.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["quantum_sim*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
