@@ -1,12 +1,40 @@
 [build-system]
 requires = ["setuptools>=68.0", "wheel"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "waveform-synth"
-version = "1.0.0"
-description = "A from-scratch digital audio synthesizer with waveform generation, ADSR envelopes, FM synthesis, effects processing, WAV export, and ASCII visualization"
+version = "3.0.0"
+description = "A from-scratch digital audio synthesizer with waveform generation, ADSR envelopes, FM synthesis, effects processing, WAV/AIFF/MIDI export, DSP utilities, and ASCII visualization"
+readme = "README.md"
+license = {text = "MIT"}
 requires-python = ">=3.10"
+authors = [
+    {name = "Creative Projects Bot"},
+]
+keywords = ["audio", "synthesizer", "waveform", "fm-synthesis", "dsp", "music", "sound"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Sound/Audio",
+    "Topic :: Multimedia :: Sound/Audio :: Synthesis",
+    "Topic :: Multimedia :: Sound/Audio :: Analysis",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
+toml = [
+    "tomli>=2.0; python_version < '3.11'",
+]
 
 [project.scripts]
 waveform-synth = "waveform_synth.cli:main"
@@ -16,3 +44,12 @@ include = ["waveform_synth*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "-v --tb=short"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]

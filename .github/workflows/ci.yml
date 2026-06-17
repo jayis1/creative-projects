@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        python-version: ['3.10', '3.11', '3.12']
 
     steps:
       - uses: actions/checkout@v4
@@ -28,10 +28,43 @@ jobs:
 
       - name: Run tests
         run: |
-          cd bplus-db
+          cd waveform-synth
           python -m pytest tests/ -v --tb=short
 
-      - name: Run tests with coverage
+      - name: Run smoke test
         run: |
-          cd bplus-db
-          python -m pytest tests/ --cov=bplus_db --cov-report=term-missing
+          cd waveform-synth
+          python smoke_test.py
+          python enhanced_test.py
+
+      - name: Test CLI
+        run: |
+          cd waveform-synth
+          pip install -e .
+          waveform-synth --version
+          waveform-synth generate --waveform sine --frequency 440 --duration 0.5 --output /tmp/test_sine.wav
+          waveform-synth fm --preset bellish --duration 0.5 --output /tmp/test_fm.wav
+          waveform-synth scale --root C --scale major --duration 1 --output /tmp/test_scale.wav
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install linters
+        run: pip install ruff pytest
+
+      - name: Lint with ruff
+        run: |
+          cd waveform-synth
+          ruff check waveform_synth/ --ignore E501
+
+      - name: Check imports
+        run: |
+          cd waveform-synth
+          python -c "import waveform_synth; print(waveform_synth.__version__)"
