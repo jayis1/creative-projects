@@ -3,11 +3,13 @@ Waveform Synthesizer — a from-scratch digital audio synthesizer.
 
 Provides waveform generation, ADSR envelopes, FM synthesis,
 effects processing, WAV export, stereo processing, audio analysis,
-ASCII visualization, MIDI export, DSP utilities, configuration
-management, and multi-format audio I/O.
+ASCII visualization, MIDI export/import, DSP utilities, configuration
+management, multi-format audio I/O, LFO modulation, wavetable synthesis,
+granular synthesis, ring/amplitude modulation, spectral processing
+(pitch shifting, time stretching), and multi-color noise generation.
 """
 
-__version__ = "3.0.0"
+__version__ = "4.0.0"
 
 from .core import Oscillator, Waveform, PulseOscillator, normalize, mix, fade_in_out, reverse, concatenate, resample, clip, crossfade, amplitude_to_db, db_to_amplitude
 from .envelope import ADSR
@@ -27,5 +29,12 @@ from .dsp import (
     amplitude_envelope, onset_detection,
 )
 from .midi import MidiWriter, MidiTrack, MidiEvent
+from .midi_reader import read_midi_file, MidiFile, MidiNote, TempoEvent, ProgramChangeEvent
 from .audio_io import AudioInfo, detect_audio_format, read_aiff, write_raw_pcm, get_audio_info
 from .config import SynthConfig, PRESETS, get_preset
+from .lfo import LFO
+from .wavetable import Wavetable, WavetableOscillator
+from .noise import NoiseColor, NoiseGenerator
+from .modulation import ring_modulate, amplitude_modulate, RingModulator
+from .spectral import pitch_shift, time_stretch
+from .granular import GranularSynth, GrainParams

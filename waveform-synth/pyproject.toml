@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "waveform-synth"
-version = "3.0.0"
-description = "A from-scratch digital audio synthesizer with waveform generation, ADSR envelopes, FM synthesis, effects processing, WAV/AIFF/MIDI export, DSP utilities, and ASCII visualization"
+version = "4.0.0"
+description = "A from-scratch digital audio synthesizer with waveform generation, ADSR envelopes, FM synthesis, wavetable synthesis, granular synthesis, LFO modulation, ring/amplitude modulation, 13 effects, spectral processing (pitch shifting, time stretching), multi-color noise, MIDI import/export, DSP utilities, and ASCII visualization"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
@@ -22,6 +22,7 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Multimedia :: Sound/Audio",
     "Topic :: Multimedia :: Sound/Audio :: Synthesis",
     "Topic :: Multimedia :: Sound/Audio :: Analysis",

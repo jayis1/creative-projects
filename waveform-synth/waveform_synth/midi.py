@@ -190,11 +190,11 @@ class MidiWriter:
 
         track_data = self.track.to_bytes()
 
-        # MIDI file header: MThd
-        header = struct.pack('>4sHHH',
-                            b'MThd',
-                            0,       # Format 0
-                            1,       # 1 track
+        # MIDI file header: MThd + length(6) + format + ntracks + division
+        header = b'MThd' + struct.pack('>IHHH',
+                            6,      # Header length (always 6 bytes)
+                            0,      # Format 0
+                            1,      # 1 track
                             self.ticks_per_quarter)
 
         # Track chunk: MTrk + length + data

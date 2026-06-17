@@ -49,7 +49,7 @@ def main():
         description="Digital audio synthesizer — generate, process, and export waveforms",
     )
     parser.add_argument('-v', '--verbose', action='store_true', help='Enable verbose logging')
-    parser.add_argument('--version', action='version', version='waveform-synth 3.0.0')
+    parser.add_argument('--version', action='version', version='waveform-synth 4.0.0')
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
@@ -187,6 +187,109 @@ def main():
     config_parser.add_argument("--visualize", "-V", action="store_true",
                               help="Show ASCII waveform visualization")
 
+    # ─── wavetable subcommand ────────────────────────────────────────
+    wt_parser = subparsers.add_parser("wavetable", help="Wavetable synthesis")
+    wt_parser.add_argument("--table", "-t", type=str, default="sine_to_saw",
+                          choices=["sine_to_saw", "classic_analog"],
+                          help="Built-in wavetable (default: sine_to_saw)")
+    wt_parser.add_argument("--frequency", "-f", type=float, default=440.0,
+                          help="Frequency in Hz (default: 440)")
+    wt_parser.add_argument("--duration", "-d", type=float, default=2.0,
+                          help="Duration in seconds (default: 2)")
+    wt_parser.add_argument("--position", "-p", type=float, default=0.0,
+                          help="Wavetable position 0-1 (default: 0)")
+    wt_parser.add_argument("--interpolation", "-i", type=str, default="linear",
+                          choices=["linear", "cubic"],
+                          help="Interpolation method (default: linear)")
+    wt_parser.add_argument("--sample-rate", "-r", type=int, default=44100,
+                          help="Sample rate (default: 44100)")
+    wt_parser.add_argument("--output", "-o", type=str, default=None,
+                          help="Output WAV file path")
+    wt_parser.add_argument("--visualize", "-V", action="store_true",
+                          help="Show ASCII waveform visualization")
+
+    # ─── noise subcommand ─────────────────────────────────────────────
+    noise_parser = subparsers.add_parser("noise", help="Generate colored noise")
+    noise_parser.add_argument("--color", "-c", type=str, default="white",
+                             choices=["white", "pink", "brown", "blue", "violet"],
+                             help="Noise color (default: white)")
+    noise_parser.add_argument("--duration", "-d", type=float, default=2.0,
+                             help="Duration in seconds (default: 2)")
+    noise_parser.add_argument("--amplitude", "-a", type=float, default=0.8,
+                             help="Amplitude 0-1 (default: 0.8)")
+    noise_parser.add_argument("--seed", "-s", type=int, default=None,
+                             help="Random seed for reproducibility")
+    noise_parser.add_argument("--sample-rate", "-r", type=int, default=44100,
+                             help="Sample rate (default: 44100)")
+    noise_parser.add_argument("--output", "-o", type=str, default=None,
+                             help="Output WAV file path")
+    noise_parser.add_argument("--visualize", "-V", action="store_true",
+                             help="Show ASCII waveform visualization")
+
+    # ─── ringmod subcommand ───────────────────────────────────────────
+    ringmod_parser = subparsers.add_parser("ringmod", help="Ring modulation")
+    ringmod_parser.add_argument("--input", "-i", type=str, required=True,
+                               help="Input WAV file path")
+    ringmod_parser.add_argument("--modulator-freq", "-m", type=float, default=30.0,
+                               help="Modulator frequency in Hz (default: 30)")
+    ringmod_parser.add_argument("--mix", type=float, default=1.0,
+                               help="Dry/wet mix 0-1 (default: 1.0)")
+    ringmod_parser.add_argument("--output", "-o", type=str, default=None,
+                               help="Output WAV file path")
+    ringmod_parser.add_argument("--visualize", "-V", action="store_true",
+                               help="Show ASCII waveform visualization")
+
+    # ─── pitchshift subcommand ────────────────────────────────────────
+    pitch_parser = subparsers.add_parser("pitchshift", help="Pitch shift a WAV file")
+    pitch_parser.add_argument("--input", "-i", type=str, required=True,
+                             help="Input WAV file path")
+    pitch_parser.add_argument("--semitones", "-s", type=float, required=True,
+                             help="Semitones to shift (can be fractional)")
+    pitch_parser.add_argument("--output", "-o", type=str, default=None,
+                             help="Output WAV file path")
+
+    # ─── timestretch subcommand ──────────────────────────────────────
+    stretch_parser = subparsers.add_parser("timestretch", help="Time-stretch a WAV file")
+    stretch_parser.add_argument("--input", "-i", type=str, required=True,
+                               help="Input WAV file path")
+    stretch_parser.add_argument("--factor", "-f", type=float, required=True,
+                               help="Stretch factor (>1 = slower, <1 = faster)")
+    stretch_parser.add_argument("--output", "-o", type=str, default=None,
+                               help="Output WAV file path")
+
+    # ─── granular subcommand ──────────────────────────────────────────
+    granular_parser = subparsers.add_parser("granular", help="Granular synthesis")
+    granular_parser.add_argument("--input", "-i", type=str, required=True,
+                                help="Input WAV file (source buffer)")
+    granular_parser.add_argument("--duration", "-d", type=float, default=3.0,
+                                help="Output duration in seconds (default: 3)")
+    granular_parser.add_argument("--grain-size", "-g", type=float, default=0.05,
+                                help="Grain size in seconds (default: 0.05)")
+    granular_parser.add_argument("--density", type=float, default=20.0,
+                                help="Grains per second (default: 20)")
+    granular_parser.add_argument("--pitch-spread", type=float, default=0.0,
+                                help="Pitch randomization 0-2 (default: 0)")
+    granular_parser.add_argument("--position-spread", type=float, default=0.5,
+                                help="Position randomization 0-1 (default: 0.5)")
+    granular_parser.add_argument("--seed", "-s", type=int, default=None,
+                                help="Random seed for reproducibility")
+    granular_parser.add_argument("--output", "-o", type=str, default=None,
+                                help="Output WAV file path")
+    granular_parser.add_argument("--visualize", "-V", action="store_true",
+                                help="Show ASCII waveform visualization")
+
+    # ─── midi-import subcommand ──────────────────────────────────────
+    midi_import_parser = subparsers.add_parser("midi-import", help="Import and analyze a MIDI file")
+    midi_import_parser.add_argument("--input", "-i", type=str, required=True,
+                                    help="Input MIDI file path")
+    midi_import_parser.add_argument("--output", "-o", type=str, default=None,
+                                    help="Output WAV file path (render notes)")
+    midi_import_parser.add_argument("--waveform", "-w", type=str, default="sine",
+                                    choices=[w.value for w in Waveform],
+                                    help="Waveform for rendering (default: sine)")
+    midi_import_parser.add_argument("--visualize", "-V", action="store_true",
+                                    help="Show ASCII waveform visualization")
+
     args = parser.parse_args()
 
     if args.verbose:
@@ -214,6 +317,20 @@ def main():
         _cmd_preset(args)
     elif args.command == "config":
         _cmd_config(args)
+    elif args.command == "wavetable":
+        _cmd_wavetable(args)
+    elif args.command == "noise":
+        _cmd_noise(args)
+    elif args.command == "ringmod":
+        _cmd_ringmod(args)
+    elif args.command == "pitchshift":
+        _cmd_pitchshift(args)
+    elif args.command == "timestretch":
+        _cmd_timestretch(args)
+    elif args.command == "granular":
+        _cmd_granular(args)
+    elif args.command == "midi-import":
+        _cmd_midi_import(args)
 
 
 def _parse_envelope(envelope_str: str, sample_rate: int) -> ADSR:
@@ -265,6 +382,21 @@ def _parse_effects(effects_str: str) -> EffectsChain:
             threshold = float(parts[1]) if len(parts) > 1 else 0.5
             ratio = float(parts[2]) if len(parts) > 2 else 4.0
             chain.add(Effect(EffectType.COMPRESSOR, threshold=threshold, ratio=ratio))
+        elif effect_name == "chorus":
+            rate = float(parts[1]) if len(parts) > 1 else 0.5
+            depth = float(parts[2]) if len(parts) > 2 else 0.003
+            mix = float(parts[3]) if len(parts) > 3 else 0.5
+            voices = int(float(parts[4])) if len(parts) > 4 else 2
+            chain.add(Effect(EffectType.CHORUS, rate=rate, depth=depth, mix=mix, voices=voices))
+        elif effect_name == "bitcrusher":
+            bits = int(float(parts[1])) if len(parts) > 1 else 8
+            downsample = int(float(parts[2])) if len(parts) > 2 else 1
+            chain.add(Effect(EffectType.BITCRUSHER, bits=bits, downsample=downsample))
+        elif effect_name == "echo":
+            time = float(parts[1]) if len(parts) > 1 else 0.3
+            feedback = float(parts[2]) if len(parts) > 2 else 0.4
+            mix = float(parts[3]) if len(parts) > 3 else 0.5
+            chain.add(Effect(EffectType.ECHO, time=time, feedback=feedback, mix=mix))
     return chain
 
 
@@ -610,6 +742,210 @@ def _cmd_config(args):
     else:
         print(f"Generated {len(samples)} samples ({config.duration:.2f}s)")
         print("Use --output to save as WAV")
+
+
+# ─── New feature command handlers ────────────────────────────────────────
+
+
+def _cmd_wavetable(args):
+    """Handle the 'wavetable' subcommand."""
+    from .wavetable import Wavetable, WavetableOscillator
+
+    if args.table == "sine_to_saw":
+        wt = Wavetable.sine_to_saw(num_frames=8, frame_size=2048)
+    elif args.table == "classic_analog":
+        wt = Wavetable.classic_analog(frame_size=2048)
+    else:
+        wt = Wavetable.sine_to_saw(num_frames=8, frame_size=2048)
+
+    osc = WavetableOscillator(
+        wavetable=wt,
+        frequency=args.frequency,
+        amplitude=0.8,
+        position=args.position,
+        sample_rate=args.sample_rate,
+        interpolation=args.interpolation,
+    )
+    samples = osc.generate(args.duration)
+    samples = normalize(samples)
+
+    if args.visualize:
+        print(ascii_waveform(samples, title=f"Wavetable: {args.table} @ {args.frequency}Hz"))
+
+    if args.output:
+        writer = WavWriter(sample_rate=args.sample_rate)
+        writer.write(args.output, samples)
+        print(f"WAV written to {args.output} ({len(samples)} samples, {args.duration:.2f}s)")
+    elif not args.visualize:
+        print(f"Generated {len(samples)} samples ({args.duration:.2f}s)")
+        print("Use --output to save as WAV or --visualize to display")
+
+
+def _cmd_noise(args):
+    """Handle the 'noise' subcommand."""
+    from .noise import NoiseColor, NoiseGenerator
+
+    color_map = {
+        "white": NoiseColor.WHITE,
+        "pink": NoiseColor.PINK,
+        "brown": NoiseColor.BROWN,
+        "blue": NoiseColor.BLUE,
+        "violet": NoiseColor.VIOLET,
+    }
+    ng = NoiseGenerator(
+        color=color_map[args.color],
+        seed=args.seed,
+        sample_rate=args.sample_rate,
+    )
+    samples = ng.generate(args.duration, amplitude=args.amplitude)
+    samples = normalize(samples)
+
+    if args.visualize:
+        print(ascii_waveform(samples, title=f"{args.color.title()} noise"))
+
+    if args.output:
+        writer = WavWriter(sample_rate=args.sample_rate)
+        writer.write(args.output, samples)
+        print(f"WAV written to {args.output} ({len(samples)} samples, {args.duration:.2f}s)")
+    elif not args.visualize:
+        print(f"Generated {len(samples)} samples of {args.color} noise ({args.duration:.2f}s)")
+        print("Use --output to save as WAV or --visualize to display")
+
+
+def _cmd_ringmod(args):
+    """Handle the 'ringmod' subcommand."""
+    from .modulation import RingModulator
+
+    samples, sample_rate, num_channels, bits_per_sample = WavWriter.samples_from_wav(args.input)
+    rm = RingModulator(
+        modulator_freq=args.modulator_freq,
+        amplitude=1.0,
+        sample_rate=sample_rate,
+        mix=args.mix,
+    )
+    result = rm.process(samples)
+    result = normalize(result)
+
+    if args.visualize:
+        print(ascii_waveform(result, title=f"Ring mod @ {args.modulator_freq}Hz"))
+
+    if args.output:
+        writer = WavWriter(sample_rate=sample_rate)
+        writer.write(args.output, result)
+        print(f"WAV written to {args.output} ({len(result)} samples)")
+    elif not args.visualize:
+        print(f"Ring-modulated {len(result)} samples")
+        print("Use --output to save as WAV or --visualize to display")
+
+
+def _cmd_pitchshift(args):
+    """Handle the 'pitchshift' subcommand."""
+    from .spectral import pitch_shift as ps
+
+    samples, sample_rate, num_channels, bits_per_sample = WavWriter.samples_from_wav(args.input)
+    # Use first 44100 samples for performance
+    chunk_size = min(len(samples), 44100)
+    shifted = ps(samples[:chunk_size], semitones=args.semitones, sample_rate=sample_rate)
+
+    if args.output:
+        writer = WavWriter(sample_rate=sample_rate)
+        writer.write(args.output, shifted)
+        print(f"WAV written to {args.output} (pitch-shifted {args.semitones} semitones)")
+    else:
+        print(f"Pitch-shifted {len(shifted)} samples by {args.semitones} semitones")
+        print("Use --output to save as WAV")
+
+
+def _cmd_timestretch(args):
+    """Handle the 'timestretch' subcommand."""
+    from .spectral import time_stretch as ts
+
+    samples, sample_rate, num_channels, bits_per_sample = WavWriter.samples_from_wav(args.input)
+    chunk_size = min(len(samples), 44100)
+    stretched = ts(samples[:chunk_size], stretch_factor=args.factor, sample_rate=sample_rate)
+
+    if args.output:
+        writer = WavWriter(sample_rate=sample_rate)
+        writer.write(args.output, stretched)
+        print(f"WAV written to {args.output} (time-stretched by {args.factor}x)")
+    else:
+        print(f"Time-stretched {len(stretched)} samples by factor {args.factor}")
+        print("Use --output to save as WAV")
+
+
+def _cmd_granular(args):
+    """Handle the 'granular' subcommand."""
+    from .granular import GranularSynth
+
+    samples, sample_rate, num_channels, bits_per_sample = WavWriter.samples_from_wav(args.input)
+    gran = GranularSynth(
+        source=samples,
+        grain_size=args.grain_size,
+        density=args.density,
+        pitch_spread=args.pitch_spread,
+        position_spread=args.position_spread,
+        seed=args.seed,
+        sample_rate=sample_rate,
+    )
+    result = gran.generate(args.duration)
+
+    if args.visualize:
+        print(ascii_waveform(result, title="Granular synthesis"))
+
+    if args.output:
+        writer = WavWriter(sample_rate=sample_rate)
+        writer.write(args.output, result)
+        print(f"WAV written to {args.output} ({len(result)} samples, {args.duration:.2f}s)")
+    elif not args.visualize:
+        print(f"Generated {len(result)} samples ({args.duration:.2f}s)")
+        print("Use --output to save as WAV or --visualize to display")
+
+
+def _cmd_midi_import(args):
+    """Handle the 'midi-import' subcommand."""
+    from .midi_reader import read_midi_file
+
+    midi_file = read_midi_file(args.input)
+
+    print(f"── MIDI File: {args.input} ──")
+    print(f"  Format:    {midi_file.format}")
+    print(f"  Tracks:    {midi_file.num_tracks}")
+    print(f"  Division:  {midi_file.division} PPQ")
+    print(f"  Duration:  {midi_file.duration:.2f}s")
+    print(f"  Notes:     {len(midi_file.notes)}")
+
+    if midi_file.tempo_events:
+        print(f"  Tempo events: {len(midi_file.tempo_events)}")
+        for te in midi_file.tempo_events[:5]:
+            print(f"    {te.time:.2f}s -> {te.bpm:.1f} BPM")
+
+    if midi_file.notes:
+        print(f"\n  Note list (first 20):")
+        for note in midi_file.notes[:20]:
+            print(f"    {note}")
+
+    if args.output and midi_file.notes:
+        # Render notes to WAV
+        waveform = Waveform(args.waveform)
+        comp = Composition(title="MIDI Import", sample_rate=44100)
+        track = Track(waveform=waveform, sample_rate=44100)
+
+        for note in midi_file.notes:
+            track.add_note(
+                note=note.note_name,
+                duration=note.duration,
+                velocity=min(1.0, note.velocity / 127.0),
+            )
+
+        comp.add_track(track)
+        comp.export_wav(args.output)
+        print(f"\nWAV written to {args.output}")
+
+    if args.visualize and midi_file.notes:
+        # Quick visualization of first few notes rendered
+        osc = Oscillator(Waveform.SINE, frequency=midi_file.notes[0].frequency)
+        samples = osc.generate(0.5)
+        print(ascii_waveform(samples, title="First note"))
 
 
 if __name__ == "__main__":

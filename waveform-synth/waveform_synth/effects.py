@@ -27,6 +27,9 @@ class EffectType(Enum):
     TREMOLO = "tremolo"
     REVERB = "reverb"
     COMPRESSOR = "compressor"
+    CHORUS = "chorus"
+    BITCRUSHER = "bitcrusher"
+    ECHO = "echo"
 
 
 class Effect:
@@ -81,6 +84,19 @@ class Effect:
             self.params.setdefault("ratio", 4.0)
             self.params.setdefault("attack", 0.01)
             self.params.setdefault("release", 0.1)
+        elif effect_type == EffectType.CHORUS:
+            self.params.setdefault("rate", 0.5)
+            self.params.setdefault("depth", 0.003)
+            self.params.setdefault("feedback", 0.0)
+            self.params.setdefault("mix", 0.5)
+            self.params.setdefault("voices", 2)
+        elif effect_type == EffectType.BITCRUSHER:
+            self.params.setdefault("bits", 8)
+            self.params.setdefault("downsample", 1)
+        elif effect_type == EffectType.ECHO:
+            self.params.setdefault("time", 0.3)
+            self.params.setdefault("feedback", 0.4)
+            self.params.setdefault("mix", 0.5)
 
     def process(self, samples: List[float], sample_rate: int = 44100) -> List[float]:
         """
@@ -114,6 +130,12 @@ class Effect:
             return self._apply_reverb(samples, sample_rate)
         elif self.effect_type == EffectType.COMPRESSOR:
             return self._apply_compressor(samples, sample_rate)
+        elif self.effect_type == EffectType.CHORUS:
+            return self._apply_chorus(samples, sample_rate)
+        elif self.effect_type == EffectType.BITCRUSHER:
+            return self._apply_bitcrusher(samples, sample_rate)
+        elif self.effect_type == EffectType.ECHO:
+            return self._apply_echo(samples, sample_rate)
         else:
             return samples
 
@@ -358,6 +380,127 @@ class Effect:
                 gain = 1.0
 
             result[i] = samples[i] * gain
+
+        return result
+
+    def _apply_chorus(self, samples: List[float], sample_rate: int) -> List[float]:
+        """
+        Apply chorus effect (multiple delayed modulated copies).
+
+        A chorus creates the impression of multiple voices/performers
+        by layering several slightly delayed, pitch-modulated copies
+        of the input.
+
+        Parameters:
+            rate: LFO rate in Hz (default 0.5)
+            depth: Modulation depth in seconds (default 0.003)
+            feedback: Feedback amount (default 0.0)
+            mix: Wet/dry mix (default 0.5)
+            voices: Number of chorus voices (default 2)
+        """
+        rate = self.params["rate"]
+        depth = self.params["depth"]
+        feedback = self.params["feedback"]
+        mix = self.params["mix"]
+        voices = self.params["voices"]
+
+        max_delay = int(depth * sample_rate * 2) + 1
+        n = len(samples)
+        result = [0.0] * n
+
+        for voice in range(voices):
+            # Each voice uses a different LFO phase offset
+            phase_offset = (2.0 * math.pi * voice) / max(1, voices)
+            buffer = [0.0] * (max_delay + n)
+
+            for i in range(n):
+                # LFO-modulated delay
+                lfo = 0.5 + 0.5 * math.sin(2 * math.pi * rate * i / sample_rate + phase_offset)
+                mod_delay = depth * sample_rate * (0.5 + lfo)
+                delay_int = int(mod_delay)
+                frac = mod_delay - delay_int
+
+                read_pos = i + max_delay - delay_int
+                if 0 <= read_pos and read_pos + 1 < len(buffer):
+                    delayed = buffer[read_pos] * (1.0 - frac) + buffer[read_pos + 1] * frac
+                elif 0 <= read_pos < len(buffer):
+                    delayed = buffer[read_pos]
+                else:
+                    delayed = 0.0
+
+                buffer[i + max_delay] = samples[i] + delayed * feedback
+                result[i] += delayed / voices
+
+        # Mix dry and wet
+        return [samples[i] * (1.0 - mix) + result[i] * mix for i in range(n)]
+
+    def _apply_bitcrusher(self, samples: List[float], sample_rate: int) -> List[float]:
+        """
+        Apply bitcrushing (sample rate and bit depth reduction).
+
+        Creates lo-fi, gritty, "8-bit" sounds by reducing the effective
+        bit depth and sample rate.
+
+        Parameters:
+            bits: Target bit depth (1–16, default 8)
+            downsample: Sample rate reduction factor (1 = no reduction, 4 = 1/4 rate)
+        """
+        bits = max(1, min(16, self.params["bits"]))
+        downsample = max(1, self.params["downsample"])
+
+        levels = 2 ** bits
+        step = 2.0 / levels
+
+        result = []
+        _last_val = 0.0  # Track last quantized value for sample-rate reduction
+        for i, s in enumerate(samples):
+            # Sample rate reduction (hold value)
+            if downsample > 1:
+                # Only update every 'downsample' samples
+                if i % downsample != 0:
+                    s = _last_val  # Use the last quantized value
+                # Quantize to bit depth
+                quantized = round(s / step) * step
+                quantized = max(-1.0, min(1.0, quantized))
+                if i % downsample == 0:
+                    _last_val = quantized
+            else:
+                quantized = round(s / step) * step
+                quantized = max(-1.0, min(1.0, quantized))
+            result.append(quantized)
+
+        return result
+
+    def _apply_echo(self, samples: List[float], sample_rate: int) -> List[float]:
+        """
+        Apply echo (a more pronounced delay with longer feedback tail).
+
+        Parameters:
+            time: Echo delay time in seconds (default 0.3)
+            feedback: Feedback amount 0.0–1.0 (default 0.4)
+            mix: Wet/dry mix (default 0.5)
+        """
+        time_s = self.params["time"]
+        feedback = max(0.0, min(0.99, self.params["feedback"]))
+        mix = self.params["mix"]
+
+        delay_samples = int(time_s * sample_rate)
+        n = len(samples)
+
+        # Output buffer includes echo tail
+        output = list(samples) + [0.0] * (delay_samples * 8)
+
+        for i in range(n):
+            delayed_idx = i + delay_samples
+            if delayed_idx < len(output):
+                output[delayed_idx] += samples[i] * feedback
+
+        # Mix dry and wet
+        result = []
+        for i in range(n):
+            dry = samples[i]
+            wet = output[i + delay_samples] if i + delay_samples < len(output) else 0.0
+            result.append(dry * (1.0 - mix) + (dry + wet) * mix)
 
         return result
 
