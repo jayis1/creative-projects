@@ -1,120 +1,249 @@
-# symbolic-algebra
+# 🧮 Symbolic CAS
 
-A **symbolic algebra system** (computer algebra system / CAS) implemented in pure Python with no external dependencies. It supports parsing, differentiation, simplification, equation solving, expression expansion, Taylor series, numerical integration, Newton's method root finding, factorization, trigonometric identity simplification, pretty-printing, LaTeX output, and an interactive REPL.
+[![Python 3.8+](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg)](tests/)
 
-## Features
+A **pure-Python symbolic algebra system** (computer algebra system / CAS) with zero external dependencies. Supports expression parsing, symbolic differentiation, simplification, equation solving, Taylor series, numerical integration, Newton's method, factorization, limit computation, serialization, pretty-printing, LaTeX output, and an interactive REPL / CLI.
 
-- **Expression Parsing** — Parse infix math expressions with proper operator precedence: `3*x^2 + 2*x - 5`
-- **Symbolic Differentiation** — Compute exact derivatives using chain rule, product rule, quotient rule, power rule, and trig/exp/log derivatives
-- **Multi-pass Simplification** — Constant folding, identity elimination (`x+0=x`, `x*1=x`), double-negation cancellation, algebraic reduction, trig identity recognition (`sin²x+cos²x=1`, `1-cos²x=sin²x`)
-- **Equation Solving** — Solve linear (`ax+b=0`) and quadratic (`ax²+bx+c=0`) equations, plus higher-degree polynomials via rational root theorem
-- **Newton's Method** — Numerical root-finding for non-polynomial equations: `cos(x)=0`, `exp(x)=x+2`, etc.
-- **Expression Expansion** — Distributive law expansion: `a*(b+c)` → `a*b + a*c`
-- **Taylor Series** — Symbolic Taylor expansion around any point to arbitrary order
-- **Numerical Integration** — Simpson's rule integration of any expression over an interval
-- **Factorization** — Extract common factors from sum expressions: `2*x + 3*x` → `x*(2+3)`
-- **Pretty-Printing** — Human-readable output with minimal parentheses based on operator precedence
-- **LaTeX Output** — Convert any expression to publication-ready LaTeX
-- **Interactive REPL** — Built-in command-line interface for exploration
+## 📑 Table of Contents
 
-## Usage
+- [Features](#-features)
+- [Installation](#-installation)
+- [Quick Start](#-quick-start)
+- [Usage Examples](#-usage-examples)
+  - [Python API](#python-api)
+  - [CLI Interface](#cli-interface)
+  - [REPL](#repl)
+- [Architecture](#-architecture)
+- [Supported Functions](#-supported-functions)
+- [New Features in v2.0](#-new-features-in-v20)
+- [Project Structure](#-project-structure)
+- [Running Tests](#-running-tests)
+- [Known Issues (Resolved)](#-known-issues-resolved)
+- [Roadmap](#-roadmap)
+- [Contributing](#-contributing)
+- [Changelog](#-changelog)
+- [License](#-license)
+
+## ✨ Features
+
+| Category | Capabilities |
+|----------|-------------|
+| **Parsing** | Full infix notation with operator precedence, unary operators, function calls |
+| **Differentiation** | Power, product, quotient, chain rules; 16+ trig/exp/log derivatives; partial derivatives |
+| **Simplification** | Constant folding, identity elimination, double-negation, trig identities (`sin²x+cos²x=1`) |
+| **Equation Solving** | Linear, quadratic, rational root theorem for higher-degree polynomials |
+| **Newton's Method** | Numerical root-finding for non-polynomial equations |
+| **Taylor Series** | Symbolic expansion around any point to arbitrary order |
+| **Numerical Integration** | Simpson's rule with configurable precision |
+| **Factorization** | Common factor extraction from sum expressions |
+| **Limits** | Numerical limit computation (one-sided, two-sided, at infinity) |
+| **Expansion** | Distributive law expansion, binomial expansion |
+| **Pretty-Printing** | Minimal parentheses based on operator precedence |
+| **LaTeX Output** | Publication-ready LaTeX rendering |
+| **Serialization** | JSON export/import for expression trees |
+| **CLI** | Full command-line interface with argparse flags |
+| **REPL** | Interactive read-eval-print loop |
+
+## 📦 Installation
+
+### From Source
+
+```bash
+cd symbolic-algebra
+pip install -e .
+```
+
+### Development Install
+
+```bash
+pip install -e ".[dev]"
+```
+
+### Requirements
+
+- Python 3.8+ (no external dependencies!)
+
+## 🚀 Quick Start
+
+```python
+from symbolic_cas import parse, x, sin, cos, exp
+
+# Parse and simplify
+expr = parse("sin(x)^2 + cos(x)^2")
+print(expr.simplify())  # 1
+
+# Differentiate
+f = parse("x^3 + 2*x")
+df = f.diff('x').simplify()
+print(df)  # (3 * (x^2)) + 2
+
+# Solve equations
+roots = parse("x^2 - 5*x + 6").solve('x')
+print(roots)  # [Num(2), Num(3)]
+
+# Taylor series
+ts = parse("exp(x)").taylor('x', point=0, order=5)
+print(ts.pretty())
+
+# Numerical integration
+result = parse("exp(x)").integrate('x', 0, 1)
+print(f"∫₀¹ exp(x) dx ≈ {result:.10f}")  # ≈ 1.7182818285
+
+# Limits
+result = parse("sin(x)/x").limit('x', 0)  # 1.0
+
+# JSON export
+from symbolic_cas.serialize import to_json
+print(to_json(parse("x^2 + 1")))
+```
+
+## 📖 Usage Examples
 
 ### Python API
 
 ```python
-from symbolic import parse, x, y, sin, cos, exp, ln, sqrt, sym
+from symbolic_cas import (
+    parse, x, y, sin, cos, tan, exp, ln, sqrt,
+    sym, num, simplify, differentiate
+)
 
-# Build expressions via Python operators
-f = 3 * x**2 + 2 * x - 5
-print(f)          # (((3 * (x^2)) + (2 * x)) - 5)
+# ─── Construction ───
+expr = 3 * x**2 + 2 * x - 5          # Via Python operators
+expr = parse("3*x^2 + 2*x - 5")       # Via string parsing
+expr = BinOp('+', Num(1), Sym('x'))    # Via explicit constructors
 
-# Parse from strings
-g = parse("sin(x)^2 + cos(x)^2")
-print(g.simplify())  # 1 (trig identity recognized!)
+# ─── Differentiation ───
+f = parse("exp(sin(x))")
+df = f.diff('x').simplify()
+print(df)  # exp(sin(x)) * cos(x)
 
-# Differentiation
-df = f.diff('x')
-print(df.simplify())  # ((6 * x) + 2)
-
-# Chain rule
-h = parse("exp(sin(x))")
-dh = h.diff('x').simplify()
-print(dh)  # (exp(sin(x)) * cos(x))
-
-# Equation solving
-eq = parse("x^2 - 5*x + 6")
-roots = eq.solve('x')
-print(roots)  # [Num(2), Num(3)]
+# ─── Solving ───
+# Quadratic
+roots = parse("x^2 - 5*x + 6").solve('x')  # [2, 3]
 
 # Newton's method for non-polynomial equations
-root = parse("cos(x)").newton_solve('x', x0=1.0)
-print(root)  # ≈ 1.5707963268 (π/2)
+root = parse("cos(x)").newton_solve('x', x0=1.0)  # ≈ π/2
 
-# Taylor series expansion
+# ─── Taylor Series ───
 ts = parse("sin(x)").taylor('x', point=0, order=5)
-print(ts.pretty())  # x - 1/6 * x^3 + 1/120 * x^5
+# x - (1/6) * x^3 + (1/120) * x^5
 
-# Numerical integration (Simpson's rule)
-result = parse("exp(x)").integrate('x', 0, 1)
-print(result)  # ≈ 1.71828... (= e - 1)
+# ─── Factorization ───
+result = parse("x + x^2").factor('x')
+# x * (1 + x)
 
-# Factorization
-factored = parse("x + x^2").factor('x')
-print(factored.pretty())  # x * (1 + x)
-
-# Pretty-printing
+# ─── Pretty-Printing & LaTeX ───
 expr = parse("3*x^2 + 2*x - 5")
-print(expr.pretty())  # 3 * x^2 + 2 * x - 5
+print(expr.pretty())   # 3 * x^2 + 2 * x - 5
+print(expr.to_latex()) # 3 \cdot {x}^{2} + 2 \cdot x - 5
 
-# LaTeX output
-print(f.to_latex())  # \frac{3 \cdot {x}^{2} + 2 \cdot x}{- 5}
+# ─── Limits (NEW) ───
+lim = parse("sin(x)/x").limit('x', 0)       # 1.0
+lim = parse("(exp(x)-1)/x").limit('x', 0)    # 1.0
+lim = parse("1/x").limit('x', 'inf')          # 0.0
 
-# Substitution
-expr = parse("x^2 + y")
-result = expr.substitute({'x': 3, 'y': sym('z')})
-print(result)  # ((3^2) + z)
+# ─── Serialization (NEW) ───
+from symbolic_cas.serialize import to_json, from_json
+json_str = to_json(parse("x^2 + 1"))
+restored = from_json(json_str)  # Perfect round-trip
+
+# ─── Expression Tree Metrics (NEW) ───
+expr = parse("x^2 + 2*x + 1")
+print(expr.depth())  # 4
+print(expr.size())   # 9
+```
+
+### CLI Interface
+
+```bash
+# Simplify an expression
+symbolic-cas "sin(x)^2 + cos(x)^2"
+
+# Differentiate
+symbolic-cas --action diff "x^3 + 2*x"
+
+# Solve an equation
+symbolic-cas --action solve "x^2 - 5*x + 6"
+
+# Convert to LaTeX
+symbolic-cas --action latex "sqrt(x^2 + 1)"
+
+# Taylor series
+symbolic-cas --action taylor "exp(x)" --order 6
+
+# Numerical integration
+symbolic-cas --action integrate "x^2" --a 0 --b 1
+
+# Evaluate with variable bindings
+symbolic-cas --action eval "x^2 + 2*x" --vars x=3
+
+# Compute a limit
+symbolic-cas --action limit "sin(x)/x" --point 0
+
+# JSON export
+symbolic-cas --action json_export "x^2 + 1"
+
+# Use JSON output format
+symbolic-cas --action simplify "x^2 + 1" --format json
 ```
 
 ### REPL
 
 ```bash
-python3 symbolic.py
+symbolic-cas --repl
+# or: python3 -m symbolic_cas.cli --repl
 ```
 
 ```
->>> 3*x^2 + 2*x - 5
-  Simplified: ...
->>> diff sin(x)^2 + cos(x)^2
-  d/dx(...) = 0
+>>> sin(x)^2 + cos(x)^2
+  Simplified: 1
+>>> diff x^3 + 2*x
+  d/dx(...) = (3 * (x^2)) + 2
 >>> solve x^2 - 5*x + 6
   Solutions: 2, 3
->>> newton cos(x)
-  Root (Newton): x ≈ 1.5707963268
 >>> taylor exp(x)
-  Taylor series: 1 + x + 1/2*x^2 + ...
->>> integrate exp(x)
-  ∫₀¹ f(x)dx ≈ 1.7182818285
->>> factor x + x^2
-  Factored: x * (1 + x)
->>> latex x^2 + 1
-  LaTeX: {x}^{2} + 1
->>> pretty 3*x^2 + 2*x - 5
-  3 * x^2 + 2 * x - 5
+  Taylor series: 1 + x + (1/2) * (x^2) + ...
+>>> limit sin(x)/x
+  Limit: 1.0
+>>> json x^2 + 1
+  {"type": "BinOp", "op": "+", ...}
 ```
 
-## How It Works
+## 🏗️ Architecture
 
-### Architecture
+### Expression AST
 
-The system is built around an **immutable AST** (Abstract Syntax Tree):
+All expressions are represented as an immutable, hashable AST:
 
-- **`Expr`** — Abstract base class; all nodes are immutable and hashable
-- **`Num`** — Numeric constants (integers and floats)
-- **`Sym`** — Symbolic variables (`x`, `y`, `theta`, etc.)
-- **`BinOp`** — Binary operations (`+`, `-`, `*`, `/`)
-- **`UnaryOp`** — Unary negation
-- **`Pow`** — Exponentiation (`base^exponent`)
-- **`Func`** — Named functions (`sin`, `cos`, `exp`, `ln`, `sqrt`, etc.)
+```
+Expr (abstract)
+├── Num        — Numeric constants (int/float)
+├── Sym        — Symbolic variables (x, y, theta, ...)
+├── BinOp      — Binary operations (+, -, *, /)
+├── UnaryOp    — Unary negation (-)
+├── Pow        — Exponentiation (base^exponent)
+└── Func        — Named functions (sin, cos, exp, ln, ...)
+```
+
+### Module Structure
+
+```
+symbolic_cas/
+├── __init__.py     — Package exports and version
+├── expr.py         — AST node classes (Expr, Num, Sym, BinOp, etc.)
+├── parser.py       — Recursive descent expression parser
+├── calculus.py      — Differentiation and Taylor series
+├── simplify.py      — Simplification, expansion, and factorization
+├── evaluate.py      — Numerical evaluation and integration
+├── solve.py         — Equation solving and Newton's method
+├── display.py       — Pretty-printing and LaTeX output
+├── substitute.py    — Substitution and symbol collection
+├── limits.py        — Limit computation (NEW)
+├── serialize.py     — JSON serialization (NEW)
+└── cli.py           — Command-line interface (NEW)
+```
 
 ### Differentiation
 
@@ -132,47 +261,14 @@ Multi-pass fixed-point iteration applies rules until convergence:
 1. Constant folding (`2+3` → `5`)
 2. Additive/multiplicative identities (`x+0=x`, `x·1=x`, `x·0=0`)
 3. Double negation (`-(-x)` → `x`)
-4. Like-term merging via subtraction (`x-x` → `0`)
+4. Like-term merging (`x-x` → `0`)
 5. Constant association (`2·(3·x)` → `6·x`)
 6. Power simplification (`x^1=x`, `x^0=1`, `x·x=x²`)
-7. Function evaluation on constants (`sin(0)` → `0`)
-8. **Trigonometric identities** (`sin²x+cos²x=1`, `1-sin²x=cos²x`, `1-cos²x=sin²x`)
+7. Division simplification (`x/(-1)=-x`, `x/x=1`)
+8. Function evaluation on constants (`sin(0)` → `0`)
+9. **Trigonometric identities** (`sin²x+cos²x=1`, `1-sin²x=cos²x`)
 
-### Taylor Series
-
-Computes `f(x) ≈ Σ f^(n)(a)/n! · (x-a)^n` by:
-1. Symbolically differentiating `f` to each order
-2. Evaluating at the expansion point `a`
-3. Constructing the polynomial approximation
-
-### Numerical Integration
-
-Uses **Simpson's rule** with configurable number of intervals:
-`∫_a^b f(x)dx ≈ h/3 · [f(a) + 4·f(x₁) + 2·f(x₂) + ... + f(b)]`
-
-### Newton's Method
-
-Iterates `x_{n+1} = x_n - f(x_n)/f'(x_n)` with:
-- Automatic derivative computation
-- Convergence detection (tolerance 1e-10)
-- Divergence/zero-derivative error handling
-
-### Solving
-
-- **Linear**: Extract coefficients, solve `ax + b = 0`
-- **Quadratic**: Apply discriminant formula `(-b ± √(b²-4ac)) / 2a`
-- **Higher degree**: Rational root theorem for integer-coefficient polynomials
-
-### Parsing
-
-Recursive descent parser with proper precedence:
-1. Additive (`+`, `-`) — lowest precedence
-2. Multiplicative (`*`, `/`)
-3. Unary (`-x`, `+x`)
-4. Power (`^`) — right-associative
-5. Atoms (numbers, symbols, function calls, parenthesized subexpressions)
-
-## Supported Functions
+## 📊 Supported Functions
 
 | Function | Description |
 |----------|-------------|
@@ -187,33 +283,144 @@ Recursive descent parser with proper precedence:
 | `ceil`, `floor` | Rounding |
 | `sign` | Sign function |
 
-## Project Structure
+## 🆕 New Features in v2.0
+
+### Limit Computation
+```python
+from symbolic_cas import parse
+result = parse("sin(x)/x").limit('x', 0)       # → 1.0
+result = parse("(exp(x)-1)/x").limit('x', 0)   # → 1.0
+result = parse("1/x").limit('x', 'inf')          # → 0.0
+```
+
+Supports one-sided limits (`direction='left'` or `'right'`) and limits at infinity.
+
+### JSON Serialization
+```python
+from symbolic_cas.serialize import to_json, from_json
+json_str = to_json(parse("sin(x) + 1"))
+expr = from_json(json_str)  # Perfect round-trip
+```
+
+### CLI Interface
+Full argparse-based command-line interface with actions, variable bindings, and output format control.
+
+### Expression Tree Metrics
+```python
+expr = parse("x^2 + 2*x + 1")
+expr.depth()  # → 4
+expr.size()   # → 9
+```
+
+### Modular Architecture
+Refactored from a single 1877-line file into 10 focused modules for maintainability.
+
+## 📁 Project Structure
 
 ```
 symbolic-algebra/
-├── symbolic.py     # Complete implementation (single file, no dependencies)
-├── tests.py        # Comprehensive test suite (124 tests)
-└── README.md       # This file
+├── symbolic_cas/          — Main package
+│   ├── __init__.py        — Package exports
+│   ├── expr.py            — AST node classes
+│   ├── parser.py          — Expression parser
+│   ├── calculus.py         — Differentiation & Taylor series
+│   ├── simplify.py         — Simplification, expansion, factorization
+│   ├── evaluate.py         — Numerical evaluation & integration
+│   ├── solve.py            — Equation solving & Newton's method
+│   ├── display.py          — Pretty-printing & LaTeX
+│   ├── substitute.py       — Substitution & symbol collection
+│   ├── limits.py           — Limit computation (NEW)
+│   ├── serialize.py        — JSON serialization (NEW)
+│   └── cli.py              — CLI interface (NEW)
+├── tests/
+│   └── test_symbolic.py   — Comprehensive pytest suite
+├── examples/
+│   ├── basic_usage.py      — Basic usage examples
+│   ├── calculus_demo.py    — Calculus examples
+│   └── cli_demo.py         — CLI examples
+├── symbolic.py             — Original single-file version (legacy)
+├── tests.py                — Original test suite (legacy)
+├── pyproject.toml          — Package configuration
+├── CONTRIBUTING.md         — Contribution guide
+├── LICENSE                  — MIT License
+└── README.md               — This file
 ```
 
-## Requirements
+## 🧪 Running Tests
 
-- Python 3.8+ (no external dependencies)
+```bash
+# Run the pytest suite
+cd symbolic-algebra
+pip install pytest
+pytest tests/test_symbolic.py -v
 
-## Known Issues (Resolved)
+# Run the legacy test suite (still works)
+python3 tests.py
 
-The following bugs were found and fixed during development:
+# Run with coverage
+pip install pytest-cov
+pytest tests/test_symbolic.py --cov=symbolic_cas
 
-1. **`0^0` simplified to `0` instead of `1`** — The simplification rule `0^x = 0` didn't check whether the exponent was positive. Since `0^0 = 1` by convention, the rule now correctly defers to the `x^0 = 1` rule which runs first. For `0^(-n)` (negative exponents), the expression is left unsimplified since it's undefined.
+# Run a specific test class
+pytest tests/test_symbolic.py::TestDifferentiation -v
+```
 
-2. **`x / (-1)` didn't simplify to `-x`** — Missing simplification rule for division by -1. Added `x / (-1) → -x` to the division simplification pass.
+## 🐛 Known Issues (Resolved)
 
-3. **`_rational_root_candidates` only returned positive integer divisors** — The rational root theorem states that possible roots are ±(p_i/q_j) where p_i divides the constant and q_j divides the leading coefficient. The function now correctly generates all ±(divisor of p)/(divisor of q) candidates, enabling solving of equations with fractional roots (e.g., `2x² - x - 6 = 0` has roots `x = 2` and `x = -3/2`).
+1. **`0^0` simplified to `0` instead of `1`** — The `0^x = 0` rule didn't check whether the exponent was positive. Fixed to defer to `x^0 = 1` for the `0^0` case.
 
-4. **`_collect_polynomial_coeffs` had a dead code branch** — Inside the `Pow` handler, a check for `isinstance(expr, Sym)` was unreachable because we were already inside `isinstance(expr, Pow)`. Removed the dead branch; the correct check on `expr.base` already existed below it.
+2. **`x / (-1)` didn't simplify to `-x`** — Added `x / (-1) → -x` to the division simplification pass.
 
-5. **`(-1)^0.5` evaluation produced a complex number** — Python's `**` operator returns a complex number for negative bases with non-integer exponents. Since our CAS doesn't support complex numbers, `evaluate()` now raises a `ValueError` with a descriptive message instead of silently returning a complex value.
+3. **`_rational_root_candidates` only returned positive integer divisors** — Rewritten to generate all ±(p_i/q_j) candidates per the rational root theorem.
 
-## License
+4. **`_collect_polynomial_coeffs` had a dead code branch** — Removed unreachable `isinstance(expr, Sym)` check inside `Pow` handler.
 
-MIT
+5. **`(-1)^0.5` evaluation returned a Python complex number** — `evaluate()` now raises `ValueError` for complex results.
+
+## 🗺️ Roadmap
+
+- [ ] **Symbolic integration** — Closed-form integration for common patterns
+- [ ] **Polynomial GCD** — For more sophisticated simplification
+- [ ] **Matrix expressions** — Symbolic matrix operations
+- [ ] **Implicit differentiation** — d/dx for implicit functions
+- [ ] **Series summation** — Sum symbolic series like Σ(1/n²)
+- [ ] **3D pretty-printing** — Unicode art rendering of fractions
+- [ ] **Variable-precision arithmetic** — Support for arbitrary precision via `decimal` module
+- [ ] **Plotting integration** — Matplotlib-based expression plotting
+- [ ] **WebAssembly build** — Run in browser via Pyodide
+
+## 🤝 Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on:
+- Development setup
+- Running tests
+- Code style requirements
+- Adding new features (expression types, functions, simplification rules, CLI commands)
+
+## 📋 Changelog
+
+### v2.0.0 (2026-06-17) — Comprehensive Improvement
+- **New**: Modular package architecture (10 modules)
+- **New**: Limit computation (`expr.limit()`)
+- **New**: JSON serialization (`to_json()`, `from_json()`)
+- **New**: CLI interface with argparse (`symbolic-cas` command)
+- **New**: Expression tree metrics (`depth()`, `size()`)
+- **New**: `pyproject.toml` for pip-installable package
+- **New**: Comprehensive pytest test suite
+- **New**: GitHub Actions CI configuration
+- **New**: Examples directory with 3 demo scripts
+- **New**: CONTRIBUTING.md and MIT LICENSE
+- **Improved**: Dramatically enhanced README with badges, TOC, and examples
+- **Improved**: Type hints on all public functions
+- **Improved**: Better error messages throughout
+
+### v1.0.0 (2026-06-17) — Initial Release
+- Expression parsing, differentiation, simplification
+- Equation solving, Taylor series, numerical integration
+- Newton's method, factorization, pretty-printing, LaTeX output
+- REPL interface
+- 124 tests passing
+
+## 📄 License
+
+This project is licensed under the [MIT License](LICENSE).
