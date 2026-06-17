@@ -23,5 +23,6 @@ A monorepo of AI-generated creative coding projects. Each project lives in its o
 || [riscv-emu](./riscv-emu) | RISC-V RV32I emulator v2.0: RV32I+RV32M+Zicsr, two-pass assembler, disassembler, ELF32 loader, interactive debugger, profiler, tracer, UART/CLINT MMIO devices, config system, state serialization, structured logging, 159 tests, pip-installable |
 | [bplus-db](./bplus-db) | B+ Tree database engine v3.0: range queries, prefix scans, TTL expiration, LRU read cache, cursor pagination, ACID-like transactions, WAL, bulk loading, merge/diff, CSV/JSONL/Pickle import/export, config system, structured logging, SQL-like query language, tree validation, CLI, 110 tests, pip-installable |
 | [circuit-simulator](./circuit-simulator) | Digital circuit simulator v2.0: 10 gate types, 5 sequential elements, clocks, propagation delays, 4-valued signals, buses, composite builders, stimulus API, truth tables, circuit analysis, CDL parser, oscilloscope with ASCII waveforms & VCD export, JSON/DOT/ASCII export, waveform analysis, CLI tool, config system, preset circuits, 158 tests, pip-installable |
+| [symbolic-algebra](./symbolic-algebra) | Symbolic algebra system (CAS): expression parsing, differentiation (chain/product/quotient/power rules), simplification, equation solving (linear/quadratic/rational roots), expansion, substitution, LaTeX output, REPL, 82 tests |
 
 ---
