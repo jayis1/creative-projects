@@ -198,6 +198,25 @@ def parse_cdl(source: str) -> Circuit:
                     circuit.wire(input_names[0]), circuit.wire(input_names[1]),
                     circuit.wire(input_names[2]), circuit.wire(output_name))
             
+            elif cmd == 'ripple_adder':
+                if circuit is None:
+                    raise CDLParseError(f"Line {line_num}: no circuit defined")
+                prefix = tokens[1]
+                # Parse bus references: bus:<name>
+                bus_refs = tokens[2:]
+                bus_names = []
+                for ref in bus_refs:
+                    if ref.startswith('bus:'):
+                        bus_names.append(ref[4:])
+                    else:
+                        raise CDLParseError(f"Line {line_num}: ripple_adder requires bus references (bus:<name>)")
+                if len(bus_names) != 3:
+                    raise CDLParseError(f"Line {line_num}: ripple_adder requires 3 bus references (bus:a bus:b bus:sum)")
+                bus_a = circuit.bus(bus_names[0])
+                bus_b = circuit.bus(bus_names[1])
+                sum_bus = circuit.bus(bus_names[2])
+                circuit.build_ripple_carry_adder(prefix, bus_a, bus_b, sum_bus)
+            
             elif cmd == 'set':
                 if circuit is None:
                     raise CDLParseError(f"Line {line_num}: no circuit defined")

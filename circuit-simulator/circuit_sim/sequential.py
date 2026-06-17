@@ -219,8 +219,11 @@ class Clock:
         self.output = output
         self.period_ns = period_ns
         self.duty_cycle = duty_cycle
-        self._high_ns = int(period_ns * duty_cycle)
-        self._low_ns = period_ns - self._high_ns
+        # Ensure at least 1ns in each phase to avoid degenerate clocks
+        self._high_ns = max(1, int(period_ns * duty_cycle))
+        self._low_ns = max(1, period_ns - self._high_ns)
+        # Adjust period to match actual phase durations
+        self._actual_period = self._high_ns + self._low_ns
         self._phase = 0  # 0 = high phase, 1 = low phase
         self._time_in_phase = 0  # Start at the beginning of the high phase
 

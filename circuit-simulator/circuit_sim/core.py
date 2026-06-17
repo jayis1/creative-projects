@@ -81,8 +81,9 @@ class Wire:
 
     def __init__(self, name: str, initial: Signal = Signal.UNDEFINED, delay_ns: int = 0):
         self.name = name
+        self._initial = initial  # Store initial value for reset
         self._signal = initial
-        self._delay_ns = delay_ns
+        self._delay_ns = delay_ns  # NOTE: Not used by Simulator; propagation delays are on Gates
         self._listeners: List[Callable[[Signal, str], None]] = []
         self._history: List[tuple] = []  # (time_ns, signal)
 

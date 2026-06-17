@@ -285,6 +285,24 @@ circuit-simulator/
 | `build_ring_oscillator` | N-stage ring oscillator (odd number of inverters) |
 | `build_priority_encoder` | 4-bit priority encoder with valid output |
 
+## Known Issues (Resolved)
+
+The following bugs were found and fixed during Phase 3 bug hunting:
+
+1. **Clock degenerate duty cycle** (FIXED): `Clock` with extreme duty cycles (e.g., `period_ns=10, duty_cycle=0.05`) could produce `_high_ns=0`, creating a clock that never goes HIGH. Now clamped to minimum 1ns per phase.
+
+2. **Simulator.reset() destroyed initial values** (FIXED): `Simulator.reset()` set all wires to `UNDEFINED` instead of restoring their initial values. Now stores `_initial` on `Wire` and restores it on reset, making it possible to properly re-run simulations.
+
+3. **CDL missing `ripple_adder` command** (FIXED): The CDL parser documentation mentioned `ripple_adder` but it wasn't implemented. Added `ripple_adder` command with `bus:<name>` syntax for bus references.
+
+4. **TruthTable state leakage** (FIXED): `TruthTable.generate()` didn't reset circuit state between input combinations, causing state from earlier iterations to leak into later ones. Now resets input wires to initial values before each iteration and restores them after.
+
+5. **Stimulus.pulse_wire() no validation** (FIXED): `pulse_wire()` accepted `start_ns >= end_ns` without error, creating nonsensical stimuli. Now raises `ValueError` if start ≥ end.
+
+6. **Simulator convergence limit too low** (FIXED): The convergence iteration limit of 20 was insufficient for deep circuits (30+ gates). Increased to `max(50, 2 * num_gates)` to handle arbitrarily deep circuits.
+
+7. **Wire.delay_ns unused** (DOCUMENTED): `Wire.delay_ns` parameter was defined but never used by the Simulator (propagation delays are handled by `Gate.delay_ns`). Added comment documenting this.
+
 ## License
 
 MIT

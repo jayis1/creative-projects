@@ -29,12 +29,22 @@ class TruthTable:
     def generate(self, settle_steps: int = 10) -> List[Dict[str, Signal]]:
         """
         Generate the full truth table by enumerating all input combinations.
+        Resets circuit state between iterations to avoid state leakage.
         Returns list of dicts mapping wire names to Signal values.
         """
         self.rows = []
         n_inputs = len(self.input_names)
+        # Store initial wire values so we can restore them after generation
+        initial_values = {}
+        for name in self.input_names:
+            if name in self.circuit.wires:
+                initial_values[name] = self.circuit.wires[name].signal
 
         for combo in product([Signal.LOW, Signal.HIGH], repeat=n_inputs):
+            # Reset all wires to initial values before each iteration
+            for name, sig in initial_values.items():
+                self.circuit.wires[name].signal = sig
+
             sim = Simulator(self.circuit, step_ns=1)
 
             # Set input values
@@ -55,6 +65,10 @@ class TruthTable:
                 else:
                     row[name] = Signal.UNDEFINED
             self.rows.append(row)
+
+        # Restore initial wire values after generation
+        for name, sig in initial_values.items():
+            self.circuit.wires[name].signal = sig
 
         return self.rows
 

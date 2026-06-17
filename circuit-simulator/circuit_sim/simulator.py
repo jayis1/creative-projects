@@ -31,6 +31,8 @@ class Stimulus:
                    high_value: Signal = Signal.HIGH,
                    low_value: Signal = Signal.LOW) -> 'Stimulus':
         """Generate a pulse on a wire: go HIGH at start_ns, back to LOW at end_ns."""
+        if start_ns >= end_ns:
+            raise ValueError(f"pulse_wire requires start_ns < end_ns, got {start_ns} >= {end_ns}")
         self.set_wire(start_ns, wire_name, high_value)
         self.set_wire(end_ns, wire_name, low_value)
         return self
@@ -129,7 +131,8 @@ class Simulator:
     def _evaluate_combinational(self) -> None:
         """Evaluate all combinational gates and propagate through delays."""
         # Multiple passes until stable (handles cascaded gates)
-        max_iterations = 20  # prevent infinite loops
+        # Use circuit size as upper bound, minimum 50 iterations
+        max_iterations = max(50, len(self.circuit.gates) * 2)
         for _ in range(max_iterations):
             changed = False
             for gate in self.circuit.gates:
@@ -225,12 +228,13 @@ class Simulator:
         return self.time_ns
 
     def reset(self) -> None:
-        """Reset simulation time to zero."""
+        """Reset simulation time to zero and restore initial wire values."""
         self.time_ns = 0
         self._stimulus_index = 0
         self._bus_stimulus_index = 0
         for wire in self.circuit.wires.values():
-            wire.signal = Signal.UNDEFINED
+            # Restore wire to its initial value instead of UNDEFINED
+            wire.signal = wire._initial
             wire.clear_history()
         # Reset sequential element state
         for elem in self.circuit.sequential:
