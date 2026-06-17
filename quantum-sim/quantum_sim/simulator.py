@@ -181,17 +181,28 @@ class Simulator:
         'state_vector' (default) or 'density_matrix'.
     seed : int, optional
         Random seed for measurement sampling.
+    noise_channels : list, optional
+        List of (NoiseChannel, targets) tuples to apply after each gate.
+        Only supported in density_matrix mode.
     """
 
-    def __init__(self, mode: str = "state_vector", seed: Optional[int] = None) -> None:
+    def __init__(
+        self,
+        mode: str = "state_vector",
+        seed: Optional[int] = None,
+        noise_channels: Optional[list] = None,
+    ) -> None:
         if mode not in ("state_vector", "density_matrix"):
             raise ValueError(f"Unknown mode '{mode}'; use 'state_vector' or 'density_matrix'")
         self.mode = mode
         self.rng = np.random.default_rng(seed)
+        self.noise_channels = noise_channels or []
 
     def run(self, circuit: QuantumCircuit, initial_state: StateVector | None = None, shots: int = 1024) -> SimulationResult:
         """Run a circuit and return the result with measurement sampling."""
         if self.mode == "state_vector":
+            if self.noise_channels:
+                raise ValueError("Noise channels require density_matrix mode")
             return self._run_sv(circuit, initial_state, shots)
         return self._run_dm(circuit, initial_state, shots)
 
@@ -226,6 +237,8 @@ class Simulator:
         return SimulationResult(state=state, n_qubits=n, shots=shots, counts=counts)
 
     def _run_dm(self, circuit: QuantumCircuit, initial_state: DensityMatrix | StateVector | None, shots: int) -> SimulationResult:
+        from .noise import apply_channel
+
         n = circuit.n_qubits
         if initial_state is None:
             dm = np.zeros((2 ** n, 2 ** n), dtype=complex)
@@ -243,6 +256,10 @@ class Simulator:
                 continue
             U = _embed_gate(op.gate.matrix, op.targets, op.controls, n)
             state = state.apply_unitary(U)
+
+            # Apply noise channels after each gate
+            for channel, targets in self.noise_channels:
+                state = DensityMatrix(apply_channel(state.matrix, channel, targets))
 
         probs = state.probabilities()
         if shots > 0:

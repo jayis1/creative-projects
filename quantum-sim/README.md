@@ -2,11 +2,12 @@
 
 A from-scratch quantum circuit simulator with state-vector and density-matrix
 backends, supporting multi-qubit gates, controlled operations, measurement,
-entanglement detection, partial trace, and canonical quantum algorithms.
+noise channels, entanglement detection, partial trace, and canonical quantum
+algorithms.
 
 ## Features
 
-### Core
+### Core Simulation
 - **State-vector backend** — tracks pure states |ψ⟩ as 2^n complex vectors
 - **Density-matrix backend** — tracks mixed states ρ as 2^n × 2^n matrices
 - **20+ built-in gates** — X, Y, Z, H, S, T, SX, CNOT, CZ, SWAP, iSWAP,
@@ -16,6 +17,14 @@ entanglement detection, partial trace, and canonical quantum algorithms.
 - **Gate algebra** — tensor products, composition, dagger, powers
 - **Unitarity verification** — every gate is checked to be unitary at construction
 
+### Quantum Noise (v2.0)
+- **6 CPTP noise channels** — depolarizing, bit flip, phase flip, amplitude
+  damping, phase damping, general Pauli channel
+- **Kraus operator representation** — each channel verified as completely
+  positive and trace-preserving
+- **Per-qubit noise application** — apply noise to specific qubits during
+  density-matrix simulation
+
 ### State Operations
 - Normalization, probability computation, expectation values
 - Fidelity (pure and mixed), purity, von Neumann entropy
@@ -23,6 +32,14 @@ entanglement detection, partial trace, and canonical quantum algorithms.
 - Entanglement detection via Schmidt rank (SVD)
 - Partial trace with correct qubit ordering
 - Bloch sphere vector computation and ASCII visualization
+
+### Circuit Visualization (v2.0)
+- **ASCII circuit diagrams** — render circuits as text with qubit wires,
+  gate symbols, control connections, and barriers
+
+### Serialization (v2.0)
+- **JSON serialization** — save/load circuits via `to_json()`/`from_json()`
+- **OpenQASM 2.0 export** — standard quantum assembly format
 
 ### Algorithms
 - **Bell states** — all four Bell states (Φ±, Ψ±)
@@ -32,10 +49,18 @@ entanglement detection, partial trace, and canonical quantum algorithms.
 - **Quantum Fourier Transform (QFT)** — n-qubit QFT circuit
 - **Superdense coding** — transmit 2 classical bits via 1 qubit
 
-### Other
-- OpenQASM 2.0 export
-- CLI with subcommands (bell, grover, qft, deutsch-jozsa, teleport, bloch, superdense, qasm)
-- 73 pytest tests
+### Advanced Protocols (v2.0)
+- **State tomography** — reconstruct density matrix from X/Y/Z measurements
+- **BB84 quantum key distribution** — with optional eavesdropper detection
+- **Quantum random walk** — discrete-time quantum walk on a line
+
+### CLI (10 subcommands)
+- `bell`, `grover`, `qft`, `deutsch-jozsa`, `teleport`, `bloch`,
+  `superdense`, `qasm`, `noise`, `draw`
+
+### Testing
+- 102 pytest tests covering gates, state operations, simulator, algorithms,
+  noise channels, serialization, visualization, and protocols
 
 ## Installation
 
@@ -59,7 +84,7 @@ qc.cx(0, 1)
 sim = Simulator(seed=42)
 result = sim.run(qc, shots=1000)
 print(result.state)        # (|00⟩ + |11⟩)/√2
-print(result.get_counts())  # {'00': 503, '11': 497}
+print(result.get_counts()) # {'00': 503, '11': 497}
 ```
 
 ## Usage
@@ -92,6 +117,26 @@ result_dm = sim_dm.run(qc, shots=100)
 print(result_dm.state.purity())
 ```
 
+### Noise Channels
+
+```python
+from quantum_sim import QuantumCircuit, Simulator, depolarizing, bit_flip
+
+# Apply depolarizing noise to qubit 0 during simulation
+qc = QuantumCircuit(2)
+qc.h(0)
+qc.cx(0, 1)
+
+noise = depolarizing(p=0.1)
+sim = Simulator(
+    mode="density_matrix",
+    noise_channels=[(noise, (0,))]
+)
+result = sim.run(qc, shots=0)
+print(f"Purity: {result.state.purity():.4f}")  # < 1.0 (mixed state)
+print(f"Entropy: {result.state.von_neumann_entropy():.4f}")
+```
+
 ### Entanglement & Partial Trace
 
 ```python
@@ -107,6 +152,48 @@ rho = sv.to_density_matrix()
 reduced = rho.partial_trace([0])
 print(reduced.matrix)  # I/2 (maximally mixed)
 print(reduced.von_neumann_entropy())  # 1.0
+```
+
+### Circuit Visualization
+
+```python
+from quantum_sim import QuantumCircuit, draw_circuit
+
+qc = QuantumCircuit(3)
+qc.h(0)
+qc.cx(0, 1)
+qc.toffoli(0, 1, 2)
+print(draw_circuit(qc))
+```
+
+### Circuit Serialization
+
+```python
+from quantum_sim import QuantumCircuit
+
+qc = QuantumCircuit(2)
+qc.h(0)
+qc.cx(0, 1)
+
+# Save to JSON
+json_str = qc.to_json()
+
+# Load back
+qc2 = QuantumCircuit.from_json(json_str)
+```
+
+### BB84 Protocol
+
+```python
+from quantum_sim import bb84_protocol
+
+# Without eavesdropping
+alice_key, bob_key, error_rate = bb84_protocol(n_bits=32, eavesdrop=False)
+print(f"Error rate: {error_rate:.2%}")  # ~0%
+
+# With eavesdropping
+alice_key, bob_key, error_rate = bb84_protocol(n_bits=64, eavesdrop=True)
+print(f"Error rate: {error_rate:.2%}")  # >0% (detectable!)
 ```
 
 ### Bloch Sphere
@@ -146,6 +233,8 @@ quantum-sim teleport
 quantum-sim bloch --state "1/sqrt(2),1/sqrt(2)"
 quantum-sim superdense --message 2
 quantum-sim qasm
+quantum-sim noise --probability 0.1
+quantum-sim draw
 ```
 
 ## How It Works
@@ -175,10 +264,18 @@ qubit 1 = 0, qubit 2 = 1.
 ### Partial Trace
 
 The density matrix ρ (2^n × 2^n) is reshaped into a tensor with 2n axes
-(n row axes + n column axes). Qubit *i* occupies row axis (n-1-i) and
-column axis (2n-1-i) due to C-order flattening. Tracing out a qubit
-contracts its row and column axes (same einsum letter). Kept qubits
-retain separate row and column letters, surviving into the output.
+(n row axes + n column axes). Due to C-order flattening, qubit *i* occupies
+row axis (n-1-i) and column axis (2n-1-i). Tracing out a qubit contracts its
+row and column axes (same einsum letter). Kept qubits retain separate row
+and column letters, surviving into the output.
+
+### Noise Channels
+
+Each noise channel is a completely positive trace-preserving (CPTP) map
+represented by Kraus operators {K_i} with Σ K_i†K_i = I. When applied, the
+density matrix transforms as ρ → Σ_i K_i ρ K_i†. The Kraus operators are
+embedded into the full Hilbert space using the same gate-embedding machinery
+as unitary gates.
 
 ## Project Structure
 
@@ -188,14 +285,18 @@ quantum-sim/
 │   ├── __init__.py      — public API
 │   ├── gates.py         — gate definitions and algebra
 │   ├── state.py         — StateVector and DensityMatrix
-│   ├── circuit.py       — QuantumCircuit builder
-│   ├── simulator.py     — circuit execution engine
+│   ├── circuit.py       — QuantumCircuit builder + serialization
+│   ├── simulator.py     — circuit execution engine + noise support
 │   ├── qubit.py         — single-qubit helpers
 │   ├── bloch.py         — Bloch sphere utilities
 │   ├── algorithms.py    — canonical quantum algorithms
-│   └── cli.py           — command-line interface
+│   ├── noise.py         — CPTP noise channels (v2.0)
+│   ├── visualize.py     — ASCII circuit visualization (v2.0)
+│   ├── advanced.py      — tomography, BB84, quantum walk (v2.0)
+│   └── cli.py           — command-line interface (10 subcommands)
 ├── tests/
-│   └── test_quantum_sim.py  — 73 tests
+│   ├── test_quantum_sim.py  — 73 core tests
+│   └── test_enhancements.py — 29 enhancement tests
 ├── pyproject.toml
 └── README.md
 ```

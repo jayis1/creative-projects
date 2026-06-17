@@ -23,8 +23,25 @@ from .algorithms import (
     quantum_fourier_transform,
     superdense_coding,
 )
+from .noise import (
+    NoiseChannel,
+    depolarizing,
+    bit_flip,
+    phase_flip,
+    amplitude_damping,
+    phase_damping,
+    pauli_channel,
+    apply_channel,
+)
+from .visualize import draw_circuit
+from .advanced import (
+    state_tomography,
+    bb84_protocol,
+    quantum_walk,
+    QuantumWalkResult,
+)
 
-__version__ = "1.0.0"
+__version__ = "2.0.0"
 
 __all__ = [
     "GATES",
@@ -43,5 +60,18 @@ __all__ = [
     "grovers_search",
     "quantum_fourier_transform",
     "superdense_coding",
+    "NoiseChannel",
+    "depolarizing",
+    "bit_flip",
+    "phase_flip",
+    "amplitude_damping",
+    "phase_damping",
+    "pauli_channel",
+    "apply_channel",
+    "draw_circuit",
+    "state_tomography",
+    "bb84_protocol",
+    "quantum_walk",
+    "QuantumWalkResult",
     "__version__",
 ]

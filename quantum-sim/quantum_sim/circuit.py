@@ -229,6 +229,60 @@ class QuantumCircuit:
                 lines.append(f"{qn} {targs};")
         return "\n".join(lines)
 
+    def to_dict(self) -> dict:
+        """Serialize the circuit to a JSON-compatible dictionary."""
+        ops_data = []
+        for op in self.operations:
+            ops_data.append({
+                "name": op.name,
+                "gate_name": op.gate.name,
+                "targets": list(op.targets),
+                "controls": list(op.controls),
+            })
+        return {
+            "n_qubits": self.n_qubits,
+            "operations": ops_data,
+            "version": "2.0",
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "QuantumCircuit":
+        """Deserialize a circuit from a dictionary."""
+        qc = cls(data["n_qubits"])
+        for op_data in data["operations"]:
+            name = op_data["name"]
+            targets = tuple(op_data["targets"])
+            controls = tuple(op_data["controls"])
+            if name in ("barrier",):
+                qc.barrier()
+            elif name == "measure":
+                qc.measure(targets[0])
+            else:
+                # Look up the gate by name (this works for standard gates)
+                from .gates import GATES
+                gate = GATES.get(op_data["gate_name"])
+                if gate is None:
+                    # Try matching by the op name
+                    gate = GATES.get(name)
+                if gate is None:
+                    raise ValueError(f"Cannot deserialize gate '{op_data['gate_name']}'")
+                if isinstance(gate, Gate):
+                    qc.operations.append(Operation(gate=gate, targets=targets, controls=controls))
+                else:
+                    raise ValueError(f"Cannot deserialize parameterized gate '{op_data['gate_name']}'")
+        return qc
+
+    def to_json(self) -> str:
+        """Serialize to a JSON string."""
+        import json
+        return json.dumps(self.to_dict(), indent=2)
+
+    @classmethod
+    def from_json(cls, json_str: str) -> "QuantumCircuit":
+        """Deserialize from a JSON string."""
+        import json
+        return cls.from_dict(json.loads(json_str))
+
 
 class CircuitBuilder:
     """Fluent builder that mirrors QuantumCircuit methods but returns self."""

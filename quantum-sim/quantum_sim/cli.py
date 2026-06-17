@@ -147,6 +147,52 @@ def cmd_qasm(args: argparse.Namespace) -> None:
     print(qc.to_qasm())
 
 
+def cmd_noise(args: argparse.Namespace) -> None:
+    """Run a simple circuit with noise and show the effect."""
+    from .noise import depolarizing, bit_flip
+    from .visualize import draw_circuit
+
+    qc = QuantumCircuit(2)
+    qc.h(0)
+    qc.cx(0, 1)
+
+    print("Circuit:")
+    print(draw_circuit(qc))
+    print()
+
+    # No noise
+    sim_clean = Simulator(mode="density_matrix", seed=42)
+    result_clean = sim_clean.run(qc, shots=0)
+    print(f"Without noise:  purity = {result_clean.state.purity():.6f}")
+    print(f"  Entropy = {result_clean.state.von_neumann_entropy():.6f}")
+
+    # With depolarizing noise
+    noise_p = args.probability
+    channel = depolarizing(noise_p)
+    sim_noisy = Simulator(mode="density_matrix", seed=42, noise_channels=[(channel, (0,))])
+    result_noisy = sim_noisy.run(qc, shots=1024)
+    print(f"\nWith depolarizing noise (p={noise_p}):  purity = {result_noisy.state.purity():.6f}")
+    print(f"  Entropy = {result_noisy.state.von_neumann_entropy():.6f}")
+    print(f"  Counts: {result_noisy.counts}")
+
+
+def cmd_draw(args: argparse.Namespace) -> None:
+    """Draw a sample circuit as ASCII art."""
+    from .visualize import draw_circuit
+
+    qc = QuantumCircuit(4)
+    qc.h(0)
+    qc.cx(0, 1)
+    qc.h(2)
+    qc.toffoli(0, 1, 3)
+    qc.h(3)
+    qc.swap(2, 3)
+    qc.barrier()
+    qc.measure(0)
+    qc.measure(1)
+    print(draw_circuit(qc))
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(
         prog="quantum-sim",
@@ -191,6 +237,14 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     p_qasm = sub.add_parser("qasm", help="Print an example circuit in QASM")
     p_qasm.set_defaults(func=cmd_qasm)
+
+    p_noise = sub.add_parser("noise", help="Demonstrate noise channels")
+    p_noise.add_argument("--probability", type=float, default=0.1,
+                         help="Noise probability (0..1)")
+    p_noise.set_defaults(func=cmd_noise)
+
+    p_draw = sub.add_parser("draw", help="Draw an example circuit as ASCII art")
+    p_draw.set_defaults(func=cmd_draw)
 
     args = parser.parse_args(argv)
     args.func(args)
