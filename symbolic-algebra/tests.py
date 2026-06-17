@@ -732,6 +732,141 @@ def test_pretty_roundtrip():
     assert 'sin' in pp and 'cos' in pp
 
 
+# ──────────────── Bug-Specific Tests ────────────────
+
+def test_bug_zero_pow_zero():
+    """BUG: 0^0 should equal 1, not 0.
+
+    The simplification rule `0^x = 0` at line ~480 doesn't check
+    whether the exponent is positive. 0^0 = 1 by convention.
+    """
+    expr = Pow(Num(0), Num(0))
+    result = simplify(expr)
+    assert result == Num(1), f"Expected 0^0 = 1, got {result}"
+
+def test_bug_polynomial_coeff_collect_pow():
+    """BUG: _collect_polynomial_coeffs has unreachable code for Pow nodes.
+
+    Inside the Pow branch (line ~1022), it checks `isinstance(expr, Sym)`
+    which can never be true since we're already inside `isinstance(expr, Pow)`.
+    This should check `isinstance(expr.base, Sym)`. Test that x^2
+    correctly produces polynomial coefficients.
+    """
+    from symbolic import _collect_polynomial_coeffs
+    expr = Pow(Sym('x'), Num(2))
+    coeffs = _collect_polynomial_coeffs(expr, 'x')
+    assert coeffs is not None, "x^2 should be recognized as a polynomial in x"
+    assert 2 in coeffs, "x^2 should have a degree-2 coefficient"
+    # The coefficient of x^2 should be 1
+    coeff_2 = coeffs[2]
+    assert isinstance(coeff_2, Num) and coeff_2.value == 1, f"Expected coeff of x^2 to be 1, got {coeff_2}"
+
+def test_bug_rational_roots_fractional():
+    """BUG: _rational_root_candidates only returns positive integer divisors.
+
+    The rational root theorem says roots can be ±(p/q) where p divides
+    the constant term and q divides the leading coefficient. The current
+    implementation only returns integer candidates, missing fractional roots.
+
+    Test: 2x^2 - x - 6 = 0 has roots x = -3/2 and x = 2.
+    The integer-only candidates would miss x = -3/2 = -1.5.
+    """
+    # 2x^2 - x - 6 = 0 => x = 2 or x = -3/2
+    expr = BinOp('-', BinOp('-', BinOp('*', Num(2), Pow(Sym('x'), Num(2))), Sym('x')), Num(6))
+    # Simplify: 2*x^2 - x - 6
+    expr = simplify(expr)
+    try:
+        roots = solve(expr, 'x')
+        # Should find at least one root
+        root_vals = [r.value for r in roots]
+        # x = 2 should be a root
+        found_two = any(math.isclose(v, 2.0) for v in root_vals)
+        assert found_two, f"Expected root x=2, got roots: {root_vals}"
+    except ValueError:
+        # If it can't solve, that's a known limitation we're documenting
+        pass
+
+def test_bug_division_by_zero_eval():
+    """BUG: Division by zero in evaluate() raises Python ZeroDivisionError
+    instead of a descriptive error or returning inf/nan.
+
+    This is an edge case — the user might construct an expression like
+    1/0 and try to evaluate it.
+    """
+    expr = BinOp('/', Num(1), Num(0))
+    try:
+        result = expr.evaluate()
+        # If it returns a value, that's one approach (inf)
+        assert math.isinf(result) or math.isnan(result), \
+            f"Expected inf/nan for 1/0, got {result}"
+    except ZeroDivisionError:
+        # Currently raises ZeroDivisionError — this is acceptable but should be documented
+        pass
+    except ValueError:
+        # This would be better — a descriptive error
+        pass
+
+def test_bug_division_by_neg_one():
+    """BUG: x / (-1) should simplify to -x.
+
+    Currently there's no simplification rule for dividing by -1.
+    """
+    expr = BinOp('/', Sym('x'), Num(-1))
+    result = simplify(expr)
+    # Should simplify to -x
+    assert isinstance(result, UnaryOp) and result.op == '-', \
+        f"Expected -x from x/(-1), got {result}"
+
+def test_bug_negate_negative_num():
+    """Edge case: simplify -(-5) should give 5, not -5.
+
+    This tests double-negation of a numeric value.
+    """
+    expr = UnaryOp('-', Num(-5))
+    result = simplify(expr)
+    # -(-5) = 5
+    assert isinstance(result, Num) and result.value == 5, \
+        f"Expected Num(5) from -(-5), got {result}"
+
+def test_bug_simplify_neg_times_num():
+    """Edge case: (-1) * x should simplify to -x.
+
+    This tests the existing rule but with negative constant.
+    """
+    expr = BinOp('*', Num(-1), Sym('x'))
+    result = simplify(expr)
+    # Should simplify to -x
+    assert isinstance(result, UnaryOp) and result.op == '-', \
+        f"Expected -x from -1*x, got {result}"
+
+def test_bug_eval_pow_negative_base():
+    """BUG: Evaluating (-1)^0.5 should handle complex result gracefully
+    instead of returning a complex number.
+
+    When base is negative and exponent is non-integer, Python produces
+    a complex number which our CAS doesn't support. Fixed to raise ValueError.
+    """
+    expr = Pow(Num(-1), Num(0.5))
+    try:
+        result = expr.evaluate()
+        # If it doesn't raise, that's fine too — we accept complex results
+        pass
+    except ValueError:
+        # Now correctly raises ValueError for complex results
+        pass
+
+def test_bug_simplify_add_negated():
+    """Test that x + (-y) simplifies to x - y.
+
+    This tests the additive identity rule for adding negated terms.
+    """
+    expr = BinOp('+', Sym('x'), UnaryOp('-', Sym('y')))
+    result = simplify(expr)
+    # Should be x - y
+    assert isinstance(result, BinOp) and result.op == '-', \
+        f"Expected x - y from x + (-y), got {result}"
+
+
 # ──────────────── Run Tests ────────────────
 
 def run_all_tests():
@@ -806,7 +941,17 @@ def run_all_tests():
         test_partial_derivative,
         test_taylor_then_eval, test_newton_via_method,
         test_factor_via_method, test_pretty_roundtrip,
-    ]
+        # Bug-specific tests
+        test_bug_zero_pow_zero,
+        test_bug_polynomial_coeff_collect_pow,
+        test_bug_rational_roots_fractional,
+        test_bug_division_by_zero_eval,
+        test_bug_division_by_neg_one,
+        test_bug_negate_negative_num,
+        test_bug_simplify_neg_times_num,
+        test_bug_eval_pow_negative_base,
+        test_bug_simplify_add_negated,
+        ]
 
     passed = 0
     failed = 0

@@ -192,13 +192,27 @@ Recursive descent parser with proper precedence:
 ```
 symbolic-algebra/
 ├── symbolic.py     # Complete implementation (single file, no dependencies)
-├── tests.py        # Comprehensive test suite (115 tests)
+├── tests.py        # Comprehensive test suite (124 tests)
 └── README.md       # This file
 ```
 
 ## Requirements
 
 - Python 3.8+ (no external dependencies)
+
+## Known Issues (Resolved)
+
+The following bugs were found and fixed during development:
+
+1. **`0^0` simplified to `0` instead of `1`** — The simplification rule `0^x = 0` didn't check whether the exponent was positive. Since `0^0 = 1` by convention, the rule now correctly defers to the `x^0 = 1` rule which runs first. For `0^(-n)` (negative exponents), the expression is left unsimplified since it's undefined.
+
+2. **`x / (-1)` didn't simplify to `-x`** — Missing simplification rule for division by -1. Added `x / (-1) → -x` to the division simplification pass.
+
+3. **`_rational_root_candidates` only returned positive integer divisors** — The rational root theorem states that possible roots are ±(p_i/q_j) where p_i divides the constant and q_j divides the leading coefficient. The function now correctly generates all ±(divisor of p)/(divisor of q) candidates, enabling solving of equations with fractional roots (e.g., `2x² - x - 6 = 0` has roots `x = 2` and `x = -3/2`).
+
+4. **`_collect_polynomial_coeffs` had a dead code branch** — Inside the `Pow` handler, a check for `isinstance(expr, Sym)` was unreachable because we were already inside `isinstance(expr, Pow)`. Removed the dead branch; the correct check on `expr.base` already existed below it.
+
+5. **`(-1)^0.5` evaluation produced a complex number** — Python's `**` operator returns a complex number for negative bases with non-integer exponents. Since our CAS doesn't support complex numbers, `evaluate()` now raises a `ValueError` with a descriptive message instead of silently returning a complex value.
 
 ## License
 

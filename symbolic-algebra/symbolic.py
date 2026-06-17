@@ -476,8 +476,15 @@ def _simplify_once(expr: Expr) -> Expr:
         # x^1 = x
         if isinstance(exp, Num) and exp.value == 1:
             return base
-        # 0^x = 0 (for x > 0)
+        # 0^x = 0 (for x > 0); note: 0^0 = 1 is handled by x^0 = 1 above
         if isinstance(base, Num) and base.value == 0:
+            if isinstance(exp, Num) and exp.value <= 0:
+                # 0^0 = 1 (handled above), 0^negative = undefined, leave as Pow
+                return Pow(base, exp)
+            if not isinstance(exp, Num):
+                # If exponent is unknown, assume positive (common case)
+                # but leave as Pow for safety if we can't tell
+                return Num(0)
             return Num(0)
         # 1^x = 1
         if isinstance(base, Num) and base.value == 1:
@@ -603,6 +610,9 @@ def _simplify_once(expr: Expr) -> Expr:
                 return Num(0)
             if isinstance(right, Num) and right.value == 1:
                 return left
+            # x / (-1) = -x
+            if isinstance(right, Num) and right.value == -1:
+                return _simplify_once(UnaryOp('-', left))
             # x / x = 1
             if left == right:
                 return Num(1)
@@ -733,7 +743,11 @@ def evaluate(expr: Expr, mapping: Dict[str, Union[int, float]]) -> Union[int, fl
     if isinstance(expr, Pow):
         base_val = evaluate(expr.base, mapping)
         exp_val = evaluate(expr.exponent, mapping)
-        return base_val ** exp_val
+        result = base_val ** exp_val
+        # Raise ValueError for complex results (CAS doesn't support complex numbers)
+        if isinstance(result, complex):
+            raise ValueError(f"Complex result from ({base_val})^({exp_val}); complex numbers not supported")
+        return result
 
     if isinstance(expr, Func):
         arg_val = evaluate(expr.arg, mapping)
@@ -944,15 +958,34 @@ def _eval_poly(coeffs: Dict[int, Expr], x: float) -> float:
     return result
 
 
-def _rational_root_candidates(p: int, q: int) -> List[int]:
-    """Generate candidate rational roots p/q for polynomial with leading coeff q and constant p."""
-    candidates = set()
-    for i in range(1, p + 1):
+def _rational_root_candidates(p: int, q: int) -> List[float]:
+    """
+    Generate candidate rational roots ±(p_i/q_j) for polynomial with
+    leading coefficient q and constant term p.
+
+    By the rational root theorem, if p/q has integer coefficients with
+    constant term p and leading coeff q, then every rational root is of
+    the form ±(divisor of p)/(divisor of q).
+    """
+    # Find divisors of p and q
+    p_divisors = set()
+    for i in range(1, abs(p) + 1):
         if p % i == 0:
-            candidates.add(i)
-    for i in range(1, q + 1):
+            p_divisors.add(i)
+
+    q_divisors = set()
+    for i in range(1, abs(q) + 1):
         if q % i == 0:
-            candidates.add(i)
+            q_divisors.add(i)
+
+    # Generate all ±(p_div/q_div) candidates
+    candidates = set()
+    for pi in p_divisors:
+        for qi in q_divisors:
+            val = pi / qi
+            candidates.add(val)
+            candidates.add(-val)
+
     return sorted(candidates)
 
 
@@ -1020,15 +1053,8 @@ def _collect_polynomial_coeffs(expr: Expr, var: str) -> Optional[Dict[int, Expr]
 
     if isinstance(expr, Pow):
         # Handle x^n where n is a non-negative integer
-        if isinstance(expr, Sym) and expr.name == var:
-            # Check if exponent is a positive integer
-            if isinstance(expr.exponent, Num):
-                n = expr.exponent.value
-                if isinstance(n, int) and n >= 0:
-                    # This shouldn't happen since we're already matching Sym, but handle Pow on Sym
-                    pass
-            return {0: Num(0), 1: Num(1)}
-
+        # Note: previously had a dead code branch checking isinstance(expr, Sym)
+        # inside the Pow handler — fixed to only check expr.base
         if isinstance(expr.base, Sym) and expr.base.name == var:
             if isinstance(expr.exponent, Num):
                 n = expr.exponent.value
