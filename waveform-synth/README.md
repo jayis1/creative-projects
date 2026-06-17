@@ -65,7 +65,7 @@ Four phases shape amplitude over time:
 - **Peak**: Maximum absolute amplitude
 - **Crest Factor**: Peak/RMS ratio (indicates dynamic range)
 - **Zero-Crossing Rate**: Distinguishes tonal vs. noisy signals
-- **Fundamental Frequency**: Autocorrelation-based pitch detection
+- **Fundamental Frequency**: YIN-based pitch detection (autocorrelation with cumulative mean normalization)
 - **Spectral Analysis**: DFT frequency-magnitude pairs
 - **Statistics**: Comprehensive signal statistics
 
@@ -176,3 +176,19 @@ waveform_synth/
 
 - Python 3.10+
 - No external dependencies — pure standard library
+
+## Known Issues (Resolved)
+
+The following bugs were found and fixed during the Phase 3 bug hunt:
+
+1. **Fundamental frequency estimator returned wrong octave** — The original autocorrelation-based pitch detector returned 110Hz for a 440Hz sine (off by 2 octaves). It was finding the maximum correlation, which occurs at the shortest lag (near zero), rather than the first significant peak after the initial decline. **Fix**: Replaced with the YIN algorithm, which uses a cumulative mean normalized difference function to correctly identify the fundamental period. Now accurately detects frequencies from 50–2000Hz.
+
+2. **Waveform.PULSE and Waveform.WHITE_NOISE raised ValueError** — These two enum values were added to the `Waveform` type during Phase 2 but the `Oscillator._base_wave()` method didn't handle them, causing a crash. **Fix**: Added case handlers for both waveforms in the oscillator.
+
+3. **Reverb damping was dead code** — The Schroeder reverb's damping filter had `if False else` logic that always took the `else` branch, meaning the damping parameter was never applied to the feedback path. **Fix**: Replaced with proper one-pole low-pass damping on the feedback signal.
+
+4. **Compressor sign error in gain formula** — The compressor's gain calculation used `(1 - 1/ratio)` which produces *positive* dB for signals above threshold, causing amplification instead of compression. **Fix**: Changed to `(1/ratio - 1)` which correctly produces negative dB (gain reduction) when ratio > 1.
+
+5. **Compressor envelope follower had duplicated logic** — The release branch had a ternary expression whose result was immediately overwritten by the next line, making the ternary dead code. **Fix**: Simplified to a single proper attack/release envelope follower.
+
+6. **Spectral analysis frequency labels were incorrect** — The DFT computation used `min(n, 4096)` samples for calculation but `n` (the full length) for frequency computation, producing wrong frequency labels. **Fix**: Now truncates samples first, then uses the truncated length for both computation and frequency labels.

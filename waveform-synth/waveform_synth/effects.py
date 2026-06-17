@@ -272,15 +272,13 @@ class Effect:
                 read_idx = (buf_idx - delay) % buf_size
                 delayed = buffer[read_idx]
 
-                # Write to buffer with damping
-                buffer[buf_idx] = samples[i] + delayed * comb_feedback
-
-                # Apply damping filter (simple one-pole lowpass on feedback)
-                if i > 0:
-                    buffer[buf_idx] = samples[i] + (
-                        delayed * comb_feedback * (1.0 - damping) +
-                        comb_outputs[c][i - 1] * damping
-                    ) if False else samples[i] + delayed * comb_feedback
+                # Write to buffer: input plus feedback with damping applied
+                # Simple damping: blend between undamped feedback and damped feedback
+                feedback_val = delayed * comb_feedback
+                if i > 0 and damping > 0:
+                    # One-pole low-pass on the feedback path
+                    feedback_val = feedback_val * (1.0 - damping) + comb_outputs[c][i - 1] * damping
+                buffer[buf_idx] = samples[i] + feedback_val
 
                 comb_outputs[c][i] = delayed
                 buf_idx = (buf_idx + 1) % buf_size
@@ -343,15 +341,18 @@ class Effect:
             # Peak detection with envelope follower
             abs_sample = abs(samples[i])
             if abs_sample > envelope:
-                envelope = attack_coeff * (abs_sample - envelope) + envelope
+                # Attack: rise towards peak
+                envelope = envelope + attack_coeff * (abs_sample - envelope)
             else:
-                envelope = release_coeff * (envelope - abs_sample) + abs_sample if envelope > abs_sample else abs_sample
-                envelope = release_coeff * (envelope - abs_sample) + abs_sample
+                # Release: decay towards signal level
+                envelope = envelope - release_coeff * (envelope - abs_sample)
 
             # Compute gain reduction
             if envelope > threshold:
                 # Above threshold: compress
-                gain_db = (1.0 - 1.0 / ratio) * (20.0 * math.log10(envelope / threshold))
+                # gain_dB = (1/ratio - 1) * 20*log10(envelope/threshold)
+                # This produces negative dB (gain reduction) when ratio > 1
+                gain_db = (1.0 / ratio - 1.0) * (20.0 * math.log10(envelope / threshold))
                 gain = 10.0 ** (gain_db / 20.0)
             else:
                 gain = 1.0

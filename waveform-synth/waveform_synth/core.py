@@ -144,6 +144,18 @@ class Oscillator:
             val = ((n * 1103515245 + 12345) & 0x7FFFFFFF) / 0x7FFFFFFF
             return 2.0 * val - 1.0
 
+        elif waveform == Waveform.PULSE:
+            # Pulse wave with 50% duty cycle (use PulseOscillator for variable duty)
+            p = (freq * t + phase / (2 * math.pi)) % 1.0
+            return 1.0 if p < 0.5 else -1.0
+
+        elif waveform == Waveform.WHITE_NOISE:
+            # White noise: random values at each sample, not correlated to frequency
+            n = int(t * self.sample_rate)
+            # Use a different LCG seed than NOISE to produce different output
+            val = ((n * 214013 + 2531011) & 0x7FFFFFFF) / 0x7FFFFFFF
+            return 2.0 * val - 1.0
+
         else:
             raise ValueError(f"Unknown waveform: {waveform}")
 

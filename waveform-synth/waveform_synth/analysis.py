@@ -98,7 +98,9 @@ def spectral_analysis(samples: List[float], sample_rate: int = 44100,
     if not samples:
         return []
 
-    n = len(samples)
+    # Limit computation for performance
+    n = min(len(samples), 4096)
+    truncated = samples[:n]
     result = []
 
     # Only compute up to Nyquist
@@ -108,10 +110,10 @@ def spectral_analysis(samples: List[float], sample_rate: int = 44100,
         freq = k * sample_rate / n
         real = 0.0
         imag = 0.0
-        for j in range(min(n, 4096)):  # Limit computation
+        for j in range(n):
             angle = 2.0 * math.pi * k * j / n
-            real += samples[j] * math.cos(angle)
-            imag -= samples[j] * math.sin(angle)
+            real += truncated[j] * math.cos(angle)
+            imag -= truncated[j] * math.sin(angle)
         magnitude = math.sqrt(real * real + imag * imag) / n
         result.append((freq, magnitude))
 
@@ -120,7 +122,11 @@ def spectral_analysis(samples: List[float], sample_rate: int = 44100,
 
 def fundamental_frequency(samples: List[float], sample_rate: int = 44100) -> float:
     """
-    Estimate the fundamental frequency using autocorrelation.
+    Estimate the fundamental frequency using the YIN pitch detection algorithm.
+
+    YIN uses a difference function to find the period that best explains
+    the signal's periodicity, then uses parabolic interpolation for
+    sub-sample accuracy.
 
     Args:
         samples: Audio samples (should be at least a few periods long).
@@ -132,32 +138,82 @@ def fundamental_frequency(samples: List[float], sample_rate: int = 44100) -> flo
     if len(samples) < sample_rate // 20:  # Need at least ~50ms
         return 0.0
 
-    # Normalize
-    peak = max(abs(s) for s in samples) or 1.0
-    normalized = [s / peak for s in samples]
+    # YIN algorithm parameters
+    min_freq = 50    # Minimum detectable frequency (Hz)
+    max_freq = 2000  # Maximum detectable frequency (Hz)
+    threshold = 0.15  # YIN threshold for absolute minimum
 
-    # Search for fundamental period using autocorrelation
-    min_period = sample_rate // 2000  # Max ~2000 Hz
-    max_period = min(sample_rate // 50, len(normalized) // 2)  # Min ~50 Hz
+    min_period = int(sample_rate / max_freq)
+    max_period = int(sample_rate / min_freq)
+    n = len(samples)
 
-    best_period = 0
-    best_corr = -1.0
-
-    n = len(normalized)
-    for period in range(min_period, max_period):
-        corr = 0.0
-        count = 0
-        for i in range(min(n - period, sample_rate // 4)):  # Limit computation
-            corr += normalized[i] * normalized[i + period]
-            count += 1
-        if count > 0:
-            corr /= count
-        if corr > best_corr:
-            best_corr = corr
-            best_period = period
-
-    if best_period == 0:
+    # Limit the range of periods to search
+    max_period = min(max_period, n // 2)
+    if min_period >= max_period:
         return 0.0
+
+    # Step 1: Difference function
+    # d(tau) = sum_{j=0}^{W-1} (x(j) - x(j+tau))^2
+    # where W = n - max_period to keep the window consistent
+    w = n - max_period
+    if w <= 0:
+        w = n // 2
+
+    diff = []
+    for tau in range(min_period, max_period + 1):
+        d = 0.0
+        for j in range(w):
+            diff_val = samples[j] - samples[j + tau]
+            d += diff_val * diff_val
+        diff.append((tau, d))
+
+    if not diff:
+        return 0.0
+
+    # Step 2: Cumulative mean normalized difference function
+    # d'(tau) = d(tau) / ((1/tau) * sum_{j=1}^{tau} d(j))
+    cmndf = []
+    running_sum = 0.0
+    for idx, (tau, d) in enumerate(diff):
+        running_sum += d
+        if running_sum == 0.0:
+            cmndf.append((tau, 1.0))
+        else:
+            cmndf.append((tau, d * (idx + 1) / running_sum))
+
+    # Step 3: Find the first dip below the threshold (absolute minimum)
+    best_period = None
+    for i in range(1, len(cmndf) - 1):
+        if cmndf[i][1] < threshold:
+            # Found a dip below threshold; look for the local minimum
+            # in this region
+            min_idx = i
+            min_val = cmndf[i][1]
+            for j in range(i, len(cmndf)):
+                if cmndf[j][1] < min_val:
+                    min_val = cmndf[j][1]
+                    min_idx = j
+                elif cmndf[j][1] > min_val * 1.5:
+                    # Values are rising again, we've passed the minimum
+                    break
+            best_period = cmndf[min_idx][0]
+            break
+
+    if best_period is None:
+        # No clear fundamental found; use the global minimum
+        best_period = min(cmndf, key=lambda x: x[1])[0]
+
+    # Step 4: Parabolic interpolation for sub-sample accuracy
+    # Find the index in diff corresponding to best_period
+    diff_dict = {tau: d for tau, d in diff}
+    if best_period in diff_dict and (best_period - 1) in diff_dict and (best_period + 1) in diff_dict:
+        # Parabolic interpolation
+        s_minus = diff_dict.get(best_period - 1, diff_dict[best_period])
+        s_zero = diff_dict[best_period]
+        s_plus = diff_dict.get(best_period + 1, diff_dict[best_period])
+        if 2 * s_zero != 0:
+            shift = (s_minus - s_plus) / (2 * (s_minus - 2 * s_zero + s_plus))
+            best_period = best_period + shift
 
     return sample_rate / best_period
 
