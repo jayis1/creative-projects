@@ -246,13 +246,12 @@ def bb84_protocol(
     # Sift: keep only bits where bases match
     alice_key = []
     bob_key = []
-    matching_indices = []
 
+    # Fix: removed unused `matching_indices` variable that served no purpose.
     for i in range(n_bits):
         if alice_bases[i] == bob_bases[i]:
             alice_key.append(int(alice_bits[i]))
             bob_key.append(bob_results[i])
-            matching_indices.append(i)
 
     # Compute error rate
     if len(alice_key) > 0:

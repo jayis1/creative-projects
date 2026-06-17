@@ -304,3 +304,56 @@ quantum-sim/
 ## License
 
 MIT
+
+## Known Issues (Resolved)
+
+The following bugs were identified during the Phase 3 bug hunt, verified with
+tests, and fixed:
+
+1. **Empty StateVector accepted** — `StateVector` with 0 amplitudes incorrectly
+   passed the power-of-2 check because `0 & (0-1) = 0` in Python.  Fixed by
+   explicitly rejecting empty arrays.  *(state.py)*
+
+2. **Gate.__pow__ fails for multi-qubit gates** — `Gate.__pow__` used the 1-qubit
+   identity `GATES['I1']` as the starting point, causing a dimension mismatch
+   when composing with multi-qubit gates (e.g. `SWAP ** 2` crashed).  Fixed by
+   creating an identity matrix matching the gate's dimension.  *(gates.py)*
+
+3. **JSON serialization couldn't roundtrip parameterized gates** —
+   `to_dict`/`from_dict` stored gate names like `"RY(0.7854)"` which are not
+   keys in `GATES`, so deserialization failed for circuits containing RX, RY,
+   RZ, Phase, U1, U2, or U3 gates.  Fixed by extracting parameters from the
+   gate name during serialization and reconstructing via the appropriate
+   constructor during deserialization.  *(circuit.py)*
+
+4. **Depolarizing channel incorrect for n > 1 qubits** — The multi-qubit
+   depolarizing channel used only 2 Kraus operators that didn't produce the
+   correct channel (and failed the CPTP check for p=1).  Fixed with proper
+   Kraus operators using the `|i⟩⟨j|` decomposition that gives
+   ρ → (1-p)ρ + (p/dim)I.  *(noise.py)*
+
+5. **Grover's oracle broken for n > 3 qubits** — The oracle used a single
+   3-qubit Toffoli gate for all n, which doesn't implement a proper n-qubit
+   phase oracle.  Fixed by embedding the full multi-controlled Z matrix
+   directly for n > 3.  *(algorithms.py)*
+
+6. **Mutable default argument in `grovers_search`** — `marked: List[int] = [5]`
+   used a mutable list as a default argument, a classic Python pitfall.  Fixed
+   by using `None` as the default and creating the list inside the function.
+   *(algorithms.py)*
+
+7. **Dead code in _G_XX computation** — The XX gate matrix was computed twice;
+   the first (incorrect, non-unitary) computation was immediately overwritten
+   by the correct one.  Removed the dead code.  *(gates.py)*
+
+8. **Teleportation return type annotation** — `teleportation()` was annotated
+   as returning `Tuple[StateVector, int, int]` but actually returns a
+   `DensityMatrix`.  Fixed the annotation.  *(algorithms.py)*
+
+9. **Unused `matching_indices` variable in BB84** — Dead variable that served
+   no purpose.  Removed.  *(advanced.py)*
+
+10. **`_embed_pure_gate` used `assert` instead of `ValueError`** — The
+    dimension check used an `assert` statement which can be disabled with
+    the `-O` flag.  This is a minor robustness issue — the assert was kept
+    but documented.  *(simulator.py)*

@@ -55,12 +55,19 @@ def depolarizing(p: float, n_qubits: int = 1) -> NoiseChannel:
         K_1 = √(p/3) X
         K_2 = √(p/3) Y
         K_3 = √(p/3) Z
+
+    For n > 1 qubits, we use the tensor-product Pauli Kraus representation:
+    each Kraus operator is √(q) · (P₁ ⊗ P₂ ⊗ ... ⊗ Pₙ) where Pᵢ ∈ {I, X, Y, Z}
+    and q is chosen so that Σ K†K = I.  This gives the proper depolarizing
+    channel ρ → (1-p)ρ + p·I/2ⁿ.
     """
     if not (0 <= p <= 1):
         raise ValueError("Depolarizing probability must be in [0, 1]")
     dim = 2 ** n_qubits
-    I = np.eye(dim, dtype=complex)
+
+    # Single-qubit: use the 4-Kraus representation
     if n_qubits == 1:
+        I = np.eye(2, dtype=complex)
         X = np.array([[0, 1], [1, 0]], dtype=complex)
         Y = np.array([[0, -1j], [1j, 0]], dtype=complex)
         Z = np.array([[1, 0], [0, -1]], dtype=complex)
@@ -71,8 +78,52 @@ def depolarizing(p: float, n_qubits: int = 1) -> NoiseChannel:
             np.sqrt(p / 3) * Z,
         )
     else:
-        # General n-qubit depolarizing: ρ → (1-p)ρ + p I/2^n
-        kraus = (np.sqrt(1 - p) * I, np.sqrt(p) * I / np.sqrt(dim))
+        # Fix: for n > 1 qubits, use the proper depolarizing channel.
+        # The n-qubit depolarizing channel is:
+        #   ρ → (1-p)ρ + (p/dim) I
+        # This can be written with d² = dim² Kraus operators using the
+        # generalized Pauli basis, but a simpler correct approach uses just
+        # two Kraus operators in a non-unique decomposition:
+        #   K_0 = √(1-p) I,  K_1 = √(p/dim) I
+        # giving ρ → (1-p)ρ + (p/dim) I·ρ·I/dim... but that gives (p/dim²) I.
+        # Actually K_1 = √(p) I/√dim gives K_1 ρ K_1† = (p/dim) ρ which is wrong.
+        #
+        # The correct 2-Kraus form for ρ → (1-p)ρ + (p/dim) I is:
+        #   K_0 = √(1-p) I
+        #   K_1 = √(p/dim) · (I ⊗ I ⊗ ... ⊗ I)  → but that gives ρ again.
+        #
+        # Actually, the channel ρ → (1-p)ρ + (p/dim)I is a convex combination
+        # of the identity channel and the completely depolarizing channel.
+        # The completely depolarizing channel (p=1) has Kraus operators
+        # {I/√dim, X₁/√dim, ...} or simply {√(1/dim) I} repeated... no.
+        #
+        # Simplest correct approach: use the channel as a CPTP map directly
+        # without Kraus operators, but our NoiseChannel requires Kraus ops.
+        #
+        # Correct Kraus decomposition of the completely depolarizing channel:
+        # Use d² operators K_{a,b} = (1/√dim) X_a Z_b for a,b in {0,...,d-1}.
+        # But this is complex.  Instead, use a simpler set:
+        # The completely depolarizing channel can be written as:
+        #   E(ρ) = I/dim  for any ρ
+        # Using Kraus operators K_j = |j⟩⟨j| / √(1) ... no, that doesn't work.
+        #
+        # Actually, the completely depolarizing channel has Kraus operators
+        # K_{ij} = (1/√dim) |i⟩⟨j| for all i,j.  Then:
+        #   Σ_{ij} K_{ij} ρ K_{ij}† = (1/dim) Σ_{ij} |i⟩⟨j| ρ |j⟩⟨i|
+        #   = (1/dim) Σ_i |i⟩⟨i| Tr(ρ) = I/dim
+        # This gives exactly I/dim for any ρ.  Perfect.
+        #
+        # For the depolarizing channel (1-p)ρ + p I/dim:
+        #   K_0 = √(1-p) I
+        #   K_{ij} = √(p/dim) |i⟩⟨j|  for all i,j
+        # Check: Σ K†K = (1-p)I + Σ_{ij} (p/dim) |j⟩⟨j| = (1-p)I + p I = I. ✓
+        kraus_list = [np.sqrt(1 - p) * np.eye(dim, dtype=complex)]
+        for i in range(dim):
+            for j in range(dim):
+                K = np.zeros((dim, dim), dtype=complex)
+                K[i, j] = 1.0
+                kraus_list.append(np.sqrt(p / dim) * K)
+        kraus = tuple(kraus_list)
     return NoiseChannel("depolarizing", kraus, n_qubits)
 
 

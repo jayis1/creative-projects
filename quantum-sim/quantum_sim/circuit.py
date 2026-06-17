@@ -233,11 +233,17 @@ class QuantumCircuit:
         """Serialize the circuit to a JSON-compatible dictionary."""
         ops_data = []
         for op in self.operations:
+            # Detect parameterized gates by checking if the gate name contains
+            # a parameter pattern like "RX(0.7854)".  Extract the base name and
+            # parameters for roundtrip serialization.
+            gate_name = op.gate.name
+            params = self._extract_gate_params(op)
             ops_data.append({
                 "name": op.name,
-                "gate_name": op.gate.name,
+                "gate_name": gate_name,
                 "targets": list(op.targets),
                 "controls": list(op.controls),
+                "params": params,
             })
         return {
             "n_qubits": self.n_qubits,
@@ -245,31 +251,73 @@ class QuantumCircuit:
             "version": "2.0",
         }
 
+    @staticmethod
+    def _extract_gate_params(op: "Operation") -> list:
+        """Extract numeric parameters from a parameterized gate's name.
+
+        Returns an empty list for non-parameterized gates.
+        """
+        name = op.gate.name
+        # Parameterized gates have names like "RX(0.7854)" or "U3(1.57,0.5,0.3)"
+        if "(" not in name:
+            return []
+        param_str = name[name.index("(") + 1:name.rindex(")")]
+        if not param_str:
+            return []
+        parts = param_str.split(",")
+        try:
+            return [float(p.strip()) for p in parts]
+        except ValueError:
+            return []
+
     @classmethod
     def from_dict(cls, data: dict) -> "QuantumCircuit":
         """Deserialize a circuit from a dictionary."""
+        from .gates import GATES, Gate, rx, ry, rz, phase, u1, u2, u3
+
+        # Map from gate name prefix to the parameterized constructor
+        param_constructors = {
+            "RX": rx, "RY": ry, "RZ": rz,
+            "P": phase, "PHASE": phase,
+            "U1": u1, "U2": u2, "U3": u3,
+        }
+
         qc = cls(data["n_qubits"])
         for op_data in data["operations"]:
             name = op_data["name"]
             targets = tuple(op_data["targets"])
             controls = tuple(op_data["controls"])
+            params = op_data.get("params", [])
+
             if name in ("barrier",):
                 qc.barrier()
             elif name == "measure":
                 qc.measure(targets[0])
             else:
-                # Look up the gate by name (this works for standard gates)
-                from .gates import GATES
-                gate = GATES.get(op_data["gate_name"])
-                if gate is None:
-                    # Try matching by the op name
-                    gate = GATES.get(name)
-                if gate is None:
-                    raise ValueError(f"Cannot deserialize gate '{op_data['gate_name']}'")
-                if isinstance(gate, Gate):
+                gate_name = op_data["gate_name"]
+                # First try direct lookup in GATES (for standard non-parameterized gates)
+                gate = GATES.get(gate_name)
+                if gate is not None and isinstance(gate, Gate):
                     qc.operations.append(Operation(gate=gate, targets=targets, controls=controls))
-                else:
-                    raise ValueError(f"Cannot deserialize parameterized gate '{op_data['gate_name']}'")
+                    continue
+
+                # If not found, try parameterized gate reconstruction
+                # Extract the base name (e.g., "RY" from "RY(0.7854)")
+                base_name = gate_name.split("(")[0] if "(" in gate_name else gate_name
+                constructor = param_constructors.get(base_name)
+                if constructor is not None and params:
+                    # Reconstruct the parameterized gate
+                    gate = constructor(*params)
+                    qc.operations.append(Operation(gate=gate, targets=targets, controls=controls))
+                    continue
+
+                # Also try looking up by the op name (without parameters)
+                gate = GATES.get(name)
+                if gate is not None and isinstance(gate, Gate):
+                    qc.operations.append(Operation(gate=gate, targets=targets, controls=controls))
+                    continue
+
+                raise ValueError(f"Cannot deserialize gate '{gate_name}'")
         return qc
 
     def to_json(self) -> str:

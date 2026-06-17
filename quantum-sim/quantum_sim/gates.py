@@ -101,10 +101,13 @@ class Gate:
         return Gate(f"{self.name}·{other.name}", self.matrix @ other.matrix)
 
     def __pow__(self, n: int) -> "Gate":
-        """Repeated composition."""
+        """Repeated composition: self composed with itself n times."""
         if n < 0:
             raise ValueError("Negative powers not supported; use .dagger()")
-        result = GATES["I1"]
+        # Fix: use a proper identity matrix matching this gate's dimension,
+        # not the 1-qubit identity GATES['I1'] which fails for multi-qubit gates.
+        dim = self.matrix.shape[0]
+        result = Gate(f"I{dim}", np.eye(dim, dtype=complex))
         for _ in range(n):
             result = result.compose(self)
         return result
@@ -168,16 +171,11 @@ _G_SWAP = np.array(
 _G_iSWAP = np.array(
     [[1, 0, 0, 0], [0, 0, 1j, 0], [0, 1j, 0, 0], [0, 0, 0, 1]], dtype=complex
 )
-_G_XX = 0.5 * np.array(
-    [
-        [0, 0, 0, 1], [0, 0, 1, 0], [0, 1, 0, 0], [1, 0, 0, 0]
-    ], dtype=complex
-) @ np.array(
-    [[1, 0, 0, 0], [0, 0, 0, 1], [0, 0, 0, 1], [0, 1, 1, 0]], dtype=complex
-)
 _G_XX = (1 / math.sqrt(2)) * np.array(
     [[1, 0, 0, 1j], [0, 1, 1j, 0], [0, 1j, 1, 0], [1j, 0, 0, 1]], dtype=complex
 )
+# Fix: removed dead code — the previous _G_XX computation (a non-unitary
+# matrix product) was immediately overwritten by the correct definition above.
 # sqrt(SWAP)
 _theta = math.pi / 4.0
 _G_SQRTSWAP = np.array(

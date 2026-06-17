@@ -34,6 +34,10 @@ class StateVector:
 
     def __post_init__(self) -> None:
         a = np.asarray(self.amplitudes, dtype=complex).flatten()
+        # Fix: size 0 incorrectly passes the power-of-2 check because
+        # 0 & (0 - 1) = 0 & (-1) = 0 in Python.  Explicitly reject empty states.
+        if a.size == 0:
+            raise ValueError("State dimension 0 is not a power of 2")
         if a.size & (a.size - 1) != 0:
             raise ValueError(f"State dimension {a.size} is not a power of 2")
         self.amplitudes = a
@@ -108,6 +112,10 @@ class StateVector:
 
         Returns the post-measurement state (not normalized) for outcome 0 or 1.
         Use :meth:`measure_probabilistic` for a sampled outcome.
+
+        Note: *rng* is accepted for API compatibility but not used by this
+        deterministic method.  Use :meth:`measure_probabilistic` for random
+        sampling.
         """
         n = self.num_qubits
         if not (0 <= qubit < n):
