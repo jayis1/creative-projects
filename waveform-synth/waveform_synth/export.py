@@ -1,12 +1,13 @@
 """
-WAV file export.
+WAV file export and import.
 
-Writes audio samples as a standard 16-bit PCM WAV file.
-Supports mono output with configurable sample rate.
+Writes audio samples as standard PCM WAV files (8, 16, 24, 32-bit).
+Supports mono and stereo output with configurable sample rate.
+Also reads WAV files for analysis and visualization.
 """
 
 import struct
-from typing import List
+from typing import List, Tuple, Optional
 
 
 class WavWriter:
@@ -216,3 +217,60 @@ class WavWriter:
                     f.read(chunk_size)
 
             return samples, sample_rate, num_channels, bits_per_sample
+
+    def write_stereo(self, filepath: str, left: List[float], right: List[float]) -> None:
+        """
+        Write stereo audio to a WAV file.
+
+        Args:
+            filepath: Output file path.
+            left: Left channel samples (floats in [-1.0, 1.0]).
+            right: Right channel samples (must be same length as left).
+
+        Raises:
+            ValueError: If channels have different lengths.
+        """
+        if len(left) != len(right):
+            raise ValueError(f"Channel lengths must match: left={len(left)}, right={len(right)}")
+        if not left:
+            raise ValueError("Cannot write empty sample list to WAV file")
+
+        # Interleave channels
+        interleaved = []
+        for l, r in zip(left, right):
+            interleaved.append(l)
+            interleaved.append(r)
+
+        byte_data = self._samples_to_bytes(interleaved)
+        data_size = len(byte_data)
+        byte_rate = self.sample_rate * self.num_channels * (self.bits_per_sample // 8)
+        block_align = self.num_channels * (self.bits_per_sample // 8)
+
+        # Override channels for stereo
+        channels = 2
+        byte_rate_stereo = self.sample_rate * 2 * (self.bits_per_sample // 8)
+        block_align_stereo = 2 * (self.bits_per_sample // 8)
+
+        fmt_chunk_size = 16
+        file_size = 4 + (8 + fmt_chunk_size) + (8 + data_size)
+
+        with open(filepath, 'wb') as f:
+            # RIFF header
+            f.write(b'RIFF')
+            f.write(struct.pack('<I', file_size))
+            f.write(b'WAVE')
+
+            # fmt chunk
+            f.write(b'fmt ')
+            f.write(struct.pack('<I', fmt_chunk_size))
+            f.write(struct.pack('<H', 1))  # PCM format
+            f.write(struct.pack('<H', channels))
+            f.write(struct.pack('<I', self.sample_rate))
+            f.write(struct.pack('<I', byte_rate_stereo))
+            f.write(struct.pack('<H', block_align_stereo))
+            f.write(struct.pack('<H', self.bits_per_sample))
+
+            # data chunk
+            f.write(b'data')
+            f.write(struct.pack('<I', data_size))
+            f.write(byte_data)

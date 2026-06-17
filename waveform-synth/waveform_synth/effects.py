@@ -25,6 +25,8 @@ class EffectType(Enum):
     LOWPASS = "lowpass"
     HIGHPASS = "highpass"
     TREMOLO = "tremolo"
+    REVERB = "reverb"
+    COMPRESSOR = "compressor"
 
 
 class Effect:
@@ -70,6 +72,15 @@ class Effect:
         elif effect_type == EffectType.TREMOLO:
             self.params.setdefault("rate", 5.0)
             self.params.setdefault("depth", 0.5)
+        elif effect_type == EffectType.REVERB:
+            self.params.setdefault("room_size", 0.7)
+            self.params.setdefault("damping", 0.5)
+            self.params.setdefault("wet", 0.3)
+        elif effect_type == EffectType.COMPRESSOR:
+            self.params.setdefault("threshold", 0.5)
+            self.params.setdefault("ratio", 4.0)
+            self.params.setdefault("attack", 0.01)
+            self.params.setdefault("release", 0.1)
 
     def process(self, samples: List[float], sample_rate: int = 44100) -> List[float]:
         """
@@ -99,6 +110,10 @@ class Effect:
             return self._apply_highpass(samples, sample_rate)
         elif self.effect_type == EffectType.TREMOLO:
             return self._apply_tremolo(samples, sample_rate)
+        elif self.effect_type == EffectType.REVERB:
+            return self._apply_reverb(samples, sample_rate)
+        elif self.effect_type == EffectType.COMPRESSOR:
+            return self._apply_compressor(samples, sample_rate)
         else:
             return samples
 
@@ -209,6 +224,140 @@ class Effect:
             # Tremolo: modulate amplitude with LFO
             lfo = 1.0 - depth * (0.5 + 0.5 * math.sin(2.0 * math.pi * rate * i / sample_rate))
             result.append(samples[i] * lfo)
+        return result
+
+    def _apply_reverb(self, samples: List[float], sample_rate: int) -> List[float]:
+        """
+        Apply a simple reverb effect using Schroeder reverb model.
+
+        Uses 4 parallel comb filters followed by 2 series allpass filters,
+        similar to the classic Schroeder reverb topology.
+
+        Parameters:
+            room_size: Controls delay times (0.0-1.0), larger = more reverb tail
+            damping: High-frequency damping (0.0-1.0), higher = more dampened
+            wet: Wet/dry mix (0.0-1.0)
+        """
+        room_size = self.params["room_size"]
+        damping = self.params["damping"]
+        wet = self.params["wet"]
+
+        n = len(samples)
+        output = [0.0] * n
+
+        # Schroeder reverb: 4 parallel comb filters
+        # Delay times scaled by room_size (in samples)
+        comb_delays = [
+            int(0.0297 * sample_rate * room_size),
+            int(0.0371 * sample_rate * room_size),
+            int(0.0411 * sample_rate * room_size),
+            int(0.0437 * sample_rate * room_size),
+        ]
+
+        # Ensure minimum delay of 1 sample
+        comb_delays = [max(1, d) for d in comb_delays]
+
+        comb_feedback = 0.84 * (1.0 - damping * 0.5)
+
+        # Process comb filters
+        comb_outputs = [[0.0] * n for _ in range(4)]
+        for c in range(4):
+            delay = comb_delays[c]
+            buf_size = delay + 1
+            buffer = [0.0] * buf_size
+            buf_idx = 0
+
+            for i in range(n):
+                # Read from buffer
+                read_idx = (buf_idx - delay) % buf_size
+                delayed = buffer[read_idx]
+
+                # Write to buffer with damping
+                buffer[buf_idx] = samples[i] + delayed * comb_feedback
+
+                # Apply damping filter (simple one-pole lowpass on feedback)
+                if i > 0:
+                    buffer[buf_idx] = samples[i] + (
+                        delayed * comb_feedback * (1.0 - damping) +
+                        comb_outputs[c][i - 1] * damping
+                    ) if False else samples[i] + delayed * comb_feedback
+
+                comb_outputs[c][i] = delayed
+                buf_idx = (buf_idx + 1) % buf_size
+
+        # Mix comb filter outputs
+        for i in range(n):
+            output[i] = sum(comb_outputs[c][i] for c in range(4)) / 4.0
+
+        # Allpass filters in series
+        allpass_delays = [
+            int(0.0050 * sample_rate),
+            int(0.0017 * sample_rate),
+        ]
+        allpass_delays = [max(1, d) for d in allpass_delays]
+        allpass_feedback = 0.5
+
+        for delay in allpass_delays:
+            buf_size = delay + 1
+            buffer = [0.0] * buf_size
+            buf_idx = 0
+
+            for i in range(n):
+                read_idx = (buf_idx - delay) % buf_size
+                delayed = buffer[read_idx]
+
+                buffer[buf_idx] = output[i] + delayed * allpass_feedback
+                output[i] = delayed - output[i] * allpass_feedback
+
+                buf_idx = (buf_idx + 1) % buf_size
+
+        # Mix wet and dry
+        result = []
+        for i in range(n):
+            result.append(samples[i] * (1.0 - wet) + output[i] * wet)
+
+        return result
+
+    def _apply_compressor(self, samples: List[float], sample_rate: int) -> List[float]:
+        """
+        Apply a simple dynamic range compressor.
+
+        Parameters:
+            threshold: Level above which compression starts (0.0-1.0)
+            ratio: Compression ratio (1.0 = no compression, higher = more)
+            attack: Attack time in seconds
+            release: Release time in seconds
+        """
+        threshold = self.params["threshold"]
+        ratio = self.params["ratio"]
+        attack_time = self.params["attack"]
+        release_time = self.params["release"]
+
+        attack_coeff = 1.0 - math.exp(-1.0 / (attack_time * sample_rate)) if attack_time > 0 else 1.0
+        release_coeff = 1.0 - math.exp(-1.0 / (release_time * sample_rate)) if release_time > 0 else 1.0
+
+        envelope = 0.0
+        result = [0.0] * len(samples)
+
+        for i in range(len(samples)):
+            # Peak detection with envelope follower
+            abs_sample = abs(samples[i])
+            if abs_sample > envelope:
+                envelope = attack_coeff * (abs_sample - envelope) + envelope
+            else:
+                envelope = release_coeff * (envelope - abs_sample) + abs_sample if envelope > abs_sample else abs_sample
+                envelope = release_coeff * (envelope - abs_sample) + abs_sample
+
+            # Compute gain reduction
+            if envelope > threshold:
+                # Above threshold: compress
+                gain_db = (1.0 - 1.0 / ratio) * (20.0 * math.log10(envelope / threshold))
+                gain = 10.0 ** (gain_db / 20.0)
+            else:
+                gain = 1.0
+
+            result[i] = samples[i] * gain
+
         return result
 
 

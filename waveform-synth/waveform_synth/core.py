@@ -18,6 +18,59 @@ class Waveform(enum.Enum):
     SAWTOOTH = "sawtooth"
     TRIANGLE = "triangle"
     NOISE = "noise"
+    PULSE = "pulse"
+    WHITE_NOISE = "white_noise"
+
+
+class PulseOscillator:
+    """
+    Pulse wave oscillator with variable duty cycle.
+
+    A pulse wave is like a square wave but with an adjustable duty cycle.
+    At 50% duty cycle, it's identical to a square wave.
+
+    Args:
+        frequency: Frequency in Hz (must be > 0).
+        duty_cycle: Pulse width in [0.0, 1.0] (0.5 = square wave).
+        amplitude: Peak amplitude in [0.0, 1.0].
+        sample_rate: Samples per second (must be > 0).
+        phase: Initial phase offset in radians.
+    """
+
+    def __init__(
+        self,
+        frequency: float = 440.0,
+        duty_cycle: float = 0.5,
+        amplitude: float = 1.0,
+        sample_rate: int = 44100,
+        phase: float = 0.0,
+    ):
+        if frequency <= 0:
+            raise ValueError(f"Frequency must be > 0, got {frequency}")
+        if not (0.0 < duty_cycle < 1.0):
+            raise ValueError(f"Duty cycle must be in (0.0, 1.0), got {duty_cycle}")
+        if sample_rate <= 0:
+            raise ValueError(f"Sample rate must be > 0, got {sample_rate}")
+        if not (0.0 <= amplitude <= 1.0):
+            raise ValueError(f"Amplitude must be in [0.0, 1.0], got {amplitude}")
+
+        self.frequency = frequency
+        self.duty_cycle = duty_cycle
+        self.amplitude = amplitude
+        self.sample_rate = sample_rate
+        self.phase = phase
+
+    def sample(self, t: float) -> float:
+        """Generate a single sample at time t."""
+        p = (self.frequency * t + self.phase / (2 * math.pi)) % 1.0
+        return self.amplitude * (1.0 if p < self.duty_cycle else -1.0)
+
+    def generate(self, duration: float) -> List[float]:
+        """Generate samples for the given duration."""
+        if duration <= 0:
+            raise ValueError(f"Duration must be > 0, got {duration}")
+        num_samples = int(self.sample_rate * duration)
+        return [self.sample(i / self.sample_rate) for i in range(num_samples)]
 
 
 class Oscillator:
@@ -237,3 +290,143 @@ def fade_in_out(samples: List[float], fade_samples: int) -> List[float]:
         result[i] *= gain
         result[n - 1 - i] *= gain
     return result
+
+
+def reverse(samples: List[float]) -> List[float]:
+    """Reverse audio samples (play backwards)."""
+    return list(reversed(samples))
+
+
+def concatenate(*signal_lists: List[float]) -> List[float]:
+    """
+    Concatenate multiple sample lists end-to-end.
+
+    Args:
+        *signal_lists: Variable number of sample lists to concatenate.
+
+    Returns:
+        Single concatenated sample list.
+    """
+    result = []
+    for s in signal_lists:
+        result.extend(s)
+    return result
+
+
+def resample(samples: List[float], original_rate: int, target_rate: int) -> List[float]:
+    """
+    Resample audio from one sample rate to another using linear interpolation.
+
+    Args:
+        samples: Input audio samples.
+        original_rate: Original sample rate.
+        target_rate: Target sample rate.
+
+    Returns:
+        Resampled audio at the new rate.
+
+    Raises:
+        ValueError: If rates are <= 0 or samples is empty.
+    """
+    if original_rate <= 0:
+        raise ValueError(f"Original rate must be > 0, got {original_rate}")
+    if target_rate <= 0:
+        raise ValueError(f"Target rate must be > 0, got {target_rate}")
+    if not samples:
+        raise ValueError("Cannot resample empty sample list")
+
+    if original_rate == target_rate:
+        return list(samples)
+
+    ratio = original_rate / target_rate
+    new_length = int(len(samples) / ratio)
+    result = []
+
+    for i in range(new_length):
+        # Position in original samples
+        pos = i * ratio
+        idx = int(pos)
+        frac = pos - idx
+
+        if idx + 1 < len(samples):
+            # Linear interpolation
+            result.append(samples[idx] * (1.0 - frac) + samples[idx + 1] * frac)
+        elif idx < len(samples):
+            result.append(samples[idx])
+        else:
+            result.append(0.0)
+
+    return result
+
+
+def clip(samples: List[float], threshold: float = 1.0) -> List[float]:
+    """
+    Hard-clip audio samples to a threshold.
+
+    Args:
+        samples: Audio samples.
+        threshold: Clipping threshold (must be > 0).
+
+    Returns:
+        Clipped samples.
+    """
+    if threshold <= 0:
+        raise ValueError(f"Threshold must be > 0, got {threshold}")
+    return [max(-threshold, min(threshold, s)) for s in samples]
+
+
+def crossfade(first: List[float], second: List[float], overlap_samples: int) -> List[float]:
+    """
+    Crossfade between two audio signals.
+
+    The end of 'first' and the start of 'second' are blended over
+    'overlap_samples' samples using equal-power crossfading.
+
+    Args:
+        first: First audio signal.
+        second: Second audio signal.
+        overlap_samples: Number of samples to crossfade over.
+
+    Returns:
+        Combined signal with crossfade.
+
+    Raises:
+        ValueError: If overlap exceeds signal lengths.
+    """
+    if overlap_samples < 0:
+        raise ValueError(f"overlap_samples must be >= 0, got {overlap_samples}")
+    if overlap_samples > len(first):
+        raise ValueError(f"overlap_samples ({overlap_samples}) exceeds length of first signal ({len(first)})")
+    if overlap_samples > len(second):
+        raise ValueError(f"overlap_samples ({overlap_samples}) exceeds length of second signal ({len(second)})")
+
+    result = []
+    # Part before crossfade
+    result.extend(first[:len(first) - overlap_samples])
+
+    # Crossfade region
+    for i in range(overlap_samples):
+        # Equal-power crossfade
+        gain_first = math.cos(i * math.pi / (2 * overlap_samples))
+        gain_second = math.sin(i * math.pi / (2 * overlap_samples))
+        result.append(
+            first[len(first) - overlap_samples + i] * gain_first +
+            second[i] * gain_second
+        )
+
+    # Part after crossfade
+    result.extend(second[overlap_samples:])
+
+    return result
+
+
+def amplitude_to_db(amplitude: float) -> float:
+    """Convert linear amplitude to decibels. Returns -inf for amplitude=0."""
+    if amplitude <= 0:
+        return float('-inf')
+    return 20.0 * math.log10(amplitude)
+
+
+def db_to_amplitude(db: float) -> float:
+    """Convert decibels to linear amplitude."""
+    return 10.0 ** (db / 20.0)
