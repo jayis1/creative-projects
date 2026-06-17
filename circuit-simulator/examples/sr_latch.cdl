@@ -1,0 +1,21 @@
+# CDL Example: SR Latch
+# A Set-Reset latch — the most fundamental sequential element.
+
+circuit sr_latch_example;
+
+# Inputs
+wire s initial=LOW;
+wire r initial=LOW;
+
+# Outputs
+wire q initial=LOW;
+wire qbar initial=HIGH;
+
+# SR Latch
+sequential sr_latch latch1 s r -> q qbar;
+
+# Stimulus: set, then hold, then reset
+set s HIGH at 10;
+set s LOW at 30;
+set r HIGH at 50;
+set r LOW at 70;

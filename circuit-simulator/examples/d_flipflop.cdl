@@ -1,0 +1,20 @@
+# CDL Example: D Flip-Flop with Clock
+# A simple D flip-flop driven by a clock.
+
+circuit dff_example;
+
+# Wires
+wire d initial=LOW;
+wire clk initial=LOW;
+wire q initial=LOW;
+wire qbar initial=HIGH;
+
+# D flip-flop
+sequential d_flipflop dff1 d clk -> q qbar;
+
+# Clock: 20ns period, 50% duty cycle
+clock sysclk clk period=20 duty=0.5;
+
+# Stimulus: set D=HIGH at time 5ns, then LOW at time 50ns
+set d HIGH at 5;
+set d LOW at 50;

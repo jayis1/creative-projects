@@ -1,0 +1,16 @@
+# CDL Example: 2-to-1 Multiplexer
+# This defines a simple mux that selects between inputs a and b
+# based on the select signal.
+
+circuit mux_example;
+
+# Input wires
+wire a initial=LOW;
+wire b initial=HIGH;
+wire sel initial=LOW;
+
+# Output wire
+wire out;
+
+# Build a 2-to-1 MUX
+mux2 mux1 a b sel -> out;

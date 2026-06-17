@@ -1,0 +1,16 @@
+# CDL Example: 4-bit Ripple-Carry Adder
+# Adds two 4-bit numbers with carry in/out.
+
+circuit adder_4bit;
+
+# Input buses
+bus a 4 initial=LOW;
+bus b 4 initial=LOW;
+bus sum 4 initial=LOW;
+
+# Build the ripple-carry adder
+ripple_adder rca bus:a bus:b bus:sum;
+
+# Stimulus: set a=3, b=5 at time 5ns
+setbus a 3 at 5;
+setbus b 5 at 5;
