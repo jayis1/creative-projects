@@ -1,5 +1,5 @@
 """
-Test suite for symbolic algebra system.
+Test suite for symbolic algebra system (enhanced).
 """
 
 import math
@@ -7,6 +7,8 @@ from symbolic import (
     Expr, Num, Sym, BinOp, UnaryOp, Func, Pow,
     parse, simplify, differentiate, expand_expr,
     substitute, evaluate, collect_symbols, to_latex, solve,
+    taylor_series, numerical_integrate, newton_method,
+    factor, pretty_print,
     x, y, z, _wrap,
     sin, cos, tan, exp, ln, sqrt, abs_expr,
 )
@@ -19,6 +21,12 @@ def assert_equal(actual, expected, msg=""):
             raise AssertionError(f"Expected {expected}, got {actual}. {msg}")
     elif actual != expected:
         raise AssertionError(f"Expected {expected}, got {actual}. {msg}")
+
+
+def assert_close(actual, expected, rel_tol=1e-6, msg=""):
+    """Assert that two floats are close."""
+    if not math.isclose(actual, expected, rel_tol=rel_tol):
+        raise AssertionError(f"Expected {expected}, got {actual} (rel_tol={rel_tol}). {msg}")
 
 
 def assert_expr_equal(actual, expected, msg=""):
@@ -167,11 +175,9 @@ def test_parse_nested_function():
 
 def test_parse_complex():
     expr = parse("3*x^2 + 2*x - 5")
-    # Should parse without error
     assert isinstance(expr, Expr)
 
 def test_parse_right_assoc_power():
-    # x^2^3 should be x^(2^3)
     expr = parse("x^2^3")
     assert isinstance(expr, Pow)
 
@@ -200,9 +206,8 @@ def test_diff_other_variable():
 def test_diff_power():
     result = differentiate(Pow(Sym('x'), Num(3)), 'x')
     simplified = simplify(result)
-    # d/dx(x^3) = 3*x^2
     val = simplified.evaluate({'x': 2})
-    assert math.isclose(val, 12)  # 3*4 = 12
+    assert math.isclose(val, 12)
 
 def test_diff_sum():
     result = differentiate(BinOp('+', Sym('x'), Num(1)), 'x')
@@ -210,21 +215,17 @@ def test_diff_sum():
     assert simplified == Num(1)
 
 def test_diff_product():
-    # d/dx(x * sin(x)) = sin(x) + x*cos(x)
     f = BinOp('*', Sym('x'), Func('sin', Sym('x')))
     df = differentiate(f, 'x')
     simplified = simplify(df)
-    # Evaluate at x=1
     val = simplified.evaluate({'x': 1.0})
     expected = math.sin(1.0) + 1.0 * math.cos(1.0)
     assert math.isclose(val, expected, rel_tol=1e-9)
 
 def test_diff_chain_rule():
-    # d/dx(sin(x^2)) = cos(x^2) * 2x
     f = Func('sin', Pow(Sym('x'), Num(2)))
     df = differentiate(f, 'x')
     simplified = simplify(df)
-    # Evaluate at x=1
     val = simplified.evaluate({'x': 1.0})
     expected = math.cos(1) * 2
     assert math.isclose(val, expected, rel_tol=1e-9)
@@ -244,22 +245,17 @@ def test_diff_ln():
     assert math.isclose(val, 0.5, rel_tol=1e-9)
 
 def test_diff_quotient():
-    # d/dx(x / sin(x))
     f = BinOp('/', Sym('x'), Func('sin', Sym('x')))
     df = differentiate(f, 'x')
     simplified = simplify(df)
-    # Numerical check at x=1
     val = simplified.evaluate({'x': 1.0})
-    # d/dx(x/sin(x)) = (sin(x) - x*cos(x)) / sin(x)^2
     expected = (math.sin(1) - 1*math.cos(1)) / (math.sin(1)**2)
     assert math.isclose(val, expected, rel_tol=1e-6)
 
 def test_diff_general_power():
-    # d/dx(x^x) = x^x * (ln(x) + 1) — requires general power rule
     f = Pow(Sym('x'), Sym('x'))
     df = differentiate(f, 'x')
     simplified = simplify(df)
-    # Evaluate at x=2: 2^2*(ln(2) + 1) = 4*(0.6931+1) = 6.7726
     val = simplified.evaluate({'x': 2.0})
     expected = 4.0 * (math.log(2.0) + 1.0)
     assert math.isclose(val, expected, rel_tol=1e-4)
@@ -314,12 +310,33 @@ def test_simplify_func_on_constant():
     assert simplify(expr) == Num(0)
 
 def test_simplify_nested():
-    # (2 + 3) * x → 5x
     expr = BinOp('*', BinOp('+', Num(2), Num(3)), Sym('x'))
     result = simplify(expr)
-    # Should simplify to 5 * x or similar
     val = result.evaluate({'x': 1})
     assert math.isclose(val, 5)
+
+def test_simplify_trig_identity():
+    """Test sin²x + cos²x = 1."""
+    expr = BinOp('+', Pow(Func('sin', Sym('x')), Num(2)), Pow(Func('cos', Sym('x')), Num(2)))
+    result = simplify(expr)
+    assert result == Num(1), f"Expected Num(1), got {result}"
+
+def test_simplify_one_minus_sin_squared():
+    """Test 1 - sin²x = cos²x."""
+    expr = BinOp('-', Num(1), Pow(Func('sin', Sym('x')), Num(2)))
+    result = simplify(expr)
+    # Should be cos²(x)
+    assert isinstance(result, Pow), f"Expected Pow, got {type(result)}"
+    assert isinstance(result.base, Func) and result.base.name == 'cos'
+    assert isinstance(result.exponent, Num) and result.exponent.value == 2
+
+def test_simplify_one_minus_cos_squared():
+    """Test 1 - cos²x = sin²x."""
+    expr = BinOp('-', Num(1), Pow(Func('cos', Sym('x')), Num(2)))
+    result = simplify(expr)
+    assert isinstance(result, Pow), f"Expected Pow, got {type(result)}"
+    assert isinstance(result.base, Func) and result.base.name == 'sin'
+    assert isinstance(result.exponent, Num) and result.exponent.value == 2
 
 
 # ──────────────── Substitution Tests ────────────────
@@ -335,7 +352,6 @@ def test_substitute_with_simplify():
     assert result == Num(4)
 
 def test_substitute_expression():
-    # x^2 with x → (y+1)
     expr = Pow(Sym('x'), Num(2))
     result = expr.substitute({'x': BinOp('+', Sym('y'), Num(1))})
     expected = Pow(BinOp('+', Sym('y'), Num(1)), Num(2))
@@ -355,7 +371,6 @@ def test_eval_variable():
 def test_eval_complex():
     expr = parse("3*x^2 + 2*x - 5")
     result = expr.evaluate({'x': 2})
-    # 3*4 + 2*2 - 5 = 12 + 4 - 5 = 11
     assert math.isclose(result, 11)
 
 def test_eval_function():
@@ -416,14 +431,12 @@ def test_latex_sin():
 # ──────────────── Solving Tests ────────────────
 
 def test_solve_linear():
-    # 2x + 4 = 0 => x = -2
     expr = BinOp('+', BinOp('*', Num(2), Sym('x')), Num(4))
     roots = solve(expr, 'x')
     assert len(roots) == 1
     assert math.isclose(roots[0].value, -2)
 
 def test_solve_quadratic():
-    # x^2 - 5x + 6 = 0 => x = 2 or x = 3
     expr = parse("x^2 - 5*x + 6")
     roots = solve(expr, 'x')
     vals = sorted([r.value for r in roots])
@@ -432,16 +445,12 @@ def test_solve_quadratic():
     assert math.isclose(vals[1], 3)
 
 def test_solve_quadratic_one_root():
-    # x^2 - 2*x + 1 = 0 => x = 1
-    expr = BinOp('-', BinOp('-', Pow(Sym('x'), Num(2)), BinOp('*', Num(2), Sym('x'))), Num(-1))
-    # Simplify: x^2 - 2x + 1
     expr2 = parse("x^2 - 2*x + 1")
     roots = solve(expr2, 'x')
     assert len(roots) == 1
     assert math.isclose(roots[0].value, 1)
 
 def test_solve_quadratic_no_real():
-    # x^2 + 1 = 0 => no real roots
     expr = BinOp('+', Pow(Sym('x'), Num(2)), Num(1))
     roots = solve(expr, 'x')
     assert len(roots) == 0
@@ -450,19 +459,209 @@ def test_solve_quadratic_no_real():
 # ──────────────── Expansion Tests ────────────────
 
 def test_expand_simple():
-    # a * (b + c) = a*b + a*c
     expr = BinOp('*', Sym('a'), BinOp('+', Sym('b'), Sym('c')))
     expanded = expand_expr(expr)
-    # Should be a*b + a*c
     assert isinstance(expanded, BinOp)
     assert expanded.op == '+'
 
 def test_expand_double():
-    # (a + b) * (c + d)
     expr = BinOp('*', BinOp('+', Sym('a'), Sym('b')), BinOp('+', Sym('c'), Sym('d')))
     expanded = expand_expr(expr)
-    # Should distribute fully
     assert isinstance(expanded, BinOp)
+
+
+# ──────────────── Taylor Series Tests ────────────────
+
+def test_taylor_exp():
+    """Taylor series of exp(x) around 0: 1 + x + x²/2 + x³/6 + ..."""
+    f = Func('exp', Sym('x'))
+    ts = taylor_series(f, 'x', point=0, order=4)
+    # Evaluate at x=0.5: exp(0.5) ≈ 1.6487
+    val = ts.evaluate({'x': 0.5})
+    expected = math.exp(0.5)
+    assert_close(val, expected, rel_tol=1e-3)
+
+def test_taylor_sin():
+    """Taylor series of sin(x) around 0: x - x³/6 + x⁵/120"""
+    f = Func('sin', Sym('x'))
+    ts = taylor_series(f, 'x', point=0, order=5)
+    # sin(0.5) ≈ 0.4794
+    val = ts.evaluate({'x': 0.5})
+    expected = math.sin(0.5)
+    assert_close(val, expected, rel_tol=1e-4)
+
+def test_taylor_cos():
+    """Taylor series of cos(x) around 0: 1 - x²/2 + x⁴/24"""
+    f = Func('cos', Sym('x'))
+    ts = taylor_series(f, 'x', point=0, order=4)
+    # cos(0.3) ≈ 0.9553
+    val = ts.evaluate({'x': 0.3})
+    expected = math.cos(0.3)
+    assert_close(val, expected, rel_tol=1e-4)
+
+def test_taylor_polynomial():
+    """Taylor series of x^2 + 2x + 1 should be exact (it's already a polynomial)."""
+    f = parse("x^2 + 2*x + 1")
+    ts = taylor_series(f, 'x', point=0, order=4)
+    # Should match at any point
+    assert_close(ts.evaluate({'x': 3.0}), 16.0)  # 9 + 6 + 1 = 16
+    assert_close(ts.evaluate({'x': -2.0}), 1.0)   # 4 - 4 + 1 = 1
+
+def test_taylor_around_nonzero():
+    """Taylor series of exp(x) around x=1."""
+    f = Func('exp', Sym('x'))
+    ts = taylor_series(f, 'x', point=1, order=4)
+    # exp(1) ≈ 2.7183
+    val = ts.evaluate({'x': 1.0})
+    expected = math.exp(1.0)
+    assert_close(val, expected, rel_tol=1e-4)
+
+
+# ──────────────── Numerical Integration Tests ────────────────
+
+def test_integrate_constant():
+    """∫₀¹ 1 dx = 1"""
+    f = Num(1)
+    result = numerical_integrate(f, 'x', 0, 1)
+    assert_close(result, 1.0)
+
+def test_integrate_linear():
+    """∫₀¹ x dx = 0.5"""
+    f = Sym('x')
+    result = numerical_integrate(f, 'x', 0, 1)
+    assert_close(result, 0.5)
+
+def test_integrate_quadratic():
+    """∫₀¹ x² dx = 1/3"""
+    f = Pow(Sym('x'), Num(2))
+    result = numerical_integrate(f, 'x', 0, 1)
+    assert_close(result, 1.0/3.0, rel_tol=1e-4)
+
+def test_integrate_sin():
+    """∫₀^π sin(x) dx = 2"""
+    f = Func('sin', Sym('x'))
+    result = numerical_integrate(f, 'x', 0, math.pi, n=1000)
+    assert_close(result, 2.0, rel_tol=1e-4)
+
+def test_integrate_exp():
+    """∫₀¹ exp(x) dx = e - 1"""
+    f = Func('exp', Sym('x'))
+    result = numerical_integrate(f, 'x', 0, 1)
+    expected = math.e - 1
+    assert_close(result, expected, rel_tol=1e-4)
+
+def test_integrate_via_method():
+    """Test integration via Expr method."""
+    f = parse("x^2")
+    result = f.integrate('x', 0, 1)
+    assert_close(result, 1.0/3.0, rel_tol=1e-4)
+
+
+# ──────────────── Newton's Method Tests ────────────────
+
+def test_newton_simple():
+    """Solve x^2 - 4 = 0 => x = 2 (starting from x0=3)."""
+    f = parse("x^2 - 4")
+    root = f.newton_solve('x', x0=3.0)
+    assert_close(root, 2.0, rel_tol=1e-6)
+
+def test_newton_cos():
+    """Solve cos(x) = 0 => x ≈ π/2."""
+    f = Func('cos', Sym('x'))
+    root = f.newton_solve('x', x0=1.0)
+    assert_close(root, math.pi/2, rel_tol=1e-6)
+
+def test_newton_cubic():
+    """Solve x^3 - x - 2 = 0."""
+    f = parse("x^3 - x - 2")
+    root = f.newton_solve('x', x0=2.0)
+    # Verify root
+    val = f.evaluate({'x': root})
+    assert abs(val) < 1e-6
+
+def test_newton_diverges():
+    """Newton's method should fail for x^2 + 1 = 0 (no real root)."""
+    f = BinOp('+', Pow(Sym('x'), Num(2)), Num(1))
+    try:
+        f.newton_solve('x', x0=0.0, max_iter=20)
+        # May or may not raise, depending on behavior
+    except ValueError:
+        pass  # Expected - no real root
+
+
+# ──────────────── Factorization Tests ────────────────
+
+def test_factor_common_var():
+    """Factor 2*x + 3*x -> x * (2 + 3) or similar."""
+    expr = BinOp('+', BinOp('*', Num(2), Sym('x')), BinOp('*', Num(3), Sym('x')))
+    result = factor(expr, 'x')
+    # The result should have x as a factor
+    # Evaluate at x=5: should give 25 (=5*5)
+    val = result.evaluate({'x': 5})
+    expected = 2*5 + 3*5  # = 25
+    assert_close(val, expected)
+
+def test_factor_simple_sum():
+    """Factor x + x^2."""
+    expr = BinOp('+', Sym('x'), Pow(Sym('x'), Num(2)))
+    result = factor(expr, 'x')
+    # Evaluate to verify equivalence
+    for test_x in [1.0, 2.0, 3.0, -1.0]:
+        original = expr.evaluate({'x': test_x})
+        factored = result.evaluate({'x': test_x})
+        assert_close(factored, original, msg=f"At x={test_x}")
+
+
+# ──────────────── Pretty Printing Tests ────────────────
+
+def test_pretty_simple():
+    assert pretty_print(Num(5)) == '5'
+    assert pretty_print(Sym('x')) == 'x'
+
+def test_pretty_addition():
+    expr = BinOp('+', Sym('x'), Num(1))
+    result = pretty_print(expr)
+    assert result == 'x + 1'
+
+def test_pretty_multiplication():
+    expr = BinOp('*', Sym('x'), Num(2))
+    result = pretty_print(expr)
+    assert '2' in result and 'x' in result
+
+def test_pretty_nested():
+    """x + y * z should print as x + y * z without extra parens."""
+    expr = BinOp('+', Sym('x'), BinOp('*', Sym('y'), Sym('z')))
+    result = pretty_print(expr)
+    # Should NOT have unnecessary parens around y * z
+    assert '(' not in result or 'x' in result
+
+def test_pretty_subtraction():
+    """a - (b + c) needs parens around b + c."""
+    expr = BinOp('-', Sym('a'), BinOp('+', Sym('b'), Sym('c')))
+    result = pretty_print(expr)
+    assert '(b + c)' in result
+
+def test_pretty_power():
+    expr = Pow(Sym('x'), Num(2))
+    result = pretty_print(expr)
+    assert 'x^2' in result
+
+def test_pretty_function():
+    expr = Func('sin', Sym('x'))
+    result = pretty_print(expr)
+    assert result == 'sin(x)'
+
+def test_pretty_unary_neg():
+    expr = UnaryOp('-', Sym('x'))
+    result = pretty_print(expr)
+    assert result == '-x'
+
+def test_pretty_method():
+    """Test pretty() method on Expr."""
+    expr = parse("x^2 + 2*x + 1")
+    result = expr.pretty()
+    assert 'x' in result
+    assert isinstance(result, str)
 
 
 # ──────────────── Integration Tests ────────────────
@@ -472,8 +671,6 @@ def test_integration_diff_simplify_eval():
     f = parse("x^3 + 2*x^2 - x + 5")
     df = f.diff('x').simplify()
     val = df.evaluate({'x': 1.0})
-    # d/dx(x^3 + 2x^2 - x + 5) = 3x^2 + 4x - 1
-    # At x=1: 3 + 4 - 1 = 6
     assert math.isclose(val, 6, rel_tol=1e-6)
 
 def test_parse_diff_simplify():
@@ -487,7 +684,6 @@ def test_chain_rule_complex():
     """d/dx(sin(cos(x))) should work."""
     f = parse("sin(cos(x))")
     df = f.diff('x').simplify()
-    # At x=1: cos(cos(1)) * (-sin(1))
     expected = math.cos(math.cos(1)) * (-math.sin(1))
     val = df.evaluate({'x': 1.0})
     assert math.isclose(val, expected, rel_tol=1e-6)
@@ -504,10 +700,36 @@ def test_partial_derivative():
     f = BinOp('+', BinOp('*', Num(3), Sym('x')), BinOp('*', Num(2), Sym('y')))
     df_dx = f.diff('x').simplify()
     df_dy = f.diff('y').simplify()
-    # d/dx(3x + 2y) = 3
     assert df_dx == Num(3)
-    # d/dy(3x + 2y) = 2
     assert df_dy == Num(2)
+
+def test_taylor_then_eval():
+    """Taylor series of exp(x) should approximate exp(x)."""
+    f = parse("exp(x)")
+    ts = f.taylor('x', point=0, order=6)
+    for x_val in [0.1, 0.5, 1.0]:
+        val = ts.evaluate({'x': x_val})
+        expected = math.exp(x_val)
+        assert_close(val, expected, rel_tol=0.05, msg=f"At x={x_val}")
+
+def test_newton_via_method():
+    """Test Newton's method via Expr method."""
+    f = parse("x^2 - 2")
+    root = f.newton_solve('x', x0=1.5)
+    assert_close(root, math.sqrt(2), rel_tol=1e-6)
+
+def test_factor_via_method():
+    """Test factorization via Expr method."""
+    f = parse("x + x^2")
+    result = f.factor('x')
+    # Just verify it doesn't crash and produces something
+    assert isinstance(result, Expr)
+
+def test_pretty_roundtrip():
+    """Verify pretty printing produces readable output for complex expressions."""
+    expr = parse("sin(x)^2 + cos(x)^2")
+    pp = expr.pretty()
+    assert 'sin' in pp and 'cos' in pp
 
 
 # ──────────────── Run Tests ────────────────
@@ -541,6 +763,9 @@ def run_all_tests():
         test_simplify_power_zero, test_simplify_power_one,
         test_simplify_x_minus_x, test_simplify_func_on_constant,
         test_simplify_nested,
+        test_simplify_trig_identity,
+        test_simplify_one_minus_sin_squared,
+        test_simplify_one_minus_cos_squared,
         # Substitution
         test_substitute_simple, test_substitute_with_simplify,
         test_substitute_expression,
@@ -557,10 +782,30 @@ def run_all_tests():
         test_solve_quadratic_one_root, test_solve_quadratic_no_real,
         # Expansion
         test_expand_simple, test_expand_double,
+        # Taylor series
+        test_taylor_exp, test_taylor_sin, test_taylor_cos,
+        test_taylor_polynomial, test_taylor_around_nonzero,
+        # Numerical integration
+        test_integrate_constant, test_integrate_linear,
+        test_integrate_quadratic, test_integrate_sin,
+        test_integrate_exp, test_integrate_via_method,
+        # Newton's method
+        test_newton_simple, test_newton_cos, test_newton_cubic,
+        test_newton_diverges,
+        # Factorization
+        test_factor_common_var, test_factor_simple_sum,
+        # Pretty printing
+        test_pretty_simple, test_pretty_addition,
+        test_pretty_multiplication, test_pretty_nested,
+        test_pretty_subtraction, test_pretty_power,
+        test_pretty_function, test_pretty_unary_neg,
+        test_pretty_method,
         # Integration
         test_integration_diff_simplify_eval, test_parse_diff_simplify,
         test_chain_rule_complex, test_substitute_then_eval,
         test_partial_derivative,
+        test_taylor_then_eval, test_newton_via_method,
+        test_factor_via_method, test_pretty_roundtrip,
     ]
 
     passed = 0

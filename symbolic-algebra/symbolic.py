@@ -5,11 +5,14 @@ symbolic.py — A Symbolic Algebra System
 A computer algebra system (CAS) that supports:
 - Expression parsing from strings (with proper operator precedence)
 - Symbolic differentiation (partial derivatives)
-- Expression simplification (constant folding, identity elimination, algebraic simplification)
-- Equation solving (linear, quadratic, polynomial roots)
+- Expression simplification (constant folding, identity elimination, algebraic simplification, trig identities)
+- Equation solving (linear, quadratic, polynomial roots, Newton's method)
 - Expression expansion (distributive law)
+- Taylor series expansion
+- Numerical integration (Simpson's rule)
+- Factorization (common factor extraction)
+- Pretty-printing (minimal parentheses)
 - LaTeX output
-- Pretty-printing
 - Substitution and evaluation
 
 Architecture:
@@ -139,6 +142,42 @@ class Expr(ABC):
         else:
             var_name = var
         return solve(self, var_name)
+
+    def taylor(self, var: Union[str, 'Sym'], point: Union[int, float] = 0, order: int = 5) -> 'Expr':
+        """Compute the Taylor series expansion around `point` up to `order` terms."""
+        if isinstance(var, Sym):
+            var_name = var.name
+        else:
+            var_name = var
+        return taylor_series(self, var_name, point, order)
+
+    def integrate(self, var: Union[str, 'Sym'], a: Union[int, float], b: Union[int, float], n: int = 1000) -> float:
+        """Numerically integrate this expression from a to b using Simpson's rule."""
+        if isinstance(var, Sym):
+            var_name = var.name
+        else:
+            var_name = var
+        return numerical_integrate(self, var_name, a, b, n)
+
+    def factor(self, var: Union[str, 'Sym']) -> 'Expr':
+        """Factor out common terms involving `var`."""
+        if isinstance(var, Sym):
+            var_name = var.name
+        else:
+            var_name = var
+        return factor(self, var_name)
+
+    def newton_solve(self, var: Union[str, 'Sym'], x0: float = 0.0, tol: float = 1e-10, max_iter: int = 100) -> float:
+        """Find a root using Newton's method starting from x0."""
+        if isinstance(var, Sym):
+            var_name = var.name
+        else:
+            var_name = var
+        return newton_method(self, var_name, x0, tol, max_iter)
+
+    def pretty(self) -> str:
+        """Pretty-print this expression with minimal parentheses."""
+        return pretty_print(self)
 
 
 class Num(Expr):
@@ -394,12 +433,14 @@ def differentiate(expr: Expr, var: str) -> Expr:
 # ──────────────────────────── Simplification ────────────────────────────
 
 def simplify(expr: Expr) -> Expr:
-    """Simplify an expression by applying algebraic rules iteratively."""
+    """Simplify an expression by applying algebraic rules iteratively, including trig identities."""
     prev = None
     current = expr
     # Iterate until stable (fixed point)
     for _ in range(20):  # max iterations to prevent infinite loops
         simplified = _simplify_once(current)
+        # Also apply trig identities
+        simplified = _simplify_trig(simplified)
         if simplified == current or simplified == prev:
             break
         prev = current
@@ -1004,6 +1045,483 @@ def _collect_polynomial_coeffs(expr: Expr, var: str) -> Optional[Dict[int, Expr]
     return None
 
 
+# ──────────────────────────── Taylor Series ────────────────────────────
+
+def taylor_series(expr: Expr, var: str, point: Union[int, float] = 0, order: int = 5) -> Expr:
+    """
+    Compute the Taylor series expansion of `expr` around `point` up to `order` terms.
+
+    The Taylor series of f(x) around x=a is:
+        f(x) = Σ [f^(n)(a) / n!] * (x - a)^n
+
+    Returns a symbolic expression representing the polynomial approximation.
+    """
+    h = Sym(var)
+    delta = BinOp('-', h, Num(point)) if point != 0 else h
+
+    # Evaluate f(a) and successive derivatives at x=a
+    result: Optional[Expr] = None
+    derivative = expr
+    factorial = 1
+
+    for n in range(order + 1):
+        # Compute f^(n)(a)
+        if n == 0:
+            f_n_a = expr
+        else:
+            derivative = differentiate(derivative, var)
+            f_n_a = derivative
+
+        # Substitute x = point to get f^(n)(a)
+        try:
+            val = f_n_a.substitute({var: Num(point)}).simplify()
+        except (ValueError, ZeroDivisionError, OverflowError):
+            val = Num(0)
+
+        if n > 0:
+            factorial *= n
+
+        # term = (f^(n)(a) / n!) * (x - a)^n
+        if isinstance(val, Num) and val.value == 0:
+            continue
+
+        coeff = simplify(BinOp('/', val, Num(factorial)))
+
+        if n == 0:
+            term = coeff
+        elif point == 0:
+            term = simplify(BinOp('*', coeff, Pow(h, Num(n))))
+        else:
+            term = simplify(BinOp('*', coeff, Pow(delta, Num(n))))
+
+        if result is None:
+            result = term
+        else:
+            result = BinOp('+', result, term)
+
+    return simplify(result) if result is not None else Num(0)
+
+
+# ──────────────────────────── Numerical Integration ────────────────────────────
+
+def numerical_integrate(expr: Expr, var: str, a: float, b: float, n: int = 1000) -> float:
+    """
+    Numerically integrate `expr` from `a` to `b` using Simpson's rule.
+
+    Uses n intervals (must be even). Higher n gives better accuracy.
+    """
+    if n % 2 != 0:
+        n += 1  # Simpson's rule requires even number of intervals
+
+    h = (b - a) / n
+    total = 0.0
+
+    # Evaluate at endpoints
+    try:
+        total += expr.evaluate({var: a})
+    except (ValueError, ZeroDivisionError, OverflowError):
+        pass
+    try:
+        total += expr.evaluate({var: b})
+    except (ValueError, ZeroDivisionError, OverflowError):
+        pass
+
+    # Interior points
+    for i in range(1, n):
+        x_i = a + i * h
+        try:
+            val = expr.evaluate({var: x_i})
+            if math.isnan(val) or math.isinf(val):
+                continue
+            if i % 2 == 0:
+                total += 2 * val
+            else:
+                total += 4 * val
+        except (ValueError, ZeroDivisionError, OverflowError):
+            continue
+
+    return total * h / 3
+
+
+# ──────────────────────────── Newton's Method ────────────────────────────
+
+def newton_method(expr: Expr, var: str, x0: float = 0.0, tol: float = 1e-10, max_iter: int = 100) -> float:
+    """
+    Find a root of expr == 0 using Newton's method.
+
+    Starting from x0, iterates: x_{n+1} = x_n - f(x_n) / f'(x_n)
+    Raises ValueError if convergence fails.
+    """
+    derivative = expr.diff(var)
+
+    x = x0
+    for _ in range(max_iter):
+        try:
+            f_val = expr.evaluate({var: x})
+            df_val = derivative.evaluate({var: x})
+        except (ValueError, ZeroDivisionError, OverflowError):
+            raise ValueError(f"Newton's method failed: evaluation error at {var}={x}")
+
+        if df_val == 0:
+            raise ValueError(f"Newton's method failed: zero derivative at {var}={x}")
+
+        x_new = x - f_val / df_val
+
+        if math.isnan(x_new) or math.isinf(x_new):
+            raise ValueError(f"Newton's method diverged at {var}={x}")
+
+        if abs(x_new - x) < tol:
+            return x_new
+
+        x = x_new
+
+    raise ValueError(f"Newton's method did not converge after {max_iter} iterations (last value: {x})")
+
+
+# ──────────────────────────── Factorization ────────────────────────────
+
+def factor(expr: Expr, var: str) -> Expr:
+    """
+    Factor out common terms involving `var` from a sum expression.
+
+    For example: 2*x + 4*x^2 → x * (2 + 4*x) or similar factored forms.
+    Attempts to extract common polynomial factors.
+    """
+    expr = simplify(expr)
+
+    # Only factor sums
+    if not isinstance(expr, BinOp) or expr.op != '+':
+        return expr
+
+    # Collect additive terms
+    terms = _collect_additive_terms(expr)
+
+    if len(terms) < 2:
+        return expr
+
+    # Find common factors among all terms
+    # Each term is (coefficient, factors_dict) where factors_dict maps base_expr -> exponent
+    parsed_terms = []
+    for term in terms:
+        parsed_terms.append(_parse_multiplicative_factors(term))
+
+    if len(parsed_terms) < 2:
+        return expr
+
+    # Find intersection of all factor sets (common factors)
+    common_factors: Dict[Tuple, int] = {}
+
+    # Start with factors from first term
+    for base_key, exp in parsed_terms[0].items():
+        common_factors[base_key] = exp
+
+    # Intersect with factors from remaining terms
+    for i in range(1, len(parsed_terms)):
+        term_factors = parsed_terms[i]
+        new_common = {}
+        for base_key, exp in common_factors.items():
+            if base_key in term_factors:
+                # Take minimum exponent
+                new_common[base_key] = min(exp, term_factors[base_key])
+        common_factors = new_common
+
+    if not common_factors:
+        return expr  # No common factors found
+
+    # Reconstruct: (common_factor) * (sum of reduced terms)
+    # Build common factor expression
+    common_expr: Optional[Expr] = None
+    for base_key, exp in common_factors.items():
+        base_expr = _key_to_expr(base_key)
+        factor_term = Pow(base_expr, Num(exp)) if exp > 1 else base_expr
+        if common_expr is None:
+            common_expr = factor_term
+        else:
+            common_expr = BinOp('*', common_expr, factor_term)
+
+    # Build reduced terms
+    reduced_terms = []
+    for term, parsed in zip(terms, parsed_terms):
+        remaining: Optional[Expr] = None
+        # Start with the coefficient
+        coeff = 1
+        for base_key, exp in parsed.items():
+            if base_key in common_factors:
+                reduced_exp = exp - common_factors[base_key]
+                if reduced_exp > 0:
+                    base_expr = _key_to_expr(base_key)
+                    factor_term = Pow(base_expr, Num(reduced_exp)) if reduced_exp > 1 else base_expr
+                    if remaining is None:
+                        remaining = factor_term
+                    else:
+                        remaining = BinOp('*', remaining, factor_term)
+            else:
+                base_expr = _key_to_expr(base_key)
+                factor_term = Pow(base_expr, Num(exp)) if exp > 1 else base_expr
+                if remaining is None:
+                    remaining = factor_term
+                else:
+                    remaining = BinOp('*', remaining, factor_term)
+
+        if remaining is None:
+            reduced_terms.append(Num(1))
+        else:
+            reduced_terms.append(remaining)
+
+    # Build the result: common_expr * (sum of reduced_terms)
+    sum_expr: Expr = reduced_terms[0]
+    for rt in reduced_terms[1:]:
+        sum_expr = BinOp('+', sum_expr, rt)
+
+    result = BinOp('*', common_expr, sum_expr)
+    return simplify(result)
+
+
+def _collect_additive_terms(expr: Expr) -> List[Expr]:
+    """Collect all additive terms from a sum expression."""
+    if isinstance(expr, BinOp) and expr.op == '+':
+        return _collect_additive_terms(expr.left) + _collect_additive_terms(expr.right)
+    return [expr]
+
+
+def _parse_multiplicative_factors(expr: Expr) -> Dict[Tuple, int]:
+    """Parse an expression into a dict of (type, value) -> exponent for factoring."""
+    factors: Dict[Tuple, int] = {}
+
+    if isinstance(expr, Num):
+        # Numeric factor
+        key = ('num', expr.value)
+        factors[key] = factors.get(key, 0) + 1
+        return factors
+
+    if isinstance(expr, Sym):
+        key = ('sym', expr.name)
+        factors[key] = factors.get(key, 0) + 1
+        return factors
+
+    if isinstance(expr, Pow):
+        # For x^n, we get factor x^n
+        base_key = _expr_to_key(expr.base)
+        if base_key is not None:
+            if isinstance(expr.exponent, Num):
+                factors[base_key] = factors.get(base_key, 0) + int(expr.exponent.value)
+                return factors
+
+    if isinstance(expr, BinOp) and expr.op == '*':
+        left_factors = _parse_multiplicative_factors(expr.left)
+        right_factors = _parse_multiplicative_factors(expr.right)
+        for key, exp in right_factors.items():
+            left_factors[key] = left_factors.get(key, 0) + exp
+        return left_factors
+
+    # For any other expression, treat it as an opaque factor
+    key = _expr_to_key(expr)
+    if key is not None:
+        factors[key] = factors.get(key, 0) + 1
+    return factors
+
+
+def _expr_to_key(expr: Expr) -> Optional[Tuple]:
+    """Convert an expression to a hashable key for factoring."""
+    if isinstance(expr, Num):
+        return ('num', expr.value)
+    if isinstance(expr, Sym):
+        return ('sym', expr.name)
+    if isinstance(expr, Func):
+        arg_key = _expr_to_key(expr.arg)
+        if arg_key is not None:
+            return ('func', expr.name, arg_key)
+    if isinstance(expr, Pow):
+        base_key = _expr_to_key(expr.base)
+        exp_key = _expr_to_key(expr.exponent)
+        if base_key is not None and exp_key is not None:
+            return ('pow', base_key, exp_key)
+    if isinstance(expr, BinOp):
+        left_key = _expr_to_key(expr.left)
+        right_key = _expr_to_key(expr.right)
+        if left_key is not None and right_key is not None:
+            return ('binop', expr.op, left_key, right_key)
+    return None
+
+
+def _key_to_expr(key: Tuple) -> Expr:
+    """Convert a key back to an expression."""
+    if key[0] == 'num':
+        return Num(key[1])
+    if key[0] == 'sym':
+        return Sym(key[1])
+    if key[0] == 'func':
+        return Func(key[1], _key_to_expr(key[2]))
+    if key[0] == 'pow':
+        return Pow(_key_to_expr(key[1]), _key_to_expr(key[2]))
+    if key[0] == 'binop':
+        return BinOp(key[1], _key_to_expr(key[2]), _key_to_expr(key[3]))
+    raise ValueError(f"Cannot convert key to expression: {key}")
+
+
+# ──────────────────────────── Pretty Printing ────────────────────────────
+
+def pretty_print(expr: Expr) -> str:
+    """
+    Pretty-print an expression with minimal parentheses.
+
+    Uses operator precedence to avoid unnecessary parentheses:
+    - Addition/subtraction: lowest precedence (1)
+    - Multiplication/division: medium precedence (2)
+    - Unary negation: precedence (3)
+    - Exponentiation: high precedence (4)
+    - Atoms: no parentheses needed
+    """
+    return _pretty(expr, parent_prec=0, parent_side='none')
+
+
+def _prec(expr: Expr) -> int:
+    """Get the precedence level of an expression."""
+    if isinstance(expr, (Num, Sym, Func)):
+        return 100
+    if isinstance(expr, UnaryOp):
+        return 30
+    if isinstance(expr, BinOp):
+        if expr.op in ('+', '-'):
+            return 10
+        if expr.op in ('*', '/'):
+            return 20
+    if isinstance(expr, Pow):
+        return 40
+    return 0
+
+
+def _pretty(expr: Expr, parent_prec: int, parent_side: str) -> str:
+    """Pretty-print with context about parent operator for parenthesization."""
+    if isinstance(expr, Num):
+        v = expr.value
+        if isinstance(v, float):
+            # Clean up float display
+            if v == int(v):
+                return str(int(v))
+            return str(v)
+        return str(v)
+
+    if isinstance(expr, Sym):
+        return expr.name
+
+    if isinstance(expr, UnaryOp) and expr.op == '-':
+        inner = _pretty(expr.operand, 30, 'left')
+        result = f"-{inner}"
+        # Parenthesize if parent has higher precedence
+        if parent_prec > 30:
+            return f"({result})"
+        return result
+
+    if isinstance(expr, Func):
+        arg_str = _pretty(expr.arg, 0, 'none')
+        return f"{expr.name}({arg_str})"
+
+    if isinstance(expr, Pow):
+        base_str = _pretty(expr.base, 40, 'left')
+        exp_str = _pretty(expr.exponent, 40, 'right')
+        result = f"{base_str}^{exp_str}"
+        if parent_prec > 40:
+            return f"({result})"
+        return result
+
+    if isinstance(expr, BinOp):
+        my_prec = _prec(expr)
+        left_str = _pretty(expr.left, my_prec, 'left')
+        right_str = _pretty(expr.right, my_prec, 'right')
+
+        # For right side of subtraction or division, need parens if same precedence
+        need_right_parens = False
+        if expr.op == '-' and isinstance(expr.right, BinOp) and expr.right.op in ('+', '-'):
+            need_right_parens = True
+        if expr.op == '/' and isinstance(expr.right, BinOp) and expr.right.op in ('*', '/'):
+            need_right_parens = True
+
+        if need_right_parens:
+            right_str = f"({right_str})"
+
+        result = f"{left_str} {expr.op} {right_str}"
+
+        # Parenthesize if parent has higher precedence, or if we're on the right
+        # side of another operation with same precedence (for non-commutative ops)
+        if parent_prec > my_prec:
+            return f"({result})"
+        if parent_prec == my_prec and parent_side == 'right' and my_prec in (10, 20):
+            return f"({result})"
+
+        return result
+
+    return str(expr)
+
+
+# ──────────────────────────── Enhanced Simplification (Trig Identities) ────────────────────────────
+
+def _simplify_trig(expr: Expr) -> Expr:
+    """
+    Apply trigonometric identity simplifications:
+    - sin²x + cos²x = 1
+    - tan(x) = sin(x)/cos(x)
+    - 1 - sin²x = cos²x
+    - 1 - cos²x = sin²x
+    """
+    if isinstance(expr, BinOp) and expr.op == '+':
+        left = _simplify_trig(expr.left)
+        right = _simplify_trig(expr.right)
+        # Check for sin²x + cos²x pattern
+        result = _check_trig_identity(left, right)
+        if result is not None:
+            return result
+        return BinOp('+', left, right)
+
+    if isinstance(expr, BinOp) and expr.op == '-':
+        left = _simplify_trig(expr.left)
+        right = _simplify_trig(expr.right)
+        # Check for 1 - sin²x = cos²x and 1 - cos²x = sin²x
+        if isinstance(left, Num) and left.value == 1:
+            if isinstance(right, Pow) and isinstance(right.base, Func):
+                if right.base.name == 'sin' and isinstance(right.exponent, Num) and right.exponent.value == 2:
+                    return Pow(Func('cos', right.base.arg), Num(2))
+                if right.base.name == 'cos' and isinstance(right.exponent, Num) and right.exponent.value == 2:
+                    return Pow(Func('sin', right.base.arg), Num(2))
+        return BinOp('-', left, right)
+
+    return expr
+
+
+def _check_trig_identity(left: Expr, right: Expr) -> Optional[Expr]:
+    """Check if left + right matches sin²x + cos²x = 1 or similar."""
+    # sin²x + cos²x = 1
+    left_info = _extract_trig_squared(left)
+    right_info = _extract_trig_squared(right)
+
+    if left_info and right_info:
+        l_name, l_arg, l_coeff = left_info
+        r_name, r_arg, r_coeff = right_info
+
+        # Check if arguments match
+        if l_arg == r_arg and l_coeff == r_coeff:
+            if (l_name == 'sin' and r_name == 'cos') or (l_name == 'cos' and r_name == 'sin'):
+                if l_coeff == 1:
+                    return Num(1)
+
+    return None
+
+
+def _extract_trig_squared(expr: Expr) -> Optional[Tuple[str, str, Union[int, float]]]:
+    """Extract (func_name, arg_str, coefficient) from expressions like sin²x, 2*sin²x."""
+    if isinstance(expr, Pow) and isinstance(expr.base, Func) and isinstance(expr.exponent, Num):
+        if expr.exponent.value == 2 and expr.base.name in ('sin', 'cos', 'tan'):
+            return (expr.base.name, str(expr.base.arg), 1)
+
+    if isinstance(expr, BinOp) and expr.op == '*':
+        if isinstance(expr.left, Num) and isinstance(expr.right, Pow):
+            if isinstance(expr.right.base, Func) and isinstance(expr.right.exponent, Num):
+                if expr.right.exponent.value == 2 and expr.right.base.name in ('sin', 'cos', 'tan'):
+                    return (expr.right.base.name, str(expr.right.base.arg), expr.left.value)
+
+    return None
+
+
 # ──────────────────────────── Parser ────────────────────────────
 
 # Token types
@@ -1225,6 +1743,18 @@ def abs_expr(expr: Union[Expr, int, float]) -> Func:
     return Func('abs', _wrap(expr))
 
 
+# Export all new functions for convenience
+__all__ = [
+    'Expr', 'Num', 'Sym', 'BinOp', 'UnaryOp', 'Func', 'Pow',
+    'parse', 'simplify', 'differentiate', 'expand_expr',
+    'substitute', 'evaluate', 'collect_symbols', 'to_latex', 'solve',
+    'taylor_series', 'numerical_integrate', 'newton_method',
+    'factor', 'pretty_print',
+    'x', 'y', 'z', 't', 'n', 'pi', 'e',
+    'sym', 'num', 'sin', 'cos', 'tan', 'exp', 'ln', 'sqrt', 'abs_expr',
+]
+
+
 # ──────────────────────────── CLI Interface ────────────────────────────
 
 def main():
@@ -1238,10 +1768,15 @@ def main():
     print("  <expr>            — Parse and simplify an expression")
     print("  diff <expr>       — Differentiate (w.r.t. x)")
     print("  expand <expr>     — Expand an expression")
+    print("  factor <expr>     — Factor an expression (w.r.t. x)")
     print("  latex <expr>      — Convert to LaTeX")
     print("  eval <expr>       — Evaluate with x=1, y=2, z=3")
     print("  solve <expr>      — Solve expr=0 for x")
+    print("  newton <expr>     — Find root via Newton's method (w.r.t. x)")
+    print("  taylor <expr>     — Taylor series around x=0 (5 terms)")
+    print("  integrate <expr>  — Numerically integrate from 0 to 1")
     print("  symbols <expr>    — List symbols in expression")
+    print("  pretty <expr>     — Pretty-print expression")
     print("  quit              — Exit")
     print("=" * 60)
 
@@ -1263,9 +1798,13 @@ def main():
                 result = expr.diff('x').simplify()
                 print(f"  d/dx({expr.simplify()}) = {result}")
             elif line.startswith('expand '):
-                expr = parse(line[8:])
+                expr = parse(line[7:])
                 result = expr.expand().simplify()
                 print(f"  Expanded: {result}")
+            elif line.startswith('factor '):
+                expr = parse(line[7:])
+                result = expr.factor('x')
+                print(f"  Factored: {result.pretty()}")
             elif line.startswith('latex '):
                 expr = parse(line[6:])
                 result = expr.simplify()
@@ -1281,10 +1820,25 @@ def main():
                     print(f"  Solutions: {', '.join(str(s) for s in solutions)}")
                 else:
                     print("  No real solutions")
+            elif line.startswith('newton '):
+                expr = parse(line[7:])
+                root = expr.newton_solve('x')
+                print(f"  Root (Newton): x ≈ {root:.10f}")
+            elif line.startswith('taylor '):
+                expr = parse(line[7:])
+                result = expr.taylor('x', point=0, order=5)
+                print(f"  Taylor series: {result.pretty()}")
+            elif line.startswith('integrate '):
+                expr = parse(line[10:])
+                result = expr.integrate('x', 0, 1)
+                print(f"  ∫₀¹ f(x)dx ≈ {result:.10f}")
             elif line.startswith('symbols '):
                 expr = parse(line[8:])
                 syms = expr.symbols()
                 print(f"  Symbols: {', '.join(sorted(syms))}")
+            elif line.startswith('pretty '):
+                expr = parse(line[7:])
+                print(f"  {expr.pretty()}")
             else:
                 expr = parse(line)
                 result = expr.simplify()
