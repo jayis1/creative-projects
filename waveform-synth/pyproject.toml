@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "waveform-synth"
+version = "1.0.0"
+description = "A from-scratch digital audio synthesizer with waveform generation, ADSR envelopes, FM synthesis, effects processing, WAV export, and ASCII visualization"
+requires-python = ">=3.10"
+
+[project.scripts]
+waveform-synth = "waveform_synth.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["waveform_synth*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
