@@ -1,0 +1,9 @@
+# Generate a 40x25 village map with a fixed seed and write SVG output.
+mode: village
+width: 40
+height: 25
+seed: 42
+selection: min_entropy
+output: examples/village_output.svg
+cell_size: 18
+stats: true

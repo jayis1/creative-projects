@@ -1,0 +1,26 @@
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Python caches
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Generated example outputs
+examples/*.svg
+examples/*.png
+examples/*.html
+examples/*.json
+!examples/config_*.json
+examples/islands_output.json
+examples/village_output.svg
+examples/terrain_output.svg
+
+# Build artifacts
+build/
+dist/

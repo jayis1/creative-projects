@@ -1,302 +1,453 @@
-# WFC Generator (wfc-generator-q4m7)
+# WFC Generator
 
-A **Wave Function Collapse** (WFC) procedural generation engine implemented in pure Python. WFC is an algorithm that generates random outputs that locally resemble an input or follow explicit adjacency constraints — think dungeon maps, terrain, circuit board patterns, mazes, and more.
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
+[![Tests: 120](https://img.shields.io/badge/tests-120%20passing-brightgreen.svg)](#testing)
+[![Version: 2.0.0](https://img.shields.io/badge/version-2.0.0-orange.svg)](#changelog)
 
-## How It Works
+> A **Wave Function Collapse** (WFC) procedural generation engine in pure Python.
+> Generate terrain maps, dungeons, cities, circuits, mazes, villages and
+> fantasy islands that locally respect the adjacency rules you define — or
+> learn those rules automatically from a sample pattern.
 
-The core algorithm is inspired by quantum mechanics:
+```
+~~~~~~~~~~~~~~~~~~~~  ─→  ggghgTTggTggTggg.gggg
+~~~~~~~~~~.~~~~~.g       ggTg.~.~.g.~.gg.g
+~~~~~~~~~~~~~~.gg       ─ WFC turns a uniform
+~~~~~~~~~~~~~.~...       "superposition" into a
+~~~~~~~~~~~~.g...        locally-consistent map
+```
 
-1. **Superposition**: Start with a grid where every cell can be any possible tile (state)
-2. **Observe (Collapse)**: Find the cell with lowest entropy (fewest possibilities) and randomly pick one state, weighted by tile frequency
-3. **Propagate**: Remove impossible states from neighboring cells based on adjacency constraints (arc consistency)
-4. **Repeat**: Until all cells are collapsed, or a contradiction forces a backtrack/restart
+---
 
-Key implementation features:
-- **Shannon entropy** for cell selection with random noise for tie-breaking
-- **Arc-consistency propagation** for constraint enforcement
-- **Backtracking** on contradiction — restores previous state and tries alternate paths
-- **Automatic restart** with fresh random seed when backtracking is exhausted
-- **Pre-computed adjacency tables** for fast propagation
-- **Generation statistics** tracking (time, collapses, propagations, backtracks)
+## Table of Contents
 
-## Generation Modes
+- [Overview](#overview)
+- [Key features](#key-features)
+- [Installation](#installation)
+- [Quick start](#quick-start)
+- [Generation modes](#generation-modes)
+- [CLI reference](#cli-reference)
+- [Configuration files](#configuration-files)
+- [Python API](#python-api)
+- [Selection strategies](#selection-strategies)
+- [Rendering formats](#rendering-formats)
+- [Architecture](#architecture)
+- [Examples](#examples)
+- [Testing](#testing)
+- [Contributing](#contributing)
+- [Roadmap](#roadmap)
+- [Known Issues (Resolved)](#known-issues-resolved)
+- [Changelog](#changelog)
+- [License](#license)
 
-| Mode | Description | Tiles |
-|------|-------------|-------|
-| `terrain` | Natural terrain with elevation transitions | deep_water, shallow_water, sand, grass, forest, hill, mountain, snow |
-| `dungeon` | Dungeon maps with rooms and corridors | floor, wall, corridor, door, pillar, stairs, treasure |
-| `city` | City layouts with roads and buildings | road_h, road_v, intersection, building, park, sidewalk, parking |
-| `circuit` | Circuit board patterns with wires and components | empty, wire_h, wire_v, wire corners, junction, component, via |
-| `maze` | Maze-like patterns | path, wall, dead_end |
-| `overlap` | Learn constraints from a sample pattern | Auto-extracted from sample |
-| `custom` | Load tile definitions from JSON | User-defined |
+---
+
+## Overview
+
+WFC is an algorithm inspired by quantum mechanics: every cell of the output
+starts in a *superposition* of all possible tiles. The engine repeatedly:
+
+1. finds the uncollapsed cell with the **lowest entropy** (fewest options),
+2. **collapses** it to a single tile via weighted random choice,
+3. **propagates** the resulting constraints to neighbours (arc consistency),
+
+until every cell is collapsed, or an unrecoverable contradiction triggers
+backtracking / a fresh restart. The result is a pattern that *locally* looks
+like the rules you provided — a dungeon that walls off rooms, a terrain that
+transitions water → sand → grass → forest → mountain, a circuit whose wires
+actually connect, and so on.
+
+This engine supports both the **tiled model** (explicit per-side adjacency
+constraints) and the **overlap model** (constraints learned from a sample).
+
+## Key features
+
+- 🎛️ **7 built-in preset tile sets** — terrain, dungeon, city, circuit, maze,
+  plus the new **village** and **islands** presets.
+- 🧠 **Overlap model** — learn adjacency rules automatically from a 2D sample.
+- 🔁 **Backtracking + restarts** — recover from contradictions without failing.
+- 🔁 **Periodic (toroidal) boundaries** for seamless tiling textures.
+- 🎯 **4 selection strategies** — `min_entropy` (Shannon), `mrv`
+  (minimum-remaining-values), `random`, `lexical`.
+- ⚡ **Optional entropy cache** for faster large-grid generation.
+- 🎨 **5 renderers** — ANSI terminal, plain text, HTML, SVG, PNG (Pillow).
+- 📝 **Configuration system** — JSON, YAML and TOML config files.
+- 🖥️ **Full CLI** — argparse subcommands, `--help`, `--version`, `-v` logging.
+- 💾 **Serialization** — dump a generated grid + stats to JSON.
+- 📦 **Installable** — `pip install -e .` provides a `wfc` console script.
+- 🧪 **120 tests** — 71 pytest cases + 49 legacy assertions, all green.
+- 🏗️ **Modular package** — `wfc_generator/` with one module per concern.
+- 🔌 **Backward compatible** — `from wfc import ...` still works via a shim.
 
 ## Installation
 
-No external dependencies required — pure Python 3.7+. Optional:
+### From source (recommended for development)
 
 ```bash
-pip install Pillow  # For PNG rendering
+git clone https://github.com/jayis1/creative-projects
+cd creative-projects/wfc-generator
+
+python3 -m venv .venv
+source .venv/bin/activate          # .venv\Scripts\activate on Windows
+
+pip install -e ".[dev]"             # installs wfc-generator + pytest + pyyaml
 ```
 
-## Usage
+This gives you a `wfc` console script on your `$PATH`.
 
-### Generate a Terrain Map
+### Optional extras
+
+| Extra       | Install command                | Adds                                |
+|-------------|--------------------------------|-------------------------------------|
+| `yaml`      | `pip install ".[yaml]"`        | PyYAML config-file support          |
+| `png`       | `pip install ".[png]"`         | Pillow for PNG rendering            |
+| `dev`       | `pip install ".[dev]"`        | pytest + pyyaml (for contributors)  |
+
+### No dependencies required
+
+The core engine is **pure Python (≥3.9)** with zero required dependencies.
+PyYAML and Pillow are strictly optional.
+
+## Quick start
+
+```bash
+# Generate a 40x25 terrain map with a fixed seed
+wfc terrain --width 40 --height 25 --seed 42
+
+# Generate a dungeon and write SVG output
+wfc dungeon --width 30 --height 20 --output dungeon.svg
+
+# Generate a village using the MRV selection strategy, with stats
+wfc village --width 25 --height 20 --selection mrv --stats
+
+# Generate from a sample using the overlap model
+wfc overlap --sample sample.json --width 20 --height 20 --n 3
+
+# Generate from a custom tile set, auto-symmetrizing constraints
+wfc custom --tileset tiles.json --width 20 --height 12 --symmetrize
+
+# Run from a YAML/JSON/TOML config file
+wfc run examples/config_village.yaml --output out.svg
+
+# List available presets
+wfc list-presets --detail
+
+# Validate a custom tile set
+wfc validate-tileset tiles.json
+
+# Generate + serialize the grid to JSON
+wfc serialize --preset maze --width 12 --height 8 --output grid.json
+```
+
+The original entry point also still works:
 
 ```bash
 python3 wfc.py terrain --width 40 --height 25 --seed 42
 ```
 
-### Generate a Dungeon with Statistics
+## Generation modes
+
+| Mode       | Description                                          | Tiles |
+|------------|------------------------------------------------------|-------|
+| `terrain`  | Natural terrain with elevation transitions           | deep_water, shallow_water, sand, grass, forest, hill, mountain, snow |
+| `dungeon`  | Dungeon maps with rooms and corridors                | floor, wall, corridor, door, pillar, stairs, treasure |
+| `city`     | City layouts with roads and buildings                 | road_h, road_v, intersection, building, park, sidewalk, parking |
+| `circuit`  | Circuit board patterns with wires and components    | empty, wire_h/v, wire corners (NE/NW/SE/SW), junction, component, via |
+| `maze`     | Maze-like patterns                                   | path, wall, dead_end |
+| `village`  | 🆕 Cozy medieval village: houses, trees, fountains    | grass, path, building, tree, flower, fountain, market, gate |
+| `islands`  | 🆕 Fantasy archipelago with volcanic & frozen tiles  | deep_water, shallow_water, sand, grass, tree, hill, lava, ice |
+| `overlap`  | Learn constraints from a sample pattern              | auto-extracted from the sample |
+| `custom`   | Load tile definitions from JSON                      | user-defined |
+
+## CLI reference
+
+```
+wfc [--version] [-v|-vv] <mode> [options]
+```
+
+| Option               | Description                                              | Default |
+|----------------------|----------------------------------------------------------|---------|
+| `--width`            | Grid width                                               | 30      |
+| `--height`           | Grid height                                              | 20      |
+| `--seed`             | Random seed for reproducibility                          | random  |
+| `--periodic`         | Use periodic (toroidal) boundaries                       | off     |
+| `--backtrack-limit`  | Max full restarts on contradiction                       | 10      |
+| `--selection`        | Cell selection strategy (`min_entropy`/`mrv`/`random`/`lexical`) | `min_entropy` |
+| `--cache-entropy`    | Maintain an entropy cache (faster on large grids)        | off     |
+| `--output`           | Output file (`.html`/`.svg`/`.png`/`.txt`/`.json`)        | stdout  |
+| `--cell-size`        | Cell size in px for html/svg/png                         | 16      |
+| `--stats`            | Print generation statistics                              | off     |
+| `--config`           | Load base config from a JSON/YAML/TOML file             | —       |
+| `-v` / `-vv`         | Increase logging verbosity (INFO / DEBUG)               | WARNING |
+
+Mode-specific options:
+
+| Mode      | Extra options                                            |
+|-----------|----------------------------------------------------------|
+| `overlap` | `--sample PATH` (required), `--n INT` (pattern size)    |
+| `custom`  | `--tileset PATH` (required), `--symmetrize`              |
+| `serialize`| `--preset NAME` (required)                              |
+| `run`     | `config FILE` (positional), `--output PATH`             |
+
+Run `wfc <mode> --help` for the full per-mode help text.
+
+## Configuration files
+
+Any generation run can be described in a config file (JSON / YAML / TOML):
+
+```yaml
+# config_village.yaml
+mode: village
+width: 40
+height: 25
+seed: 42
+selection: min_entropy
+output: out.svg
+cell_size: 18
+stats: true
+```
 
 ```bash
-python3 wfc.py dungeon --width 30 --height 20 --stats
+wfc run config_village.yaml
 ```
 
-### Generate a Maze
+See [`examples/config_village.yaml`](./examples/config_village.yaml) and
+[`examples/config_islands.json`](./examples/config_islands.json) for complete
+working examples. CLI flags always override config values.
 
-```bash
-python3 wfc.py maze --width 40 --height 30 --seed 7
-```
-
-### Output to SVG (Scalable Vector Graphics)
-
-```bash
-python3 wfc.py terrain --width 50 --height 35 --output map.svg
-```
-
-### Output to PNG (requires Pillow)
-
-```bash
-python3 wfc.py circuit --width 25 --height 25 --output circuit.png --cell-size 24
-```
-
-### Output to HTML
-
-```bash
-python3 wfc.py city --width 25 --height 25 --output city.html
-```
-
-### Overlap Model (Learn from Sample)
-
-Create a JSON sample file (`sample.json`):
-```json
-[
-  ["~", "~", ".", "#", "#"],
-  ["~", ".", "#", "#", "T"],
-  [".", "#", "T", "T", "^"],
-  ["#", "T", "^", "^", "^"]
-]
-```
-
-Generate a new pattern:
-```bash
-python3 wfc.py overlap --sample sample.json --width 20 --height 20
-```
-
-### Custom Tile Set (JSON)
-
-Create a tile set definition (`tiles.json`):
-```json
-{
-  "tiles": [
-    {
-      "name": "sky",
-      "weight": 10,
-      "color": "#87ceeb",
-      "symbol": " ",
-      "constraints": {
-        "top": ["sky", "cloud"],
-        "right": ["sky", "cloud"],
-        "bottom": ["sky", "cloud", "ground"],
-        "left": ["sky", "cloud"]
-      }
-    },
-    {
-      "name": "cloud",
-      "weight": 3,
-      "color": "#ffffff",
-      "symbol": "☁",
-      "constraints": {
-        "top": ["sky"],
-        "right": ["sky", "cloud"],
-        "bottom": ["sky", "ground"],
-        "left": ["sky", "cloud"]
-      }
-    },
-    {
-      "name": "ground",
-      "weight": 8,
-      "color": "#8B4513",
-      "symbol": "█",
-      "constraints": {
-        "top": ["sky", "cloud", "ground"],
-        "right": ["ground", "sky"],
-        "bottom": ["ground"],
-        "left": ["ground", "sky"]
-      }
-    }
-  ]
-}
-```
-
-Generate:
-```bash
-python3 wfc.py custom --tileset tiles.json --width 20 --height 12 --symmetrize
-```
-
-Use `--symmetrize` to automatically make all constraints bidirectional (if A allows B on right, then B allows A on left).
-
-### All Options
-
-| Option | Description |
-|--------|-------------|
-| `--width` | Grid width (default: 30) |
-| `--height` | Grid height (default: 20) |
-| `--seed` | Random seed for reproducibility |
-| `--periodic` | Use periodic (toroidal) boundary conditions |
-| `--output` | Output file path (.html, .svg, .png, or .txt) |
-| `--stats` | Print generation statistics |
-| `--cell-size` | Cell size in pixels for visual output (default: 16) |
-
-## API Usage
+## Python API
 
 ```python
-from wfc import TileSet, Tile, WFCGrid, create_terrain_tileset, Renderer
+from wfc_generator import (
+    Tile, TileSet, WFCGrid, OverlapModel, Renderer,
+    WFCConfig, SelectionStrategy,
+    create_terrain_tileset, create_village_tileset,
+)
 
-# Use a preset tile set
+# 1. Use a preset tile set
 tileset = create_terrain_tileset()
-
-# Create and run WFC
-grid = WFCGrid(tileset, width=30, height=20, seed=42)
-success = grid.run()
-
-if success:
+grid = WFCGrid(tileset, width=30, height=20, seed=42,
+               selection=SelectionStrategy.MIN_ENTROPY)
+if grid.run():
     result = grid.get_result()
     print(Renderer.render_plain(result))
-    print(f"Stats: {grid.stats}")
+    print(grid.stats)            # GenerationStats(...)
+    print(grid.to_json())        # full grid + stats as JSON
 
-# Or define custom tiles
+# 2. Define custom tiles
 ts = TileSet()
 sky = Tile("sky", weight=10, color="#87ceeb", data=" ")
-cloud = Tile("cloud", weight=3, color="#ffffff", data="☁")
 ground = Tile("ground", weight=8, color="#8B4513", data="█")
+sky.add_constraint("bottom", ["sky", "ground"])
+ground.add_constraint("top", ["sky", "ground"])
+ts.add_tile(sky); ts.add_tile(ground)
+ts.make_all_symmetric()          # bidirectional constraints
 
-sky.add_constraint("bottom", ["sky", "cloud", "ground"])
-sky.add_constraint("top", ["sky", "cloud"])
-sky.add_constraint("left", ["sky", "cloud"])
-sky.add_constraint("right", ["sky", "cloud"])
+g = WFCGrid(ts, 20, 10, seed=7)
+assert g.run()
+print(Renderer.render_colored(g.get_result()))
 
-cloud.add_constraint("top", ["sky"])
-cloud.add_constraint("bottom", ["sky", "ground"])
-cloud.add_constraint("left", ["sky", "cloud"])
-cloud.add_constraint("right", ["sky", "cloud"])
-
-ground.add_constraint("top", ["sky", "cloud", "ground"])
-ground.add_constraint("bottom", ["ground"])
-ground.add_constraint("left", ["ground", "sky"])
-ground.add_constraint("right", ["ground", "sky"])
-
-for t in [sky, cloud, ground]:
-    ts.add_tile(t)
-
-ts.make_all_symmetric()  # Auto-symmetrize constraints
-
-grid = WFCGrid(ts, 20, 10, seed=7)
-grid.run()
-result = grid.get_result()
-print(Renderer.render_colored(result))
-```
-
-### Overlap Model API
-
-```python
-from wfc import OverlapModel
-
-# Learn from a sample pattern
+# 3. Overlap model: learn from a sample
 sample = [
     ["~", "~", ".", "#"],
     [".", "#", "#", "T"],
     ["#", "T", "T", "^"],
 ]
-
 model = OverlapModel(sample, n=2)
-result = model.generate(width=15, height=10, seed=42)
-if result:
-    for row in result:
-        print("".join(row))
+out = model.generate(width=15, height=10, seed=42)
+for row in out:
+    print("".join(row))
 ```
 
-### Progress Callback
+### Progress callback
 
 ```python
-from wfc import TileSet, WFCGrid, create_dungeon_tileset
+from wfc_generator import WFCGrid, create_dungeon_tileset
 
 def on_progress(fraction):
     print(f"\rProgress: {fraction:.1%}", end="", flush=True)
 
-tileset = create_dungeon_tileset()
-grid = WFCGrid(tileset, 50, 40, on_progress=on_progress)
+grid = WFCGrid(create_dungeon_tileset(), 50, 40, on_progress=on_progress)
 grid.run()
 print()  # newline after progress
 ```
 
+### Backward compatibility
+
+`from wfc import ...` still works — `wfc.py` is now a thin shim that
+re-exports the `wfc_generator` package, so existing code keeps running
+unchanged.
+
+## Selection strategies
+
+| Strategy       | How it picks the next cell to collapse            | Good for |
+|----------------|---------------------------------------------------|----------|
+| `min_entropy`  | Shannon entropy + small noise (default)           | balanced quality |
+| `mrv`          | Fewest remaining options; random tie-break        | tight constraints |
+| `random`       | Uniformly random uncollapsed cell                 | chaotic variety |
+| `lexical`      | First uncollapsed cell in row-major order         | deterministic debug |
+
+```bash
+wfc dungeon --width 30 --height 20 --selection mrv --stats
+```
+
+## Rendering formats
+
+| Format | Extension | Description                       |
+|--------|-----------|-----------------------------------|
+| ANSI   | (stdout)  | Colored terminal output           |
+| Plain  | `.txt`    | Simple character grid             |
+| HTML   | `.html`   | Colored HTML table                |
+| SVG    | `.svg`    | Scalable vector graphics          |
+| PNG    | `.png`    | Raster image (requires Pillow)    |
+| JSON   | `.json`   | Grid + stats serialized (via `serialize` / `--output`) |
+
 ## Architecture
 
 ```
-wfc.py
-├── Tile             - Tile definition with adjacency constraints, color, data
-├── TileSet          - Collection of tiles with validation, JSON I/O, symmetrization
-├── GenerationStats  - Statistics tracking (time, collapses, backtracks)
-├── WFCGrid          - Core WFC algorithm (collapse, propagate, backtrack)
-│   ├── entropy()      - Shannon entropy with noise for tie-breaking
-│   ├── propagate()    - Arc-consistency constraint propagation
-│   ├── _backtrack()   - State restoration on contradiction
-│   └── run()          - Full generation with restart support
-├── OverlapModel     - Learn constraints from sample patterns
-│   ├── _extract_patterns()  - Extract NxN sub-patterns
-│   └── _build_constraints() - Build adjacency from overlaps
-├── Renderer         - Multi-format rendering (ANSI, plain, HTML, SVG, PNG)
-│   ├── render_colored()  - ANSI-colored terminal output
-│   ├── render_plain()    - Plain text output
-│   ├── render_html()     - HTML table with colors
-│   ├── render_svg()      - SVG image with colored cells
-│   └── render_png()      - PNG image (requires Pillow)
-├── create_*_tileset - Preset tile set generators
-│   ├── create_terrain_tileset()
-│   ├── create_dungeon_tileset()
-│   ├── create_city_tileset()
-│   ├── create_circuit_tileset()
-│   └── create_maze_tileset()
-└── main()           - CLI entry point with subcommands
+wfc_generator/
+├── __init__.py         # public re-exports + __version__
+├── tile.py             # Tile + SIDES / OPPOSITE_SIDE constants
+├── tileset.py          # TileSet: validation, JSON I/O, symmetry, rotation
+├── stats.py            # GenerationStats (with to_dict serialization)
+├── grid.py             # WFCGrid: the core algorithm
+│   ├── entropy()         - Shannon entropy with noise tie-break
+│   ├── propagate()       - arc-consistency propagation (deque-based)
+│   ├── _backtrack()      - state restoration on contradiction
+│   ├── _select_cell()    - pluggable SelectionStrategy dispatch
+│   ├── run()             - full generation with restart support
+│   └── to_json()         - serialize grid + stats
+├── overlap.py          # OverlapModel: learn constraints from a sample
+├── renderer.py         # Renderer: ANSI / plain / HTML / SVG / PNG
+├── presets.py          # create_*_tileset() factories (7 presets)
+├── config.py           # WFCConfig: JSON / YAML / TOML loading
+├── logging_utils.py    # structured logging setup
+└── cli.py              # argparse CLI (subcommands + --config)
 ```
 
-## Rendering Formats
+The original single-file `wfc.py` is preserved as a **backward-compatibility
+shim** that re-exports the package, so `from wfc import Tile, WFCGrid, ...`
+and `python3 wfc.py terrain ...` keep working.
 
-| Format | Extension | Description |
-|--------|-----------|-------------|
-| ANSI | (terminal) | Colored output in terminal |
-| Plain text | .txt | Simple character grid |
-| HTML | .html | Colored HTML table |
-| SVG | .svg | Scalable vector graphics |
-| PNG | .png | Raster image (requires Pillow) |
+## Examples
+
+The [`examples/`](./examples) directory contains runnable demos:
+
+| File                              | What it does                                          |
+|-----------------------------------|-------------------------------------------------------|
+| `generate_terrain.py`             | Terrain map → plain text + SVG                         |
+| `overlap_from_sample.py`          | Learn 3×3 patterns from a sample, generate new grid   |
+| `compare_strategies.py`           | Benchmark all 4 selection strategies side by side     |
+| `config_village.yaml`             | Config-driven village generation (SVG output)          |
+| `config_islands.json`             | Config-driven islands generation (JSON output)        |
+
+```bash
+python3 examples/compare_strategies.py
+```
+```
+strategy        time(s)   cells/s  backtracks  restarts
+-------------------------------------------------------
+min_entropy       2.763       217           0         0
+mrv              2.486       241           0         0
+random           2.419       248           0         0
+lexical          2.482       242           0         0
+```
+
+## Testing
+
+Two complementary suites, both green:
+
+```bash
+# new pytest suite (package-aware, parametrized)
+python3 -m pytest tests/ -q          # 71 passed
+
+# legacy self-contained runner (imports via the wfc.py shim)
+python3 test_wfc.py                  # 49 passed
+```
+
+Total: **120 tests passing**. CI runs both suites on Python 3.9–3.12
+(see [`.github/workflows/ci.yml`](./.github/workflows/ci.yml)).
+
+## Contributing
+
+Contributions are welcome! See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for the
+development setup, project layout, coding standards, and how to add a new
+preset tile set. The short version:
+
+```bash
+pip install -e ".[dev]"
+python3 -m pytest tests/ -q
+python3 test_wfc.py
+```
+
+## Roadmap
+
+- [ ] 3D / multi-layer support (overlapping volumes)
+- [ ] GPU-accelerated propagation via NumPy
+- [ ] More sample-learning options (reflections, rotations in the overlap model)
+- [ ] Interactive TUI viewer with live collapse stepping
+- [ ] More presets (cave systems, road networks, space-station interiors)
+- [ ] Animated GIF / WebM output of the collapse process
+- [ ] Tile auto-derivation from sprite sheets (image → constraints)
 
 ## Known Issues (Resolved)
 
-The following bugs were identified during code review and have been fixed:
+The following bugs were identified during code review of the original single-file
+implementation and have been fixed (tests verify each fix):
 
-1. **`add_rotated_variants` didn't remap tile name references** — When creating rotated tile variants, constraint side mappings were rotated correctly, but the tile names referenced *within* those constraints still pointed to the original tile instead of the corresponding rotated variant. For example, a 90°-rotated "path_h" tile would still reference "path_h" in its constraints instead of "path_h_r90". This caused incorrect adjacency in generated patterns. **Fix**: The method now remaps internal tile name references to their rotated counterparts using a name mapping table.
+1. **`add_rotated_variants` didn't remap tile name references** — rotated
+   variants still referenced the base tile name in their constraints. Fixed:
+   the method now remaps internal references to their rotated counterparts.
+2. **`OverlapModel` didn't validate pattern size `n`** — `n` larger than the
+   sample (non-periodic) or `n < 1` caused cryptic failures. Fixed: explicit
+   validation with clear error messages.
+3. **Custom mode didn't check generation success** — `get_result()` was called
+   without checking `run()`. Fixed: success check + error handling added.
+4. **Empty constraint sets treated as "skip"** — semantically ambiguous. Fixed:
+   empty constraints now explicitly mean "allow all tiles" (wildcard), documented.
+5. **Negative tile weights accepted** — broke weighted random selection. Fixed:
+   validation in `WFCGrid.__init__` and `TileSet.from_json`.
+6. **JSON tileset loading lacked validation** — missing `name` caused a bare
+   `KeyError`. Fixed: `from_json` validates each tile and rejects bad weights.
 
-2. **OverlapModel didn't validate pattern size `n`** — The OverlapModel constructor accepted `n` values larger than the sample dimensions (non-periodic) or negative/zero values without raising an error, leading to cryptic failures during generation. **Fix**: Added validation that `n >= 1` and `n <= sample_width/sample_height` for non-periodic samples.
+The modular rewrite in v2.0 additionally:
+- replaced the recursion-prone propagation with a **deque-based** worklist;
+- pre-computed adjacency as **frozensets** for faster intersection;
+- added the **entropy cache** for large grids;
+- factored the 1727-line monolith into focused, testable modules.
 
-3. **Custom mode didn't check generation success** — The `custom` CLI subcommand retrieved the result via `get_result()` without first checking if `run()` succeeded, potentially attempting to render a `None` result. **Fix**: Added success check and error handling matching the other modes.
+## Changelog
 
-4. **Propagation treated empty constraint sets as "skip"** — When a tile had empty constraints on a side, the propagation code skipped restricting the neighbor entirely (effectively treating it as a wildcard). This was semantically ambiguous. **Fix**: Empty constraints now explicitly map to "allow all tiles" with a clear comment explaining the design choice, making the behavior documented and intentional rather than accidental.
+### v2.0.0 — Comprehensive improvement
 
-5. **Negative tile weights accepted without validation** — Negative weights would cause issues with weighted random selection (cumulative distribution can go backwards). **Fix**: Added validation in both `WFCGrid.__init__` and `TileSet.from_json` to reject negative weights with a clear error message.
+- **Modular package** `wfc_generator/` (10 modules) replacing the 1727-line
+  `wfc.py` monolith, with a backward-compat shim preserving `from wfc import`.
+- **2 new presets**: `village` (medieval village with houses, trees, fountains,
+  markets, gates) and `islands` (fantasy archipelago with lava & ice tiles).
+- **4 pluggable selection strategies** (`min_entropy`, `mrv`, `random`,
+  `lexical`) selectable via API and CLI.
+- **Entropy cache** option for faster large-grid generation.
+- **Configuration system** (`WFCConfig`) with JSON / YAML / TOML loading and
+  `wfc run <config>` subcommand.
+- **CLI overhaul**: `--version`, `-v`/`-vv` logging, `--backtrack-limit`,
+  `--selection`, `--cache-entropy`, `--config`, plus new `list-presets`,
+  `validate-tileset`, `serialize`, and `run` subcommands.
+- **JSON serialization** of generated grids + stats (`WFCGrid.to_json()`).
+- **Structured logging** via `logging_utils.setup_logging`.
+- **pyproject.toml** — installable with `pip install -e .`, provides a `wfc`
+  console script, optional `[yaml]` / `[png]` / `[dev]` extras.
+- **GitHub Actions CI** on Python 3.9–3.12 running both test suites.
+- **Examples directory** with 5 runnable demos + config files.
+- **71-test pytest suite** (parametrized) alongside the legacy 49-test runner.
+- **CONTRIBUTING.md**, **LICENSE**, **.gitignore**.
+- Dramatically expanded, professional **README** (this file).
 
-6. **JSON tileset loading lacked validation** — Missing `name` field in tile definitions would cause a `KeyError` rather than a helpful error message. **Fix**: `from_json` now validates that each tile has a `name` field and rejects negative weights from JSON input.
+### v1.x — original single-file implementation
+
+Tiled + overlap models, backtracking, periodic boundaries, 5 presets,
+JSON tile sets, ANSI/HTML/SVG/PNG rendering, CLI, 49 legacy tests, 6 bug fixes.
 
 ## License
 
-MIT
+[MIT](./LICENSE) — © creative-projects contributors.

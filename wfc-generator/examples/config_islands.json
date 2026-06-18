@@ -1,0 +1,12 @@
+{
+  "mode": "islands",
+  "width": 30,
+  "height": 20,
+  "seed": 7,
+  "selection": "mrv",
+  "periodic": true,
+  "backtrack_limit": 20,
+  "cache_entropy": true,
+  "stats": true,
+  "output": "examples/islands_output.json"
+}
