@@ -191,6 +191,206 @@ class StudentT(Target):
         return self._log_norm - 0.5 * (self.nu + 1) * math.log(1 + z * z / self.nu)
 
 
+class Dirichlet(Target):
+    """Dirichlet distribution on the simplex.
+
+    Parameters
+    ----------
+    alpha : sequence of float
+        Concentration parameters (all positive).
+    """
+
+    def __init__(self, alpha: Sequence[float]):
+        alpha = np.asarray(alpha, dtype=float)
+        if alpha.ndim != 1 or alpha.shape[0] < 2:
+            raise ValueError("alpha must be a 1-D vector of length >= 2")
+        if np.any(alpha <= 0):
+            raise ValueError("all alpha values must be positive")
+        self.alpha = alpha
+        self._k = alpha.shape[0]
+        # log normalising constant
+        self._log_norm = sum(math.lgamma(a) for a in alpha) - math.lgamma(float(alpha.sum()))
+        super().__init__(self._logpdf, dim=self._k, name=f"Dirichlet({list(alpha)})")
+
+    def _logpdf(self, x: np.ndarray) -> float:
+        x = np.asarray(x, dtype=float).reshape(-1)
+        if x.shape[0] != self._k:
+            return -math.inf
+        if np.any(x < 0) or abs(float(x.sum()) - 1.0) > 1e-6:
+            return -math.inf
+        if np.any(x <= 0):  # x_i = 0 with alpha < 1 gives -inf
+            # handle: if any x_i == 0 and alpha_i < 1 => -inf
+            for i in range(self._k):
+                if x[i] <= 0 and self.alpha[i] < 1:
+                    return -math.inf
+                if x[i] < 0:
+                    return -math.inf
+        val = 0.0
+        for i in range(self._k):
+            if x[i] > 0:
+                val += (self.alpha[i] - 1) * math.log(x[i])
+        return val - self._log_norm
+
+
+class Poisson(Target):
+    """Poisson distribution with rate lambda.
+
+    .. note:: Works on the non-negative integers; the log-pdf treats
+        ``x`` as a real number and uses ``x! ≈ Gamma(x+1)``.
+    """
+
+    def __init__(self, lam: float = 1.0):
+        if lam <= 0:
+            raise ValueError("lambda must be positive")
+        self.lam = float(lam)
+        super().__init__(self._logpdf, dim=1, name=f"Poisson({lam})")
+
+    def _logpdf(self, x: np.ndarray) -> float:
+        v = float(x[0]) if x.ndim else float(x)
+        if v < 0:
+            return -math.inf
+        return v * math.log(self.lam) - self.lam - math.lgamma(v + 1)
+
+
+class Bernoulli(Target):
+    """Bernoulli distribution with success probability p."""
+
+    def __init__(self, p: float = 0.5):
+        if not 0 < p < 1:
+            raise ValueError("p must be in (0, 1)")
+        self.p = float(p)
+        super().__init__(self._logpdf, dim=1, name=f"Bernoulli({p})")
+
+    def _logpdf(self, x: np.ndarray) -> float:
+        v = float(x[0]) if x.ndim else float(x)
+        if v == 1:
+            return math.log(self.p)
+        if v == 0:
+            return math.log(1.0 - self.p)
+        return -math.inf
+
+
+class Categorical(Target):
+    """Categorical distribution over {0, 1, ..., K-1}.
+
+    Parameters
+    ----------
+    probs : sequence of float
+        probabilities (must sum to 1, all non-negative).
+    """
+
+    def __init__(self, probs: Sequence[float]):
+        probs = np.asarray(probs, dtype=float)
+        if probs.ndim != 1 or probs.shape[0] < 2:
+            raise ValueError("probs must be a 1-D vector of length >= 2")
+        if np.any(probs < 0):
+            raise ValueError("probs must be non-negative")
+        s = float(probs.sum())
+        if abs(s - 1.0) > 1e-6:
+            raise ValueError("probs must sum to 1")
+        self.probs = probs
+        self._k = probs.shape[0]
+        # guard against log(0)
+        self._log_probs = np.where(probs > 0, np.log(probs + 1e-300), -math.inf)
+        super().__init__(self._logpdf, dim=1, name=f"Categorical({list(probs)})")
+
+    def _logpdf(self, x: np.ndarray) -> float:
+        v = float(x[0]) if x.ndim else float(x)
+        idx = int(round(v))
+        if idx < 0 or idx >= self._k:
+            return -math.inf
+        return float(self._log_probs[idx])
+
+
+class TruncatedNormal(Target):
+    """Truncated normal distribution on [a, b]."""
+
+    def __init__(self, mu: float = 0.0, sigma: float = 1.0,
+                 a: float = 0.0, b: float = 1.0):
+        if sigma <= 0:
+            raise ValueError("sigma must be positive")
+        if b <= a:
+            raise ValueError("b must be > a")
+        self.mu = float(mu)
+        self.sigma = float(sigma)
+        self.a = float(a)
+        self.b = float(b)
+        # normalisation: Phi((b-mu)/sigma) - Phi((a-mu)/sigma)
+        from math import erf, sqrt
+        def Phi(z):
+            return 0.5 * (1.0 + erf(z / sqrt(2.0)))
+        self._log_Z = math.log(Phi((b - mu) / sigma) - Phi((a - mu) / sigma))
+        self._log_base = -math.log(sigma) - 0.5 * math.log(2 * math.pi)
+        super().__init__(self._logpdf, dim=1,
+                         name=f"TruncatedNormal({mu},{sigma},{a},{b})")
+
+    def _logpdf(self, x: np.ndarray) -> float:
+        v = float(x[0]) if x.ndim else float(x)
+        if v < self.a or v > self.b:
+            return -math.inf
+        z = (v - self.mu) / self.sigma
+        return self._log_base - 0.5 * z * z - self._log_Z
+
+
+class Logistic(Target):
+    """Logistic distribution with location mu and scale s."""
+
+    def __init__(self, mu: float = 0.0, s: float = 1.0):
+        if s <= 0:
+            raise ValueError("scale s must be positive")
+        self.mu = float(mu)
+        self.s = float(s)
+        super().__init__(self._logpdf, dim=1, name=f"Logistic({mu},{s})")
+
+    def _logpdf(self, x: np.ndarray) -> float:
+        v = float(x[0]) if x.ndim else float(x)
+        z = (v - self.mu) / self.s
+        # log pdf = -z - 2*log(1+exp(-z)) - log(s)
+        return -z - 2.0 * math.log1p(math.exp(-z)) - math.log(self.s)
+
+
+class Weibull(Target):
+    """Weibull distribution with shape k and scale lambda."""
+
+    def __init__(self, k: float = 1.0, lam: float = 1.0):
+        if k <= 0 or lam <= 0:
+            raise ValueError("k and lambda must be positive")
+        self.k = float(k)
+        self.lam = float(lam)
+        super().__init__(self._logpdf, dim=1, name=f"Weibull({k},{lam})")
+
+    def _logpdf(self, x: np.ndarray) -> float:
+        v = float(x[0]) if x.ndim else float(x)
+        if v < 0:
+            return -math.inf
+        if v == 0:
+            return -math.inf if self.k < 1 else (
+                math.log(self.k) - self.k * math.log(self.lam)
+            )
+        return (math.log(self.k) - self.k * math.log(self.lam)
+                + (self.k - 1) * math.log(v)
+                - (v / self.lam) ** self.k)
+
+
+class ChiSquared(Target):
+    """Chi-squared distribution with k degrees of freedom."""
+
+    def __init__(self, k: int = 1):
+        if k < 1:
+            raise ValueError("k must be >= 1")
+        self.k = int(k)
+        self._log_norm = (math.lgamma(k / 2.0)
+                         + (k / 2.0) * math.log(2.0))
+        super().__init__(self._logpdf, dim=1, name=f"ChiSquared({k})")
+
+    def _logpdf(self, x: np.ndarray) -> float:
+        v = float(x[0]) if x.ndim else float(x)
+        if v <= 0:
+            return -math.inf
+        return ((self.k / 2.0 - 1) * math.log(v)
+                - v / 2.0 - self._log_norm)
+
+
 class Mixture(Target):
     """Mixture of target distributions.
 
