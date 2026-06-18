@@ -152,6 +152,45 @@ class Uniform(Target):
         return self._log_h
 
 
+class Gamma(Target):
+    """Gamma(shape=k, scale=theta): p(x) = x^{k-1} e^{-x/theta} / (Gamma(k) theta^k)."""
+
+    def __init__(self, k: float = 1.0, theta: float = 1.0):
+        if k <= 0 or theta <= 0:
+            raise ValueError("k and theta must be positive")
+        self.k = float(k)
+        self.theta = float(theta)
+        self._log_norm = math.lgamma(k) + k * math.log(theta)
+        super().__init__(self._logpdf, dim=1, name=f"Gamma({k},{theta})")
+
+    def _logpdf(self, x: np.ndarray) -> float:
+        v = float(x[0]) if x.ndim else float(x)
+        if v <= 0:
+            return -math.inf
+        return (self.k - 1) * math.log(v) - v / self.theta - self._log_norm
+
+
+class StudentT(Target):
+    """Student-t distribution with nu degrees of freedom, location mu, scale sigma."""
+
+    def __init__(self, nu: float = 3.0, mu: float = 0.0, sigma: float = 1.0):
+        if nu <= 0:
+            raise ValueError("nu must be positive")
+        if sigma <= 0:
+            raise ValueError("sigma must be positive")
+        self.nu = float(nu)
+        self.mu = float(mu)
+        self.sigma = float(sigma)
+        self._log_norm = (math.lgamma((nu + 1) / 2) - math.lgamma(nu / 2)
+                          - 0.5 * math.log(nu * math.pi) - math.log(sigma))
+        super().__init__(self._logpdf, dim=1, name=f"StudentT({nu},{mu},{sigma})")
+
+    def _logpdf(self, x: np.ndarray) -> float:
+        v = float(x[0]) if x.ndim else float(x)
+        z = (v - self.mu) / self.sigma
+        return self._log_norm - 0.5 * (self.nu + 1) * math.log(1 + z * z / self.nu)
+
+
 class Mixture(Target):
     """Mixture of target distributions.
 

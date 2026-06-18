@@ -239,6 +239,85 @@ class HamiltonianMC(_BaseSampler):
         return self._make_trace(np.array(kept), kept_lp)
 
 
+class HMCWithAdaptation(_BaseSampler):
+    """HMC with dual-averaging step-size adaptation (Nesterov, Hoffman & Gelman 2014).
+
+    During the burn-in period the step size is adapted to target a desired
+    acceptance probability.  After burn-in the step size is frozen.
+    """
+
+    def __init__(self, target: Target, n_steps: int = 20,
+                 target_accept: float = 0.65,
+                 init_step_size: float = 0.1,
+                 rng: Optional[np.random.Generator] = None):
+        super().__init__(target, rng, "HMCWithAdaptation")
+        if n_steps < 1:
+            raise ValueError("n_steps must be >= 1")
+        if not 0 < target_accept < 1:
+            raise ValueError("target_accept must be in (0,1)")
+        self.n_steps = int(n_steps)
+        self.target_accept = float(target_accept)
+        self.step_size = float(init_step_size)
+
+    def _leapfrog(self, x, p, eps):
+        p = p + 0.5 * eps * self.target.grad_log_pdf(x)
+        for _ in range(self.n_steps - 1):
+            x = x + eps * p
+            p = p + eps * self.target.grad_log_pdf(x)
+        x = x + eps * p
+        p = p + 0.5 * eps * self.target.grad_log_pdf(x)
+        return x, p
+
+    def sample(self, x0, n_samples=10000, burn=1000, thin=1) -> Trace:
+        if n_samples <= 0 or burn < 0 or thin < 1:
+            raise ValueError("bad n_samples/burn/thin")
+        self._reset()
+        x = np.asarray(x0, dtype=float).reshape(-1)
+        d = self.target.dim
+        lp = self.target.log_pdf(x)
+        if not math.isfinite(lp):
+            raise ValueError("x0 has log_pdf = -inf")
+
+        # dual-averaging state
+        eps = self.step_size
+        mu = math.log(10 * eps)
+        log_eps_bar = 0.0
+        H_bar = 0.0
+        gamma, t0, kappa = 0.05, 10.0, 0.75
+
+        total = burn + n_samples * thin
+        kept, kept_lp = [], []
+        for i in range(total):
+            p0 = self.rng.normal(size=d)
+            x_new, p_new = self._leapfrog(x.copy(), p0.copy(), eps)
+            lp_new = self.target.log_pdf(x_new)
+            H_old = -lp + 0.5 * float(p0 @ p0)
+            H_new = -lp_new + 0.5 * float(p_new @ p_new)
+            self.total_count += 1
+            accept_prob = 0.0
+            if math.isfinite(lp_new):
+                log_alpha = H_old - H_new
+                accept_prob = min(1.0, math.exp(log_alpha)) if log_alpha < 0 else 1.0
+                if log_alpha >= 0 or math.log(self.rng.random()) < log_alpha:
+                    x, lp = x_new, lp_new
+                    self.accept_count += 1
+            # adapt step size during burn-in
+            if i < burn:
+                m = i + 1
+                H_bar = (1 - 1.0 / (m + t0)) * H_bar + (1.0 / (m + t0)) * (self.target_accept - accept_prob)
+                log_eps = mu - math.sqrt(m) / gamma * H_bar
+                eta = m ** (-kappa)
+                log_eps_bar = eta * log_eps + (1 - eta) * log_eps_bar
+                eps = math.exp(log_eps)
+            elif i == burn:
+                eps = math.exp(log_eps_bar)  # freeze adapted step
+            self.step_size = eps
+            if i >= burn and (i - burn) % thin == 0:
+                kept.append(x.copy())
+                kept_lp.append(lp)
+        return self._make_trace(np.array(kept), kept_lp)
+
+
 # --------------------------------------------------------------------------- #
 # Slice sampler (univariate, applied coordinate-wise)
 # --------------------------------------------------------------------------- #

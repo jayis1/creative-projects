@@ -1,9 +1,11 @@
 # mcmc-sampler
 
-A from-scratch **Markov Chain Monte Carlo** sampling toolkit implementing five
+A from-scratch **Markov Chain Monte Carlo** sampling toolkit implementing six
 core algorithms — **Metropolis–Hastings**, **Adaptive Metropolis**,
-**Hamiltonian Monte Carlo**, **Slice sampling**, and **Gibbs sampling** — along
-with built-in target distributions and convergence diagnostics.
+**Hamiltonian Monte Carlo**, **HMC with dual-averaging step-size adaptation**,
+**Slice sampling**, and **Gibbs sampling** — along with built-in target
+distributions, convergence diagnostics, multi-chain support, and ASCII
+visualization.
 
 All samplers operate on **unnormalised log-density** functions, so they can be
 used directly for Bayesian inference without computing normalising constants.
@@ -15,13 +17,14 @@ used directly for Bayesian inference without computing normalising constants.
 | **Metropolis–Hastings** | Random-walk Gaussian proposal, symmetric ⇒ q cancels | General-purpose, low-dim |
 | **Adaptive Metropolis** | Tunes proposal covariance from chain history (Haario 2001) | Unknown scale, multivariate |
 | **Hamiltonian MC** | Leapfrog integration of Hamiltonian dynamics | High-dim, correlated posteriors |
+| **HMC + Dual Averaging** | Auto-tunes step size to target acceptance (Hoffman & Gelman 2014) | When optimal step size is unknown |
 | **Slice sampler** | Coordinate-wise slice with stepping-out + shrinkage (Neal 2003) | Low-dim, no tuning needed |
 | **Gibbs sampler** | User-provides full conditionals | Conjugate models, hierarchical |
 
 ## Built-in distributions
 
-`Normal`, `MultivariateNormal`, `Beta`, `Exponential`, `Uniform`, `Mixture` —
-or wrap any log-density with `Target(lambda x: ..., dim=n)`.
+`Normal`, `MultivariateNormal`, `Beta`, `Exponential`, `Gamma`, `StudentT`,
+`Uniform`, `Mixture` — or wrap any log-density with `Target(lambda x: ..., dim=n)`.
 
 ## Diagnostics
 
@@ -30,6 +33,38 @@ or wrap any log-density with `Target(lambda x: ..., dim=n)`.
 - `autocorrelation` — empirical ACF
 - `monte_carlo_error` — MC standard error (std / √ESS)
 - `highest_density_interval` — HDI for posterior summaries
+
+## Multi-chain support
+
+```python
+from mcmc_sampler import MetropolisHastings, Normal, run_chains
+
+target = Normal(0, 1)
+def factory(seed):
+    return MetropolisHastings(target, proposal_std=1.0,
+                              rng=np.random.default_rng(seed))
+
+result = run_chains(factory, x0_list=[[-5.0], [0.0], [5.0]],
+                    n_samples=5000, burn=1000)
+print(result.rhat())          # per-dimension R-hat
+print(result.ess_total())     # pooled ESS
+print(result.summary())       # full summary
+```
+
+## ASCII visualization
+
+No matplotlib required — visualize traces directly in the terminal:
+
+```python
+from mcmc_sampler import MetropolisHastings, Normal, visualize_trace
+
+target = Normal(0, 1)
+sampler = MetropolisHastings(target, rng=np.random.default_rng(42))
+trace = sampler.sample([0.0], n_samples=2000, burn=500)
+print(visualize_trace(trace))
+```
+
+Produces ASCII trace plots, histograms, and autocorrelation charts.
 
 ## Installation
 
@@ -54,6 +89,19 @@ print(f"posterior mean:  {trace.mean()}")   # ≈ 2.0
 print(f"posterior std:   {trace.std()}")    # ≈ 1.5
 ```
 
+## HMC with step-size adaptation
+
+```python
+from mcmc_sampler import HMCWithAdaptation, MultivariateNormal
+
+target = MultivariateNormal([1, -2], [[1, 0.5], [0.5, 2]])
+sampler = HMCWithAdaptation(target, n_steps=20, target_accept=0.65,
+                            rng=np.random.default_rng(42))
+trace = sampler.sample([0, 0], n_samples=5000, burn=2000)
+print(f"adapted step size: {sampler.step_size:.4f}")
+print(f"posterior mean: {trace.mean()}")  # ≈ [1, -2]
+```
+
 ## Bayesian logistic regression example
 
 ```bash
@@ -69,13 +117,19 @@ Metropolis–Hastings on the unnormalised log-posterior.
 # Sample from N(2, 1) via MH
 mcmc-sampler sample --algo mh --dist normal --mu 2 --sigma 1 --n 5000 --out t.json
 
+# HMC with automatic step-size adaptation
+mcmc-sampler sample --algo hmc-adapt --dist mvn --dim 2 --n 5000 --out t.json
+
 # Diagnostics on a saved trace
 mcmc-sampler diagnostics t.json
 
 # R-hat across multiple chains
 mcmc-sampler rhat chain1.json chain2.json chain3.json
 
-# Trace + histogram plot
+# ASCII visualization (no matplotlib needed)
+mcmc-sampler visualize t.json --param 0
+
+# Trace + histogram plot (requires matplotlib)
 mcmc-sampler plot t.json --out samples.png
 ```
 
@@ -85,14 +139,18 @@ mcmc-sampler plot t.json --out samples.png
 mcmc-sampler/
 ├── mcmc_sampler/
 │   ├── __init__.py        # public API
-│   ├── distributions.py   # Target base + built-in distributions
-│   ├── samplers.py        # 5 sampler implementations
+│   ├── distributions.py   # Target base + 8 built-in distributions
+│   ├── samplers.py        # 6 sampler implementations
 │   ├── diagnostics.py     # ESS, R-hat, ACF, MCSE, HDI
+│   ├── multichain.py      # multi-chain runner + convergence summary
+│   ├── visualize.py       # ASCII trace/histogram/ACF
 │   ├── trace.py           # sample container + summary/export
-│   └── cli.py             # argparse CLI
+│   └── cli.py             # argparse CLI (5 subcommands)
 ├── examples/
 │   └── bayesian_logistic.py
 ├── tests/
+│   ├── test_mcmc.py
+│   └── test_enhancements.py
 ├── pyproject.toml
 └── README.md
 ```

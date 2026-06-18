@@ -31,10 +31,12 @@ from .samplers import (
     AdaptiveMetropolis,
     GibbsSampler,
     HamiltonianMC,
+    HMCWithAdaptation,
     MetropolisHastings,
     SliceSampler,
 )
 from .trace import Trace
+from .visualize import visualize_trace
 from .diagnostics import (
     autocorrelation,
     effective_sample_size,
@@ -72,6 +74,10 @@ def _build_sampler(args, target):
         return AdaptiveMetropolis(target, init_std=args.proposal_std)
     if algo == "hmc":
         return HamiltonianMC(target, step_size=args.step_size, n_steps=args.n_steps)
+    if algo == "hmc-adapt":
+        return HMCWithAdaptation(target, n_steps=args.n_steps,
+                                 target_accept=args.target_accept,
+                                 init_step_size=args.step_size)
     if algo == "slice":
         return SliceSampler(target, width=args.width)
     raise ValueError(f"unknown algo {algo}")
@@ -137,6 +143,12 @@ def cmd_plot(args) -> int:
     return 0
 
 
+def cmd_visualize(args) -> int:
+    trace = Trace.from_json(args.trace)
+    print(visualize_trace(trace, param=args.param))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="mcmc-sampler",
                                 description="MCMC sampling toolkit")
@@ -144,7 +156,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub = p.add_subparsers(dest="cmd", required=True)
 
     sp = sub.add_parser("sample", help="run a sampler")
-    sp.add_argument("--algo", choices=["mh", "am", "hmc", "slice"], default="mh")
+    sp.add_argument("--algo", choices=["mh", "am", "hmc", "hmc-adapt", "slice"], default="mh")
     sp.add_argument("--dist", choices=["normal", "mvn", "beta", "exp", "mixture"],
                     default="normal")
     sp.add_argument("--n", type=int, default=5000)
@@ -159,6 +171,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--proposal-std", type=float, default=1.0)
     sp.add_argument("--step-size", type=float, default=0.1)
     sp.add_argument("--n-steps", type=int, default=20)
+    sp.add_argument("--target-accept", type=float, default=0.65)
     sp.add_argument("--width", type=float, default=1.0)
     sp.add_argument("--out", default=None, help="save trace JSON")
     sp.set_defaults(func=cmd_sample)
@@ -175,6 +188,11 @@ def build_parser() -> argparse.ArgumentParser:
     pp.add_argument("trace", help="trace JSON file")
     pp.add_argument("--out", default="trace.png")
     pp.set_defaults(func=cmd_plot)
+
+    vp = sub.add_parser("visualize", help="ASCII trace / histogram / ACF")
+    vp.add_argument("trace", help="trace JSON file")
+    vp.add_argument("--param", type=int, default=None, help="parameter index (default: all)")
+    vp.set_defaults(func=cmd_visualize)
 
     return p
 
