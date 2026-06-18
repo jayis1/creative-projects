@@ -258,11 +258,145 @@ def encode_machine(machine: TuringMachine, input_tape: List) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Binary decrementer: subtracts 1 from a binary number
+# ---------------------------------------------------------------------------
+
+def binary_decrementer() -> Program:
+    """A machine that decrements a binary number (MSB-first on tape).
+
+    Algorithm: scan right to the blank, step left, subtract 1 with borrow.
+    """
+    rules = [
+        # Scan right past all bits to the blank
+        Transition("s0", "0", "0", R, "s0"),
+        Transition("s0", "1", "1", R, "s0"),
+        Transition("s0", "_", "_", L, "sub"),
+        # Subtract 1 from current bit (borrow propagation)
+        Transition("sub", "1", "0", S, "halt"),  # 1-1=0, no borrow, done
+        Transition("sub", "0", "1", L, "sub"),   # 0-1=1, borrow continues left
+        Transition("sub", "_", "_", R, "halt"),   # underflow: result is 0
+    ]
+    return Program(rules)
+
+
+# ---------------------------------------------------------------------------
+# Two-tape binary adder: tape0 + tape1 -> tape0
+# ---------------------------------------------------------------------------
+
+def two_tape_adder() -> Program:
+    """A 2-tape Turing machine that adds two binary numbers.
+
+    Tape 0: first binary number (MSB-first)
+    Tape 1: second binary number (MSB-first)
+    Result: tape 0 contains the sum.
+
+    Algorithm: scan both tapes rightward to the end, then add from LSB
+    to MSB with carry, moving leftward.
+    """
+    R, L, S = D.RIGHT, D.LEFT, D.STAY
+    rules = [
+        # Phase 1: scan right on both tapes to reach the blanks
+        Transition("scan", ("0", "0"), ("0", "0"), (R, R), "scan"),
+        Transition("scan", ("0", "1"), ("0", "1"), (R, R), "scan"),
+        Transition("scan", ("1", "0"), ("1", "0"), (R, R), "scan"),
+        Transition("scan", ("1", "1"), ("1", "1"), (R, R), "scan"),
+        Transition("scan", ("_", "0"), ("_", "0"), (S, R), "scan"),
+        Transition("scan", ("_", "1"), ("_", "1"), (S, R), "scan"),
+        Transition("scan", ("0", "_"), ("0", "_"), (R, S), "scan"),
+        Transition("scan", ("1", "_"), ("1", "_"), (R, S), "scan"),
+        Transition("scan", ("_", "_"), ("_", "_"), (L, L), "add0"),  # both at end
+        # Phase 2: add with carry=0 (add0 state)
+        Transition("add0", ("0", "0"), ("0", "0"), (L, L), "add0"),  # 0+0+0=0
+        Transition("add0", ("0", "1"), ("1", "0"), (L, L), "add0"),  # 0+1+0=1
+        Transition("add0", ("1", "0"), ("1", "0"), (L, L), "add0"),  # 1+0+0=1
+        Transition("add0", ("1", "1"), ("0", "0"), (L, L), "add1"),  # 1+1+0=0 c1
+        Transition("add0", ("_", "0"), ("0", "_"), (L, S), "add0"),  # tape1 done
+        Transition("add0", ("_", "1"), ("1", "_"), (L, S), "add0"),
+        Transition("add0", ("0", "_"), ("0", "_"), (L, S), "add0"),  # tape0 has extra
+        Transition("add0", ("1", "_"), ("1", "_"), (L, S), "add0"),
+        Transition("add0", ("_", "_"), ("_", "_"), (S, S), "halt"),  # both done
+        # Phase 3: add with carry=1 (add1 state)
+        Transition("add1", ("0", "0"), ("1", "0"), (L, L), "add0"),  # 0+0+1=1
+        Transition("add1", ("0", "1"), ("0", "0"), (L, L), "add1"),  # 0+1+1=0 c1
+        Transition("add1", ("1", "0"), ("0", "0"), (L, L), "add1"),  # 1+0+1=0 c1
+        Transition("add1", ("1", "1"), ("1", "0"), (L, L), "add1"),  # 1+1+1=1 c1
+        Transition("add1", ("_", "0"), ("1", "_"), (L, S), "add0"),  # tape1 done, carry
+        Transition("add1", ("_", "1"), ("0", "_"), (L, S), "add1"),
+        Transition("add1", ("0", "_"), ("1", "_"), (L, S), "add0"),  # tape0 extra, carry
+        Transition("add1", ("1", "_"), ("0", "_"), (L, S), "add1"),
+        Transition("add1", ("_", "_"), ("1", "_"), (S, S), "halt"),  # overflow: write 1
+    ]
+    return Program(rules)
+
+
+# ---------------------------------------------------------------------------
+# Tag system simulator (a different computational model)
+# ---------------------------------------------------------------------------
+
+class TagSystem:
+    """A tag system: at each step, delete m symbols from the front and
+    append a production rule based on the first deleted symbol.
+
+    This is a different model from Turing machines but equally powerful.
+    """
+
+    def __init__(self, rules: dict, m: int = 2):
+        self.rules = rules  # symbol -> string to append
+        self.m = m          # deletion count
+        self.tape: list = []
+        self.halted = False
+        self.steps = 0
+        self.max_steps = 1_000_000
+        self.history: list = []
+
+    def initialize(self, tape: list) -> None:
+        self.tape = list(tape)
+        self.halted = False
+        self.steps = 0
+        self.history = []
+
+    def step(self) -> bool:
+        if self.halted:
+            return False
+        if len(self.tape) < self.m:
+            self.halted = True
+            return False
+        if self.steps >= self.max_steps:
+            self.halted = True
+            return False
+        first = self.tape[0]
+        # Delete m symbols
+        self.tape = self.tape[self.m:]
+        # Append production
+        if first in self.rules:
+            production = self.rules[first]
+            self.tape.extend(list(production))
+        else:
+            self.halted = True
+            return False
+        self.steps += 1
+        self.history.append(list(self.tape))
+        return True
+
+    def run(self, record: bool = False) -> list:
+        if record:
+            self.history = [list(self.tape)]
+        while self.step():
+            if not record:
+                self.history = []
+        return self.tape
+
+    def __str__(self) -> str:
+        return f"TagSystem(m={self.m}, tape={''.join(str(s) for s in self.tape)}, halted={self.halted}, steps={self.steps})"
+
+
+# ---------------------------------------------------------------------------
 # Predefined machines dict
 # ---------------------------------------------------------------------------
 
 MACHINES = {
     "binary_incrementer": binary_incrementer,
+    "binary_decrementer": binary_decrementer,
     "unary_adder": unary_adder,
     "palindrome_checker": palindrome_checker,
     "copy_machine": copy_machine,
