@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mcmc-sampler"
+version = "1.0.0"
+description = "From-scratch MCMC sampling toolkit: Metropolis-Hastings, HMC, slice, Gibbs, adaptive"
+requires-python = ">=3.9"
+dependencies = ["numpy>=1.21"]
+
+[project.optional-dependencies]
+plot = ["matplotlib>=3.4"]
+test = ["pytest>=7.0"]
+
+[project.scripts]
+mcmc-sampler = "mcmc_sampler.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["mcmc_sampler*"]
