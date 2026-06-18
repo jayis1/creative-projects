@@ -1,0 +1,15 @@
+{
+  "name": "binary_incrementer",
+  "blank": "_",
+  "start": "s0",
+  "halt": ["halt"],
+  "tapes": 1,
+  "transitions": [
+    {"state": "s0", "read": "0", "write": "0", "move": "R", "next": "s0"},
+    {"state": "s0", "read": "1", "write": "1", "move": "R", "next": "s0"},
+    {"state": "s0", "read": "_", "write": "_", "move": "L", "next": "add"},
+    {"state": "add", "read": "0", "write": "1", "move": "S", "next": "halt"},
+    {"state": "add", "read": "1", "write": "0", "move": "L", "next": "add"},
+    {"state": "add", "read": "_", "write": "1", "move": "S", "next": "halt"}
+  ]
+}

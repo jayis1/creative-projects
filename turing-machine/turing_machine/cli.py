@@ -253,8 +253,123 @@ def cmd_step(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_visualize(args: argparse.Namespace) -> int:
+    """Generate an HTML animation of a machine's execution."""
+    from .visualizer import html_animation, svg_diagram, text_trace, csv_trace
+    name = args.machine
+    try:
+        tm = _make_machine(name, args.input, args.max_steps)
+    except KeyError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+
+    fmt = args.format
+    if fmt == "html":
+        output = args.output or f"{name}_animation.html"
+        html_animation(tm, output, title=name, delay_ms=args.delay)
+        print(f"HTML animation saved to {output}")
+    elif fmt == "svg":
+        output = args.output or f"{name}_diagram.svg"
+        svg_diagram(tm.program, tm.initial_state, tm.halt_states, output)
+        print(f"SVG diagram saved to {output}")
+    elif fmt == "text":
+        if args.output:
+            with open(args.output, "w") as f:
+                f.write(text_trace(tm))
+            print(f"Text trace saved to {args.output}")
+        else:
+            print(text_trace(tm))
+    elif fmt == "csv":
+        if args.output:
+            with open(args.output, "w") as f:
+                f.write(csv_trace(tm))
+            print(f"CSV trace saved to {args.output}")
+        else:
+            print(csv_trace(tm))
+    else:
+        print(f"error: unknown format '{fmt}'", file=sys.stderr)
+        return 2
+    return 0
+
+
+def cmd_compose(args: argparse.Namespace) -> int:
+    """Run a pipeline of machines."""
+    from .composition import Pipeline
+    from .machines import get_machine
+    pipe = Pipeline()
+    for spec in args.machines:
+        parts = spec.split(":")
+        name = parts[0]
+        init = parts[1] if len(parts) > 1 else "s0"
+        halt = parts[2] if len(parts) > 2 else "halt"
+        try:
+            prog = get_machine(name)
+        except KeyError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 2
+        pipe.add(prog, init, halt, name=name)
+    result = pipe.run(list(args.input))
+    print(pipe.summary())
+    print(f"\nFinal tape: {''.join(str(c) for c in result)}")
+    return 0
+
+
+def cmd_universal(args: argparse.Namespace) -> int:
+    """Run a machine through the Universal Turing Machine."""
+    from .universal import simulate, encode_machine, UniversalTuringMachine
+    name = args.machine
+    try:
+        tm = _make_machine(name, args.input, args.max_steps)
+    except KeyError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+    # Reset and encode
+    tm.reset()
+    input_symbols = list(args.input) if args.input else []
+    encoded = encode_machine(tm, input_symbols)
+    print(f"Encoded length: {len(encoded)} chars")
+    print(f"Encoded: {encoded[:200]}{'...' if len(encoded) > 200 else ''}")
+    # Run via UTM
+    utm = UniversalTuringMachine(encoded)
+    final = utm.run()
+    print(f"UTM final state: {final}")
+    print(f"UTM steps: {utm.steps}")
+    print(f"UTM tape: {''.join(str(c) for c in utm.tape.to_list())}")
+    return 0
+
+
+def cmd_config(args: argparse.Namespace) -> int:
+    """Load and run a machine from a config file."""
+    from .config import load_config, config_to_machine, ConfigError
+    try:
+        data = load_config(args.file)
+    except FileNotFoundError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+    except ConfigError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+    input_symbols = _parse_input(args.input)
+    try:
+        tm = config_to_machine(data, tape=input_symbols, max_steps=args.max_steps)
+    except ConfigError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+    tm.run()
+    print(f"Machine: {data.get('name', '<unnamed>')}")
+    print(f"  final state: {tm.state}")
+    print(f"  steps:       {tm.steps}")
+    print(f"  halted:      {tm.halted}")
+    print(f"  tape:")
+    print(tm.tapes[0].render())
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="turing_machine", description="Turing machine simulator")
+    p = argparse.ArgumentParser(
+        prog="turing_machine",
+        description="Turing machine simulator — run, debug, analyze, and visualize",
+    )
     sub = p.add_subparsers(dest="command", required=True)
 
     run = sub.add_parser("run", help="Run a built-in machine")
@@ -309,6 +424,32 @@ def build_parser() -> argparse.ArgumentParser:
     st.add_argument("--n", type=int, default=10, help="Number of steps to execute")
     st.add_argument("--max-steps", type=int, default=1_000_000)
     st.set_defaults(func=cmd_step)
+
+    vz = sub.add_parser("visualize", help="Generate visual output (HTML/SVG/text/CSV)")
+    vz.add_argument("machine", help="Name of the built-in machine")
+    vz.add_argument("--input", "-i", default="", help="Input tape symbols")
+    vz.add_argument("--format", "-f", choices=["html", "svg", "text", "csv"], default="html")
+    vz.add_argument("--output", "-o", default=None, help="Output file path")
+    vz.add_argument("--delay", type=int, default=500, help="Animation delay in ms (HTML)")
+    vz.add_argument("--max-steps", type=int, default=1_000_000)
+    vz.set_defaults(func=cmd_visualize)
+
+    cp = sub.add_parser("compose", help="Run a pipeline of machines")
+    cp.add_argument("machines", nargs="+", help="Machine specs: name[:init_state:halt_state]")
+    cp.add_argument("--input", "-i", default="", help="Input tape symbols")
+    cp.set_defaults(func=cmd_compose)
+
+    ut = sub.add_parser("universal", help="Run a machine through the Universal Turing Machine")
+    ut.add_argument("machine", help="Name of the built-in machine")
+    ut.add_argument("--input", "-i", default="", help="Input tape symbols")
+    ut.add_argument("--max-steps", type=int, default=1_000_000)
+    ut.set_defaults(func=cmd_universal)
+
+    cf = sub.add_parser("config", help="Load and run a machine from a JSON/YAML config file")
+    cf.add_argument("file", help="Path to the config file (.json or .yaml)")
+    cf.add_argument("--input", "-i", default="", help="Input tape symbols")
+    cf.add_argument("--max-steps", type=int, default=1_000_000)
+    cf.set_defaults(func=cmd_config)
 
     return p
 

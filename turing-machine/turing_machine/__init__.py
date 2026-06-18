@@ -58,6 +58,31 @@ from .analysis import (
     analyze_machine,
 )
 from .machines import TagSystem
+from .universal import (
+    UniversalTuringMachine,
+    EncodedUTM,
+    encode_machine,
+    decode_machine,
+    simulate,
+)
+from .visualizer import (
+    text_trace,
+    html_animation,
+    svg_diagram,
+    csv_trace,
+)
+from .composition import (
+    Pipeline,
+    Conditional,
+    Loop,
+    compose,
+)
+from .config import (
+    ConfigError,
+    load_config,
+    config_to_machine,
+    save_config,
+)
 
 __all__ = [
     "Tape",
@@ -74,6 +99,23 @@ __all__ = [
     "Debugger",
     "Breakpoint",
     "TagSystem",
+    "UniversalTuringMachine",
+    "EncodedUTM",
+    "encode_machine",
+    "decode_machine",
+    "simulate",
+    "text_trace",
+    "html_animation",
+    "svg_diagram",
+    "csv_trace",
+    "Pipeline",
+    "Conditional",
+    "Loop",
+    "compose",
+    "ConfigError",
+    "load_config",
+    "config_to_machine",
+    "save_config",
     "serialize_machine",
     "deserialize_machine",
     "save_machine",
@@ -91,4 +133,4 @@ __all__ = [
     "analyze_machine",
 ]
 
-__version__ = "2.0.0"
+__version__ = "3.0.0"

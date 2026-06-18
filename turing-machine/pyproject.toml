@@ -4,14 +4,39 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "turing-machine"
-version = "1.0.0"
-description = "A Turing machine simulator with multi-tape support, a definition language, and a library of classic machines"
+version = "3.0.0"
+description = "A Turing machine simulator with multi-tape support, a universal Turing machine, definition language, visualizer, composition framework, and a library of classic machines"
+readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [{name = "creative-projects"}]
+keywords = ["turing-machine", "automata", "computability", "simulation", "universal-turing-machine"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Education",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Education",
+]
+
+[project.optional-dependencies]
+yaml = ["pyyaml>=6.0"]
+dev = ["pytest>=7.0", "pytest-cov>=4.0", "pyyaml>=6.0"]
 
 [project.scripts]
 turing-machine = "turing_machine.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["turing_machine*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
