@@ -24,8 +24,12 @@ from .hll import HyperLogLog
 from .topk import TopK
 from .tdigest import TDigest
 from .skiplist import SkipList
+from .scalable_bloom import ScalableBloomFilter
+from .conservative_cms import ConservativeCountMinSketch
+from .serialization import serialize, deserialize
+from .benchmark import run_all_benchmarks
 
-__version__ = "1.0.0"
+__version__ = "2.0.0"
 __all__ = [
     "BloomFilter",
     "CountingBloomFilter",
@@ -35,4 +39,9 @@ __all__ = [
     "TopK",
     "TDigest",
     "SkipList",
+    "ScalableBloomFilter",
+    "ConservativeCountMinSketch",
+    "serialize",
+    "deserialize",
+    "run_all_benchmarks",
 ]

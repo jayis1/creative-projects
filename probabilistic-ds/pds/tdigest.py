@@ -143,22 +143,36 @@ class TDigest:
         for i, c in enumerate(self._centroids):
             if cum + c.count / 2 >= target:
                 if i == 0:
-                    # Interpolate between min and first centroid
-                    delta = self._centroids[0].mean - self._min
-                    if c.count > 0:
-                        return self._min + delta * target / (c.count / 2)
+                    # Interpolate between min and first centroid mean
+                    half = c.count / 2
+                    if half > 0:
+                        return self._min + (c.mean - self._min) * (target / half)
                     return self._min
                 prev = self._centroids[i - 1]
-                # Interpolate between prev and current centroid means
-                prev_center = cum - c.count / 2
-                return prev.mean + (c.mean - prev.mean) * (target - prev_center) / c.count
+                # Interpolate between prev centroid center and current center
+                prev_center = cum  # center of prev centroid = cum (after adding prev)
+                # cum at this point = sum of counts of centroids 0..i-1
+                # prev centroid center is at cum - prev.count/2 + prev.count = cum
+                # Actually: cum = total count of centroids before this one
+                # prev center = cum - prev.count / 2... but we need to be precise.
+                # The center of centroid i-1 is at position cum (end of i-1's range
+                # start is cum - prev.count, center is cum - prev.count/2).
+                # We want to interpolate between prev center and current center.
+                prev_c = self._centroids[i - 1]
+                prev_center_pos = cum - prev_c.count / 2  # center of prev
+                cur_center_pos = cum + c.count / 2         # center of current
+                if cur_center_pos > prev_center_pos:
+                    return prev_c.mean + (c.mean - prev_c.mean) * \
+                        (target - prev_center_pos) / (cur_center_pos - prev_center_pos)
+                return c.mean
             cum += c.count
 
         # Interpolate between last centroid and max
         last = self._centroids[-1]
         last_center = self._total_count - last.count / 2
-        if self._total_count - last_center > 0:
-            return last.mean + (self._max - last.mean) * (target - last_center) / (self._total_count / 2 - last_center + (self._total_count - last_center) - last_center)
+        tail_span = self._total_count - last_center
+        if tail_span > 0:
+            return last.mean + (self._max - last.mean) * (target - last_center) / tail_span
         return self._max
 
     def merge(self, other: "TDigest") -> None:
