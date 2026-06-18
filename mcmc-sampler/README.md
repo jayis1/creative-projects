@@ -150,7 +150,36 @@ mcmc-sampler/
 │   └── bayesian_logistic.py
 ├── tests/
 │   ├── test_mcmc.py
-│   └── test_enhancements.py
+│   ├── test_enhancements.py
+│   └── test_bug_hunt.py
 ├── pyproject.toml
 └── README.md
 ```
+
+## Known Issues (Resolved)
+
+### Bug 1: Mixture distribution returns NaN when all components are -inf
+
+**Symptom:** `Mixture.log_pdf(x)` returned `NaN` instead of `-inf` when `x` was
+outside the support of all component distributions (e.g., evaluating a mixture
+of `Uniform(0, 0.1)` and `Uniform(0.9, 1.0)` at `x=0.5`).
+
+**Root cause:** The log-sum-exp trick computed `m = max(log_vals)` which was
+`-inf` when all components returned `-inf`. Then `exp(log_vals - m)` became
+`exp(NaN)` because `-inf - (-inf) = NaN` in floating-point arithmetic.
+
+**Fix:** Added an explicit check — if `max(log_vals)` is not finite, return
+`-inf` immediately before attempting the log-sum-exp computation.
+
+### Bug 2: Gelman-Rubin R-hat returns NaN for chains with < 2 samples
+
+**Symptom:** `gelman_rubin([[1.0], [2.0], [3.0]])` returned `NaN` instead of
+raising an error.
+
+**Root cause:** `np.var(ddof=1)` on a single-element array produces `NaN`
+(division by zero degrees of freedom). This silently propagated through the
+R-hat computation.
+
+**Fix:** Added a guard that raises `ValueError("need at least 2 samples per
+chain")` when any chain has fewer than 2 samples, making the failure explicit
+and actionable.

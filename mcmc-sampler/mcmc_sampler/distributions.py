@@ -225,5 +225,10 @@ class Mixture(Target):
         # log-sum-exp trick for numerical stability
         log_vals = np.array([self._log_w[i] + self.components[i].log_pdf(x)
                              for i in range(len(self.components))])
+        # Handle case where all components return -inf (point outside all supports)
+        # max(-inf, -inf) = -inf, and exp(-inf - (-inf)) = exp(nan) = nan
         m = np.max(log_vals)
+        if not math.isfinite(m):
+            # all components are -inf (or the max is -inf)
+            return -math.inf
         return float(m + math.log(np.sum(np.exp(log_vals - m))))

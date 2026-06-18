@@ -57,6 +57,9 @@ def gelman_rubin(chains: Sequence[Sequence[float]]) -> float:
     if m < 2:
         raise ValueError("need at least 2 chains")
     n = min(len(c) for c in chains)
+    # Need at least 2 samples per chain to compute within-chain variance
+    if n < 2:
+        raise ValueError("need at least 2 samples per chain")
     chains = [c[:n] for c in chains]
     means = np.array([c.mean() for c in chains])
     vars_ = np.array([c.var(ddof=1) for c in chains])
