@@ -8,7 +8,6 @@ Based on Dunning's t-digest (2019).  This implementation uses the
 "alternating sort" merging variant.
 """
 import math
-import bisect
 
 
 class _Centroid:
@@ -82,33 +81,35 @@ class TDigest:
             self._sorted = True
 
     def _compress(self) -> None:
-        """Merge nearby centroids to bound total count."""
+        """Merge nearby centroids to bound total count.
+
+        Fixed: incremental cum_count tracking instead of recomputing
+        sum(c.count for c in new_centroids) each iteration (was O(n²)).
+        """
         self._ensure_sorted()
         if len(self._centroids) <= 1:
             return
 
         total = self._total_count
+        num = len(self._centroids)
         new_centroids: list[_Centroid] = []
-        # Alternate starting point to avoid bias
-        start = 0
-        # Shuffle-like: process in order, accumulate while size function allows
+        cum_count = 0.0  # incremental, not recomputed each iteration
 
         i = 0
-        while i < len(self._centroids):
+        while i < num:
             cur = self._centroids[i]
-            # Cumulative quantile up to this centroid
-            cum_count = sum(c.count for c in new_centroids)
+            # Cumulative quantile up to this centroid's center
             q = (cum_count + cur.count / 2) / total
             # Size function: k1 scale
-            k_size = self.compression * 4 * total * q * (1 - q) / len(self._centroids)
+            k_size = self.compression * 4 * total * q * (1 - q) / num
 
             # Try to merge next centroid into current
             j = i + 1
-            while j < len(self._centroids):
+            while j < num:
                 next_c = self._centroids[j]
                 merged_count = cur.count + next_c.count
                 new_q = (cum_count + merged_count / 2) / total
-                new_k_size = self.compression * 4 * total * new_q * (1 - new_q) / len(self._centroids)
+                new_k_size = self.compression * 4 * total * new_q * (1 - new_q) / num
                 if merged_count <= new_k_size and merged_count <= k_size + 1:
                     cur.add(next_c.mean, next_c.count)
                     j += 1
@@ -117,6 +118,7 @@ class TDigest:
                 k_size = new_k_size
 
             new_centroids.append(cur)
+            cum_count += cur.count
             i = j
 
         self._centroids = new_centroids
@@ -148,19 +150,13 @@ class TDigest:
                     if half > 0:
                         return self._min + (c.mean - self._min) * (target / half)
                     return self._min
-                prev = self._centroids[i - 1]
-                # Interpolate between prev centroid center and current center
-                prev_center = cum  # center of prev centroid = cum (after adding prev)
-                # cum at this point = sum of counts of centroids 0..i-1
-                # prev centroid center is at cum - prev.count/2 + prev.count = cum
-                # Actually: cum = total count of centroids before this one
-                # prev center = cum - prev.count / 2... but we need to be precise.
-                # The center of centroid i-1 is at position cum (end of i-1's range
-                # start is cum - prev.count, center is cum - prev.count/2).
-                # We want to interpolate between prev center and current center.
+                # Interpolate between prev centroid center and current center.
+                # cum = total count of centroids 0..i-1 (before this one).
+                # prev center = cum - prev.count/2 (midpoint of prev's mass).
+                # cur center = cum + c.count/2 (midpoint of current's mass).
                 prev_c = self._centroids[i - 1]
-                prev_center_pos = cum - prev_c.count / 2  # center of prev
-                cur_center_pos = cum + c.count / 2         # center of current
+                prev_center_pos = cum - prev_c.count / 2
+                cur_center_pos = cum + c.count / 2
                 if cur_center_pos > prev_center_pos:
                     return prev_c.mean + (c.mean - prev_c.mean) * \
                         (target - prev_center_pos) / (cur_center_pos - prev_center_pos)
@@ -189,18 +185,59 @@ class TDigest:
         return len(self._centroids)
 
     def cdf(self, value: float) -> float:
-        """Estimate the CDF at ``value`` (fraction of data <= value)."""
+        """Estimate the CDF at ``value`` (fraction of data <= value).
+
+        Fixed: uses proper linear interpolation between centroid means
+        instead of a crude 50% approximation for the boundary centroid.
+        """
         self._ensure_sorted()
         if value <= self._min:
             return 0.0
         if value >= self._max:
             return 1.0
+        if not self._centroids:
+            return 0.0
+
+        # Walk centroids, accumulating count with linear interpolation
+        # at the boundary where value falls between two centroid means.
         cum = 0.0
-        for c in self._centroids:
+        for i, c in enumerate(self._centroids):
             if c.mean < value:
+                # This centroid is entirely below value; count it fully
                 cum += c.count
             else:
-                # Partial contribution
-                cum += c.count * 0.5
+                # Value falls between previous centroid and this one.
+                # Interpolate: the centroid's mass is spread uniformly
+                # between its neighbors' means.
+                if i == 0:
+                    # Interpolate between _min and first centroid
+                    if c.mean > self._min:
+                        # Fraction of first centroid below value
+                        frac = (value - self._min) / (c.mean - self._min)
+                        # Only the left half of the first centroid counts
+                        cum += c.count * 0.5 * frac
+                    else:
+                        cum += c.count * 0.5
+                else:
+                    prev = self._centroids[i - 1]
+                    if c.mean > prev.mean:
+                        # The centroid at index i has its center at c.mean.
+                        # Its mass spans from prev.mean to next.mean (or to
+                        # c.mean's right neighbor). We approximate the
+                        # fraction of this centroid that is below value.
+                        frac = (value - prev.mean) / (c.mean - prev.mean)
+                        frac = max(0.0, min(1.0, frac))
+                        # Left half of current centroid + interpolated part
+                        cum += c.count * 0.5 * frac
+                    else:
+                        cum += c.count * 0.5
                 break
+
+        # Handle the last centroid and tail
+        if cum == 0.0 and self._centroids:
+            last = self._centroids[-1]
+            if value > last.mean and self._max > last.mean:
+                frac = (value - last.mean) / (self._max - last.mean)
+                cum = self._total_count - last.count * 0.5 + last.count * 0.5 * frac
+
         return cum / self._total_count

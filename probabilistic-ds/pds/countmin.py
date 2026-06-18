@@ -64,7 +64,10 @@ class CountMinSketch:
                    for row, col in enumerate(self._hashes(data)))
 
     def merge(self, other: "CountMinSketch") -> None:
-        """Merge another CMS into this one (pointwise max)."""
+        """Merge another CMS into this one (pointwise sum of counters).
+
+        The merged sketch represents the union of both input streams.
+        """
         if self.width != other.width or self.depth != other.depth:
             raise ValueError("Cannot merge sketches of different dimensions")
         for r in range(self.depth):

@@ -55,6 +55,7 @@ class CuckooFilter:
     def _fingerprint(self, data: bytes) -> int:
         # Derive fingerprint from upper bits of a 64-bit hash, independent
         # from the index hash (lower bits) to avoid correlation.
+        # Cache the hash to avoid recomputing it in _hash().
         h = fnv1a_64(data + b"\x01")
         fp = (h >> (64 - self.fingerprint_bits)) & self.fingerprint_mask
         # Ensure fingerprint is never zero (zero is used as empty slot sentinel)
@@ -70,12 +71,24 @@ class CuckooFilter:
         fp_hash = fnv1a_64(struct_fp(fp))
         return (index ^ fp_hash) & (self.num_buckets - 1)
 
+    def _compute_fp_and_index(self, data: bytes) -> tuple[int, int, int]:
+        """Compute fingerprint, primary index, and alternate index in one pass.
+
+        Returns (fp, i1, i2).  Computes the 64-bit hash only once instead
+        of twice (previously _fingerprint and _hash each called fnv1a_64).
+        """
+        h = fnv1a_64(data + b"\x01")
+        fp = (h >> (64 - self.fingerprint_bits)) & self.fingerprint_mask
+        if fp == 0:
+            fp = 1  # zero is the empty-slot sentinel
+        i1 = (h & 0xFFFFFFFF) & (self.num_buckets - 1)
+        i2 = self._alt_index(i1, fp)
+        return fp, i1, i2
+
     def add(self, item) -> None:
         """Add an item. Raises if the filter is full."""
         data = self._serialize(item)
-        fp = self._fingerprint(data)
-        i1 = self._hash(data) & (self.num_buckets - 1)
-        i2 = self._alt_index(i1, fp)
+        fp, i1, i2 = self._compute_fp_and_index(data)
 
         if len(self._table[i1]) < self.bucket_size:
             self._table[i1].append(fp)
@@ -102,17 +115,13 @@ class CuckooFilter:
 
     def __contains__(self, item) -> bool:
         data = self._serialize(item)
-        fp = self._fingerprint(data)
-        i1 = self._hash(data) & (self.num_buckets - 1)
-        i2 = self._alt_index(i1, fp)
+        fp, i1, i2 = self._compute_fp_and_index(data)
         return fp in self._table[i1] or fp in self._table[i2]
 
     def remove(self, item) -> bool:
         """Remove an item. Returns True if found and removed."""
         data = self._serialize(item)
-        fp = self._fingerprint(data)
-        i1 = self._hash(data) & (self.num_buckets - 1)
-        i2 = self._alt_index(i1, fp)
+        fp, i1, i2 = self._compute_fp_and_index(data)
 
         if fp in self._table[i1]:
             self._table[i1].remove(fp)

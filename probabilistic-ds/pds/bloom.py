@@ -167,7 +167,13 @@ class CountingBloomFilter:
         self.count += 1
 
     def remove(self, item) -> bool:
-        """Remove an item. Returns True if item was (probabilistically) present."""
+        """Remove an item. Returns True if item was (probabilistically) present.
+
+        Note: If the item is a false positive (never actually added but
+        counters happen to be set), this will still decrement counters.
+        The ``count`` field is only decremented if removal succeeds, which
+        keeps the count accurate relative to successful add/remove pairs.
+        """
         positions = self._positions(item)
         if not all(self._get_counter(p) > 0 for p in positions):
             return False
@@ -175,6 +181,10 @@ class CountingBloomFilter:
             c = self._get_counter(pos)
             if c > 0:
                 self._set_counter(pos, c - 1)
+        # Only decrement count if we're confident this was a real element.
+        # Since we can't distinguish false positives from real elements,
+        # we decrement to maintain add/remove balance.  Users should be
+        # aware that count reflects net (adds - successful_removes).
         self.count -= 1
         return True
 

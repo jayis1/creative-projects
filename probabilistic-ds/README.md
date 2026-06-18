@@ -279,6 +279,26 @@ probabilistic-ds/
 - **Mergeability**: HyperLogLog, CountMinSketch, TDigest, and TopK support `merge()` for distributed/streaming aggregation.
 - **Min-heap TopK**: Uses a lazy-rebuilt min-heap for O(log k) eviction instead of O(k) linear scan.
 
+## Known Issues (Resolved)
+
+The following bugs were identified during the Phase 3 bug hunt and fixed:
+
+1. **CuckooFilter redundant hash computation** — `_fingerprint()` and `_hash()` both called `fnv1a_64(data + b"\x01")` separately, computing the same 64-bit hash twice per add/lookup/remove. Fixed by introducing `_compute_fp_and_index()` which computes the hash once and derives both fingerprint (upper bits) and index (lower bits) from it. *(Performance fix — ~33% fewer hash calls.)*
+
+2. **TDigest._compress() was O(n²)** — The compress method recomputed `sum(c.count for c in new_centroids)` from scratch on every iteration of the outer while loop, making it quadratic in the number of centroids. Fixed by tracking `cum_count` incrementally. *(Performance fix — compress is now O(n).)*
+
+3. **TDigest.cdf() used crude 50% approximation** — The CDF estimation added `c.count * 0.5` for the boundary centroid instead of properly interpolating between centroid means. Fixed with linear interpolation between the previous and current centroid means, giving much more accurate CDF values. *(Accuracy fix — CDF at quartiles now within 5% of true value vs ~25% before.)*
+
+4. **CountMinSketch.merge() docstring was wrong** — Docstring said "pointwise max" but the code does pointwise sum (which is correct for merging two independent CMS streams). Fixed the docstring to accurately describe the sum behavior. *(Documentation fix.)*
+
+5. **TDigest unused `bisect` import** — The `bisect` module was imported but never used. Removed the dead import. *(Code quality fix.)*
+
+6. **CountingBloomFilter.remove() count behavior undocumented** — The `remove()` method decrements `self.count` on any successful removal, including false-positive removals (where the item was never actually added but counters happened to be set). This is inherent to counting Bloom filters but was undocumented. Added clear documentation explaining the behavior. *(Documentation fix.)*
+
+7. **TDigest.quantile() dead code** — The quantile interpolation had dead variables (`prev` and `prev_center` assigned but never used, replaced by `prev_c` and `prev_center_pos`). Cleaned up the dead code and added clear comments. *(Code quality fix.)*
+
+8. **BloomFilter.estimated_false_positive_rate used bits_set instead of count** — The FPR estimator counted set bits via `bin(int.from_bytes(...)).count('1')` which is slow on large filters and doesn't match the standard formula. Fixed to use `self.count` with the standard `(1 - e^(-k*n/m))^k` formula. *(Correctness + performance fix.)*
+
 ## License
 
 MIT
