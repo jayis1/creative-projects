@@ -89,7 +89,11 @@ class Tape:
 
     def __init__(self, blank: Hashable = "_", tape: Optional[Sequence[Hashable]] = None, head: int = 0):
         self._blank = blank
-        self._cells: List[Hashable] = list(tape) if tape is not None else [blank]
+        # Ensure at least one cell exists so reads/writes always succeed
+        if tape is not None and len(tape) > 0:
+            self._cells: List[Hashable] = list(tape)
+        else:
+            self._cells: List[Hashable] = [blank]
         self._head = head
 
     # -- core operations ----------------------------------------------------
@@ -156,10 +160,11 @@ class Tape:
     def to_list(self, strip_blanks: bool = True) -> List[Hashable]:
         """Return tape contents as a list.
 
-        If ``strip_blanks`` is True, trailing blank symbols are removed (but
-        at least one cell is always returned).
+        If ``strip_blanks`` is True, trailing (and leading) blank symbols are
+        removed, but at least one cell is always returned (the blank itself if
+        the tape is entirely blank).
         """
-        cells = list(self._cells)
+        cells = list(self._cells) if self._cells else [self._blank]
         if strip_blanks:
             while len(cells) > 1 and cells[-1] == self._blank:
                 cells.pop()
@@ -507,23 +512,50 @@ class TuringMachine:
         return self.tapes[0].to_list()
 
     def is_accepted(self) -> bool:
-        return self.state in ("accept", "HALT", "halt") or (self.halted and self.state not in ("reject",))
+        """Return True if the machine halted in an accepting state.
+
+        A machine is accepted if it halted in an explicit accept/halt state.
+        An implicit reject (no transition found) is NOT accepted.
+        """
+        if not self.halted:
+            return False
+        # Explicit accept states
+        if self.state in ("accept", "HALT", "halt", "H"):
+            return True
+        # Explicit reject states
+        if self.state in ("reject",):
+            return False
+        # Implicit reject (halted without finding a transition) is NOT accepted
+        return False
 
     def reset(self, tape: Union[Tape, Sequence[Hashable], None] = None) -> None:
-        """Reset the machine to its initial state with optional new tape."""
+        """Reset the machine to its initial state with optional new tape.
+
+        For multi-tape machines, ``tape`` may be a list of sequences (one per
+        tape) or a single sequence (applied to tape 0, rest reset to blank).
+        If ``tape`` is None, all tapes are reset to blank.
+        """
         self.state = self.initial_state
         self.steps = 0
         self.halted = False
         self.history = []
+        blank = self.tapes[0].blank
         if tape is not None:
-            blank = self.tapes[0].blank
-            if isinstance(tape, Tape):
-                self.tapes = [tape]
+            if self.num_tapes > 1:
+                # Multi-tape: tape may be a list of sequences
+                if isinstance(tape, Tape):
+                    self.tapes = [tape] + [Tape(blank) for _ in range(self.num_tapes - 1)]
+                elif isinstance(tape, Sequence) and len(tape) > 0 and isinstance(tape[0], (list, tuple, Tape)):
+                    self.tapes = [Tape(blank, t) if not isinstance(t, Tape) else t for t in tape]
+                else:
+                    self.tapes = [Tape(blank, tape)] + [Tape(blank) for _ in range(self.num_tapes - 1)]
             else:
-                self.tapes = [Tape(blank, tape)]
+                if isinstance(tape, Tape):
+                    self.tapes = [tape]
+                else:
+                    self.tapes = [Tape(blank, tape)]
         else:
-            blank = self.tapes[0].blank
-            self.tapes = [Tape(blank)]
+            self.tapes = [Tape(blank) for _ in range(self.num_tapes)]
 
     def __str__(self) -> str:
         lines = [f"TuringMachine(state={self.state!r}, steps={self.steps}, halted={self.halted})"]

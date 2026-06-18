@@ -248,7 +248,11 @@ def encode_machine(machine: TuringMachine, input_tape: List) -> str:
         q = state_idx.get(t.state, 0)
         a = sym_idx.get(t.read, 0)
         b = sym_idx.get(t.write, 0) if not isinstance(t.write, tuple) else sym_idx.get(t.write[0], 0)
-        d = {"L": 1, "R": 2, "S": 3}[str(t.direction)]
+        # Handle both single and tuple directions
+        dir_val = t.direction
+        if isinstance(dir_val, tuple):
+            dir_val = dir_val[0]  # use first tape's direction for encoding
+        d = {"L": 1, "R": 2, "S": 3}[str(dir_val)]
         q2 = state_idx.get(t.new_state, 0)  # new state index
         parts.append("1" * (q + 1) + "0" + "1" * (a + 1) + "0" + "1" * (b + 1) + "0" + "1" * d + "0" + "1" * (q2 + 1))
     rule_str = "00".join(parts)
@@ -348,6 +352,7 @@ class TagSystem:
         self.steps = 0
         self.max_steps = 1_000_000
         self.history: list = []
+        self._recording = False  # whether to record history during step()
 
     def initialize(self, tape: list) -> None:
         self.tape = list(tape)
@@ -375,15 +380,24 @@ class TagSystem:
             self.halted = True
             return False
         self.steps += 1
-        self.history.append(list(self.tape))
+        if self._recording:
+            self.history.append(list(self.tape))
         return True
 
     def run(self, record: bool = False) -> list:
+        """Run the tag system to completion.
+
+        If ``record`` is True, each step's tape is stored in ``self.history``.
+        Returns the final tape contents.
+        """
+        self._recording = record
         if record:
             self.history = [list(self.tape)]
+        else:
+            self.history = []
         while self.step():
-            if not record:
-                self.history = []
+            pass
+        self._recording = False  # stop recording after run
         return self.tape
 
     def __str__(self) -> str:

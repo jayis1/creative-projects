@@ -238,6 +238,30 @@ turing-machine/
 └── README.md
 ```
 
+## Known Issues (Resolved)
+
+All bugs found during development and bug-hunt phases have been fixed:
+
+1. **`reset()` lost multi-tape configuration** — Calling `reset()` on a multi-tape machine would create only a single tape instead of preserving the `num_tapes` count. Fixed by checking `self.num_tapes` and creating the correct number of tapes.
+
+2. **`is_accepted()` returned True for implicit rejects** — A machine that halted because no transition was found (implicit reject) would incorrectly report `is_accepted() == True` because the old logic was `halted and state not in ("reject",)`. Fixed to only return True for explicit accept/halt states.
+
+3. **`Tape.to_list()` returned empty list for empty tape** — When a `Tape` was initialized with an empty list `[]`, `to_list()` would return `[]` instead of `["_"]`. Fixed by ensuring at least one cell (the blank) is always present.
+
+4. **`Tape.__init__` with empty list** — `Tape("_", [])` would create a tape with zero cells, causing reads to always return blank and writes to extend from position 0. Fixed by initializing with `[blank]` when the input list is empty.
+
+5. **`encode_machine()` crashed on tuple directions** — Multi-tape machines have tuple directions like `(L, R)`, but `encode_machine()` tried to look up `str(t.direction)` which produced `"(L, R)"` — not in the direction mapping. Fixed by extracting the first element of tuple directions.
+
+6. **`TagSystem.run()` history always populated** — The `step()` method unconditionally appended to `history`, ignoring the `record` parameter. Fixed by adding a `_recording` flag that controls whether `step()` records history.
+
+7. **`Transition` state field confusion (Phase 1)** — The original `Transition` dataclass used `state` as both the current state and the new state (via a legacy `move` alias), causing machines to never change state. Fixed by adding an explicit `new_state` field.
+
+8. **Binary incrementer algorithm (Phase 1)** — The original incrementer wrote a `1` at the blank *after* the number and then carried, effectively computing `(n << 1) + 1` instead of `n + 1`. Fixed with a proper scan-right-then-add-with-carry algorithm.
+
+9. **Copy machine looped infinitely (Phase 1)** — The copy machine didn't track the separator between original and copied blocks, causing it to keep writing 1s at the end forever. Fixed with a proper separator-aware algorithm.
+
+10. **Busy Beaver BB(4) table was wrong (Phase 1)** — The original BB(4) transition table was incomplete (missing blank rules) and used an incorrect halt state. Fixed with the verified champion table from BusyBeaverWiki.
+
 ## License
 
 MIT
