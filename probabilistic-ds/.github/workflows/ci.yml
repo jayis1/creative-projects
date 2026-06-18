@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    paths:
+      - "probabilistic-ds/**"
+  pull_request:
+    paths:
+      - "probabilistic-ds/**"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        working-directory: probabilistic-ds
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run tests
+        working-directory: probabilistic-ds
+        run: |
+          python -m pytest tests/ -v --tb=short
+
+      - name: Run smoke test (imports)
+        working-directory: probabilistic-ds
+        run: |
+          python -c "from pds import *; print('All imports OK')"
+          python -c "from pds import list_structures; print(list_structures())"

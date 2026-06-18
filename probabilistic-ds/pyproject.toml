@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "probabilistic-ds"
+version = "3.0.0"
+description = "A collection of memory-efficient probabilistic data structures in pure Python"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Creative Projects"},
+]
+keywords = [
+    "bloom-filter", "cuckoo-filter", "count-min-sketch", "hyperloglog",
+    "t-digest", "top-k", "minhash", "lsh", "reservoir-sampling",
+    "probabilistic", "data-structures", "streaming",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+[project.optional-dependencies]
+yaml = ["pyyaml>=6.0"]
+test = ["pytest>=7.0"]
+dev = ["pyyaml>=6.0", "pytest>=7.0"]
+
+[project.scripts]
+pds = "pds.cli:main"
+
+[tool.setuptools]
+packages = ["pds"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]

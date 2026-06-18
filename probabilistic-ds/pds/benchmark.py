@@ -9,6 +9,7 @@ import sys
 from . import (
     BloomFilter, CountingBloomFilter, CuckooFilter,
     CountMinSketch, HyperLogLog, TopK, TDigest, SkipList,
+    MinHash, KMV, BlockedBloomFilter,
 )
 from .conservative_cms import ConservativeCountMinSketch
 from .scalable_bloom import ScalableBloomFilter
@@ -187,14 +188,94 @@ def benchmark_skiplist(n: int = 100000) -> dict:
     }
 
 
+def benchmark_blocked_bloom(n: int = 100000, error_rate: float = 0.01) -> dict:
+    """Benchmark a Blocked Bloom filter."""
+    bf = BlockedBloomFilter(capacity=n, error_rate=error_rate)
+    t0 = time.perf_counter()
+    for i in range(n):
+        bf.add(str(i))
+    add_time = time.perf_counter() - t0
+
+    t0 = time.perf_counter()
+    for i in range(n):
+        _ = str(i) in bf
+    lookup_time = time.perf_counter() - t0
+
+    fp = sum(1 for i in range(n, 2 * n) if str(i) in bf)
+    return {
+        "structure": "BlockedBloomFilter",
+        "items": n,
+        "add_throughput": n / add_time,
+        "lookup_throughput": n / lookup_time,
+        "false_positive_rate": fp / n,
+        "target_fpr": error_rate,
+        "memory_bytes": len(bf._bits),
+    }
+
+
+def benchmark_kmv(n: int = 500000, k: int = 4096) -> dict:
+    """Benchmark KMV cardinality estimation."""
+    kmv = KMV(k=k)
+    seen = set()
+    t0 = time.perf_counter()
+    for _ in range(n):
+        x = random.randint(0, 10**12)
+        s = str(x)
+        kmv.add(s)
+        seen.add(x)
+    add_time = time.perf_counter() - t0
+    est = kmv.estimate()
+    return {
+        "structure": "KMV",
+        "items": n,
+        "distinct": len(seen),
+        "estimated": est,
+        "relative_error": abs(est - len(seen)) / len(seen),
+        "add_throughput": n / add_time,
+        "memory_bytes": len(kmv._values) * 8,
+    }
+
+
+def benchmark_minhash(n: int = 50000, num_perm: int = 128) -> dict:
+    """Benchmark MinHash similarity estimation."""
+    words1 = [f"word-{random.randint(0, 999)}" for _ in range(n)]
+    words2 = [f"word-{random.randint(0, 999)}" for _ in range(n)]
+    true_set1, true_set2 = set(words1), set(words2)
+    true_jaccard = len(true_set1 & true_set2) / len(true_set1 | true_set2)
+
+    m1 = MinHash(num_perm=num_perm)
+    m2 = MinHash(num_perm=num_perm)
+    t0 = time.perf_counter()
+    for w in words1:
+        m1.add(w)
+    for w in words2:
+        m2.add(w)
+    add_time = time.perf_counter() - t0
+
+    est_jaccard = m1.jaccard(m2)
+    return {
+        "structure": "MinHash",
+        "items": n,
+        "num_perm": num_perm,
+        "true_jaccard": true_jaccard,
+        "estimated_jaccard": est_jaccard,
+        "absolute_error": abs(est_jaccard - true_jaccard),
+        "add_throughput": (2 * n) / add_time,
+        "memory_bytes": num_perm * 8,
+    }
+
+
 def run_all_benchmarks(seed: int = 42) -> list[dict]:
     """Run all benchmarks and return a list of result dicts."""
     random.seed(seed)
     results = []
     results.append(benchmark_bloom(n=50000))
+    results.append(benchmark_blocked_bloom(n=50000))
     results.append(benchmark_cuckoo(n=20000))
     results.extend(benchmark_cms(n=50000, distinct=500))
     results.append(benchmark_hll(n=500000))
+    results.append(benchmark_kmv(n=500000))
     results.append(benchmark_tdigest(n=50000))
+    results.append(benchmark_minhash(n=50000))
     results.append(benchmark_skiplist(n=50000))
     return results

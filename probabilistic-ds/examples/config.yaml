@@ -1,0 +1,65 @@
+# Example configuration for the probabilistic-ds toolkit.
+# This file demonstrates all supported structures and their parameters.
+# Use with: python cli.py config examples/config.yaml --populate < data.txt
+
+# ─── Bloom Filter: URL deduplication ───
+structure: bloom
+capacity: 1000000
+error_rate: 0.001
+
+# ─── Counting Bloom Filter: with deletion support ───
+# structure: counting-bloom
+# capacity: 100000
+# error_rate: 0.01
+
+# ─── Scalable Bloom Filter: unknown size ───
+# structure: scalable-bloom
+# initial_capacity: 1000
+# error_rate: 0.01
+# growth: 2.0
+# tighten: 0.9
+
+# ─── Blocked Bloom Filter: cache-friendly ───
+# structure: blocked-bloom
+# capacity: 100000
+# error_rate: 0.01
+
+# ─── Cuckoo Filter: membership + deletion ───
+# structure: cuckoo
+# capacity: 100000
+# fingerprint_bits: 16
+
+# ─── Count-Min Sketch: frequency estimation ───
+# structure: cms
+# error: 0.001
+# confidence: 0.999
+
+# ─── Conservative CMS: lower overestimation ───
+# structure: conservative-cms
+# error: 0.001
+# confidence: 0.999
+
+# ─── HyperLogLog: cardinality estimation ───
+# structure: hll
+# precision: 14
+
+# ─── KMV: alternative cardinality estimator ───
+# structure: kmv
+# k: 4096
+
+# ─── MinHash: set similarity ───
+# structure: minhash
+# num_perm: 128
+# seed: 0
+
+# ─── Top-K: heavy hitters ───
+# structure: topk
+# k: 100
+
+# ─── T-Digest: streaming quantiles ───
+# structure: tdigest
+# compression: 200
+
+# ─── Reservoir Sampler: uniform stream sampling ───
+# structure: reservoir
+# k: 1000
