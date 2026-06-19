@@ -19,7 +19,7 @@ from .vm import VM
 from .value import Value, Object
 from .errors import MiniLangError, LexError, ParseError
 
-__version__ = "1.0.0"
+__version__ = "2.0.0"
 
 __all__ = [
     "Lexer", "Token", "TokenKind",

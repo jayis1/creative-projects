@@ -31,6 +31,7 @@ class TokenKind(Enum):
     FN = auto()
     IF = auto()
     ELSE = auto()
+    ELIF = auto()
     WHILE = auto()
     FOR = auto()
     IN = auto()
@@ -86,6 +87,7 @@ KEYWORDS: dict[str, TokenKind] = {
     "fn": TokenKind.FN,
     "if": TokenKind.IF,
     "else": TokenKind.ELSE,
+    "elif": TokenKind.ELIF,
     "while": TokenKind.WHILE,
     "for": TokenKind.FOR,
     "in": TokenKind.IN,

@@ -24,6 +24,16 @@ from .bytecode import Instruction, OpCode
 from .compiler import CompiledProgram
 
 
+def _trunc_div(a: int, b: int) -> int:
+    """Truncate-toward-zero integer division (matches VM's ``_int_div``).
+
+    Python's ``//`` floors toward negative infinity, but MiniLang (like
+    C, Java, and Rust) truncates toward zero.
+    """
+    q = abs(a) // abs(b)
+    return -q if (a < 0) != (b < 0) else q
+
+
 # --------------------------------------------------------------------------- #
 # AST-level passes                                                             #
 # --------------------------------------------------------------------------- #
@@ -126,8 +136,8 @@ class ConstantFolder:
             if op == "+": return IntLit(a + b, left.line, left.col)
             if op == "-": return IntLit(a - b, left.line, left.col)
             if op == "*": return IntLit(a * b, left.line, left.col)
-            if op == "/" and b != 0: return IntLit(a // b, left.line, left.col)
-            if op == "%" and b != 0: return IntLit(a % b, left.line, left.col)
+            if op == "/" and b != 0: return IntLit(_trunc_div(a, b), left.line, left.col)
+            if op == "%" and b != 0: return IntLit(a - _trunc_div(a, b) * b, left.line, left.col)
             if op == "<": return BoolLit(a < b, left.line, left.col)
             if op == "<=": return BoolLit(a <= b, left.line, left.col)
             if op == ">": return BoolLit(a > b, left.line, left.col)

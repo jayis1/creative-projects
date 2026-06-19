@@ -1,0 +1,6 @@
+{
+  "max_steps": 5000000,
+  "max_call_depth": 256,
+  "debug": false,
+  "optimize": true
+}

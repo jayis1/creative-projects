@@ -26,7 +26,12 @@ from .types import TypeChecker
 
 
 # Built-in function names known to the compiler and VM.
-BUILTIN_NAMES = {"print", "len", "push", "str", "int", "abs", "max", "min", "assert"}
+BUILTIN_NAMES = {
+    "print", "len", "push", "str", "int", "abs", "max", "min", "assert",
+    "upper", "lower", "contains", "slice", "charAt", "split",
+    "pop", "reverse", "concat", "find", "sort", "sum",
+    "typeof", "time", "randint",
+}
 
 
 @dataclass
@@ -74,8 +79,10 @@ class Compiler:
         self.functions: dict[str, Chunk] = {}
         self._scope_stack: list[dict[str, int]] = [{}]
         self._loop_stack: list[tuple[int, int]] = []  # (break_target, continue_target) indices
-        self._break_targets: list[int] = []
-        self._continue_targets: list[int] = []
+        # Stack of (break_targets, continue_targets) — one entry per active loop.
+        # Using a proper stack (instead of flat lists that get reset) ensures
+        # break/continue targets from outer loops survive nested loops.
+        self._loop_break_continue: list[tuple[list[int], list[int]]] = []
         self._current_chunk: Chunk = self.main
         self._func_ret: bool = False  # True if inside a function
 
@@ -179,12 +186,14 @@ class Compiler:
             if not self._loop_stack:
                 raise CompileError("'break' outside loop", stmt.line, stmt.col)
             brk_idx = self._current_chunk.add(OpCode.JUMP, 0, stmt.line)
-            self._break_targets.append(brk_idx)
+            # Push onto the innermost loop's break target list.
+            self._loop_break_continue[-1][0].append(brk_idx)
         elif isinstance(stmt, ContinueStmt):
             if not self._loop_stack:
                 raise CompileError("'continue' outside loop", stmt.line, stmt.col)
             cont_idx = self._current_chunk.add(OpCode.JUMP, 0, stmt.line)
-            self._continue_targets.append(cont_idx)
+            # Push onto the innermost loop's continue target list.
+            self._loop_break_continue[-1][1].append(cont_idx)
         elif isinstance(stmt, FuncDecl):
             pass  # already compiled in compile()
         else:
@@ -216,8 +225,9 @@ class Compiler:
         self._compile_expr(stmt.cond, scope)
         jfalse = self._current_chunk.add(OpCode.JUMP_IF_FALSE, 0, stmt.line)
         body_scope = ScopeFrame(parent=scope)
-        self._break_targets = []
-        self._continue_targets = []
+        # Push a fresh (break_targets, continue_targets) entry for this loop.
+        # This preserves outer loop targets when compiling nested loops.
+        self._loop_break_continue.append(([], []))
         self._loop_stack.append((0, start))
         try:
             self._compile_block(stmt.body, body_scope)
@@ -226,12 +236,12 @@ class Compiler:
         self._current_chunk.add(OpCode.JUMP, start, stmt.line)
         end = len(self._current_chunk.code)
         self._current_chunk.patch(jfalse, end)
-        for brk in getattr(self, "_break_targets", []):
+        break_targets, continue_targets = self._loop_break_continue.pop()
+        for brk in break_targets:
             self._current_chunk.patch(brk, end)
         # In while loops, continue jumps to the condition (start).
-        for ct in self._continue_targets:
+        for ct in continue_targets:
             self._current_chunk.code[ct].operand = start
-        self._break_targets = []
 
     def _compile_for(self, stmt: ForStmt, scope: "ScopeFrame") -> None:
         # Allocate loop variable as a new local.
@@ -251,11 +261,9 @@ class Compiler:
         self._current_chunk.add(OpCode.LT, 0, stmt.line)
         jfalse = self._current_chunk.add(OpCode.JUMP_IF_FALSE, 0, stmt.line)
         body_scope = ScopeFrame(parent=scope)
-        # Re-bind the loop variable in the body scope (already in parent).
-        self._break_targets = []
-        # continue should jump to the increment section, not the comparison.
-        # We'll record the increment position after the body.
-        self._continue_targets: list[int] = []
+        # Push a fresh (break_targets, continue_targets) entry for this loop.
+        # This preserves outer loop targets when compiling nested loops.
+        self._loop_break_continue.append(([], []))
         self._loop_stack.append((0, -1))  # -1 = placeholder, patched below
         try:
             self._compile_block(stmt.body, body_scope)
@@ -264,7 +272,8 @@ class Compiler:
         # Increment section: continue jumps here.
         increment_pc = len(self._current_chunk.code)
         # Patch all continue jumps to point to the increment section.
-        for ct in self._continue_targets:
+        break_targets, continue_targets = self._loop_break_continue.pop()
+        for ct in continue_targets:
             self._current_chunk.code[ct].operand = increment_pc
         self._current_chunk.add(OpCode.LOAD_LOCAL, slot, stmt.line)
         self._current_chunk.add(OpCode.PUSH_INT, 1, stmt.line)
@@ -273,9 +282,8 @@ class Compiler:
         self._current_chunk.add(OpCode.JUMP, start, stmt.line)
         end = len(self._current_chunk.code)
         self._current_chunk.patch(jfalse, end)
-        for brk in getattr(self, "_break_targets", []):
+        for brk in break_targets:
             self._current_chunk.patch(brk, end)
-        self._break_targets = []
 
     def _compile_return(self, stmt: ReturnStmt, scope: "ScopeFrame") -> None:
         if stmt.value is None:
@@ -433,19 +441,30 @@ class ScopeFrame:
         return self._counter[0]
 
 
-def compile_program(source: str, name: str = "<string>", debug: bool = False) -> CompiledProgram:
-    """Full pipeline: lex → parse → type-check → compile.
+def compile_program(source: str, name: str = "<string>", debug: bool = False,
+                    optimize_ast: bool = False) -> CompiledProgram:
+    """Full pipeline: lex → parse → (optionally optimize) → type-check → compile.
 
     The *source* string is attached to errors so that :meth:`MiniLangError.format`
     can show source context with a caret.
+
+    When *optimize_ast* is True, the AST optimizer (constant folding + dead-code
+    elimination) runs before type-checking.
     """
     from .lexer import tokenize
     from .parser import Parser
+    from .optimizer import optimize
     try:
         prog = Parser(tokenize(source, name), name).parse_program()
     except MiniLangError as e:
         e.source = source
         raise
+    if optimize_ast:
+        try:
+            prog = optimize(prog)
+        except MiniLangError as e:
+            e.source = source
+            raise
     tc = TypeChecker()
     try:
         tc.check(prog)

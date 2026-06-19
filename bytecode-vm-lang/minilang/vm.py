@@ -49,10 +49,11 @@ class VM:
     """The MiniLang bytecode interpreter."""
 
     def __init__(self, program: CompiledProgram, debug: bool = False,
-                 max_steps: int = 10_000_000):
+                 max_steps: int = 10_000_000, max_call_depth: int = 512):
         self.program = program
         self.debug = debug
         self.max_steps = max_steps
+        self.max_call_depth = max_call_depth
         self.output: list[str] = []
         self.heap: list[Object] = []   # all allocated heap objects
         self.gc_threshold = 1024
@@ -65,6 +66,7 @@ class VM:
     def run(self) -> Value:
         """Execute the main chunk and return the last top-of-stack value."""
         frame = Frame(self.program.main, self.program.main.nlocals)
+        self._call_depth = 0
         return self._execute(frame)
 
     # ------------------------------------------------------------------ #
@@ -117,10 +119,10 @@ class VM:
             elif op == OpCode.MUL:
                 last_value = self._binop_int(frame, lambda a, b: a * b, "*")
             elif op == OpCode.DIV:
-                last_value = self._binop_int(frame, lambda a, b: a // b, "/",
+                last_value = self._binop_int(frame, self._int_div, "/",
                                              check_zero=True)
             elif op == OpCode.MOD:
-                last_value = self._binop_int(frame, lambda a, b: a % b, "%",
+                last_value = self._binop_int(frame, self._int_mod, "%",
                                              check_zero=True)
             elif op == OpCode.NEG:
                 v = self._pop(frame)
@@ -240,6 +242,13 @@ class VM:
                     del frame.stack[-arg_count:]
                 else:
                     args = []
+                # Call depth limit — prevents Python stack overflow on
+                # deep recursion before the step limit can trigger.
+                self._call_depth += 1
+                if self._call_depth > self.max_call_depth:
+                    raise VMError(
+                        f"call depth limit exceeded ({self.max_call_depth}) — "
+                        f"likely infinite recursion")
                 new_frame = Frame(chunk, max(chunk.nlocals, chunk.nparams),
                                   caller=frame, return_pc=frame.pc)
                 for i, v in enumerate(args):
@@ -250,6 +259,9 @@ class VM:
                 ret_val = Value.nil()
                 if has_val:
                     ret_val = self._pop(frame)
+                # Decrement call depth as we return to caller.
+                if self._call_depth > 0:
+                    self._call_depth -= 1
                 if frame.caller is None:
                     return ret_val
                 caller = frame.caller
@@ -287,6 +299,27 @@ class VM:
     def _check_local(self, frame: Frame, slot: int) -> None:
         if slot < 0 or slot >= len(frame.locals_):
             raise VMError(f"local slot {slot} out of range (have {len(frame.locals_)})")
+
+    @staticmethod
+    def _int_div(a: int, b: int) -> int:
+        """Truncate-toward-zero integer division (C/Java/Rust semantics).
+
+        Python's ``//`` floors toward negative infinity, but most languages
+        truncate toward zero.  ``-7 / 2`` should be ``-3``, not ``-4``.
+        """
+        q = abs(a) // abs(b)
+        if (a < 0) != (b < 0):
+            return -q
+        return q
+
+    @staticmethod
+    def _int_mod(a: int, b: int) -> int:
+        """Modulo consistent with truncate-toward-zero division.
+
+        ``a % b`` satisfies ``a == (a // b) * b + (a % b)`` under our
+        truncating division, so the sign of the result matches the dividend.
+        """
+        return a - VM._int_div(a, b) * b
 
     def _binop_int(self, frame: Frame, fn, opname: str, check_zero: bool = False) -> Value:
         b = self._pop(frame)
@@ -431,6 +464,147 @@ class VM:
                 raise VMError("assertion failed")
             return Value.nil()
 
+        # ---- string manipulation builtins ---- #
+
+        def _upper(args: list[Value]) -> Value:
+            v = args[0]
+            if v.tag != ValueTag.STRING:
+                raise VMError(f"upper() expects string, got {v.tag.name}")
+            return Value.str_(v.payload.upper())
+
+        def _lower(args: list[Value]) -> Value:
+            v = args[0]
+            if v.tag != ValueTag.STRING:
+                raise VMError(f"lower() expects string, got {v.tag.name}")
+            return Value.str_(v.payload.lower())
+
+        def _contains(args: list[Value]) -> Value:
+            s, sub = args[0], args[1]
+            if s.tag != ValueTag.STRING or sub.tag != ValueTag.STRING:
+                raise VMError("contains() expects two strings")
+            return Value.bool_(sub.payload in s.payload)
+
+        def _slice(args: list[Value]) -> Value:
+            s, start, end = args[0], args[1], args[2]
+            if s.tag != ValueTag.STRING:
+                raise VMError(f"slice() expects string, got {s.tag.name}")
+            if start.tag != ValueTag.INT or end.tag != ValueTag.INT:
+                raise VMError("slice() start/end must be int")
+            st = max(0, start.payload)
+            en = min(len(s.payload), end.payload)
+            if st > en:
+                return Value.str_("")
+            return Value.str_(s.payload[st:en])
+
+        def _charat(args: list[Value]) -> Value:
+            s, idx = args[0], args[1]
+            if s.tag != ValueTag.STRING:
+                raise VMError(f"charAt() expects string, got {s.tag.name}")
+            if idx.tag != ValueTag.INT:
+                raise VMError("charAt() index must be int")
+            i = idx.payload
+            if i < 0 or i >= len(s.payload):
+                raise VMError(f"charAt index {i} out of bounds (len {len(s.payload)})")
+            return Value.str_(s.payload[i])
+
+        def _split(args: list[Value]) -> Value:
+            s, sep = args[0], args[1]
+            if s.tag != ValueTag.STRING or sep.tag != ValueTag.STRING:
+                raise VMError("split() expects two strings")
+            parts = s.payload.split(sep.payload)
+            items = [Value.str_(p) for p in parts]
+            self.heap.append(items)
+            return Value.array(items)
+
+        # ---- array manipulation builtins ---- #
+
+        def _pop(args: list[Value]) -> Value:
+            arr_v = args[0]
+            if arr_v.tag != ValueTag.ARRAY:
+                raise VMError(f"pop() expects array, got {arr_v.tag.name}")
+            if not arr_v.payload:
+                raise VMError("pop() on empty array")
+            return arr_v.payload.pop()
+
+        def _reverse(args: list[Value]) -> Value:
+            arr_v = args[0]
+            if arr_v.tag != ValueTag.ARRAY:
+                raise VMError(f"reverse() expects array, got {arr_v.tag.name}")
+            items = list(reversed(arr_v.payload))
+            self.heap.append(items)
+            return Value.array(items)
+
+        def _concat(args: list[Value]) -> Value:
+            a, b = args[0], args[1]
+            if a.tag != ValueTag.ARRAY or b.tag != ValueTag.ARRAY:
+                raise VMError("concat() expects two arrays")
+            items = list(a.payload) + list(b.payload)
+            self.heap.append(items)
+            return Value.array(items)
+
+        def _find(args: list[Value]) -> Value:
+            arr_v, target = args[0], args[1]
+            if arr_v.tag != ValueTag.ARRAY:
+                raise VMError(f"find() expects array, got {arr_v.tag.name}")
+            for i, item in enumerate(arr_v.payload):
+                if item.equals(target):
+                    return Value.int(i)
+            return Value.int(-1)
+
+        def _sort(args: list[Value]) -> Value:
+            arr_v = args[0]
+            if arr_v.tag != ValueTag.ARRAY:
+                raise VMError(f"sort() expects array, got {arr_v.tag.name}")
+            # Sort a copy so the original is not mutated.
+            items = sorted(arr_v.payload, key=lambda v: v.payload)
+            self.heap.append(items)
+            return Value.array(items)
+
+        def _sum(args: list[Value]) -> Value:
+            arr_v = args[0]
+            if arr_v.tag != ValueTag.ARRAY:
+                raise VMError(f"sum() expects array, got {arr_v.tag.name}")
+            total = 0
+            for item in arr_v.payload:
+                if item.tag != ValueTag.INT:
+                    raise VMError("sum() requires array of ints")
+                total += item.payload
+            return Value.int(total)
+
+        # ---- type introspection ---- #
+
+        def _typeof(args: list[Value]) -> Value:
+            v = args[0]
+            names = {
+                ValueTag.INT: "int",
+                ValueTag.STRING: "string",
+                ValueTag.BOOL: "bool",
+                ValueTag.NIL: "unit",
+                ValueTag.ARRAY: "array",
+                ValueTag.CLOSURE: "fn",
+                ValueTag.BOUND: "fn",
+            }
+            return Value.str_(names.get(v.tag, "unknown"))
+
+        # ---- time builtin ---- #
+
+        def _time(args: list[Value]) -> Value:
+            import time as _time
+            return Value.int(int(_time.time()))
+
+        # ---- random builtin ---- #
+
+        def _randint(args: list[Value]) -> Value:
+            import random as _random
+            a, b = args[0], args[1]
+            if a.tag != ValueTag.INT or b.tag != ValueTag.INT:
+                raise VMError("randint() expects two int args")
+            return Value.int(_random.randint(a.payload, b.payload))
+
+        def _random(args: list[Value]) -> Value:
+            import random as _random
+            return Value.int(_random.randint(0, args[0].payload - 1)) if args else Value.int(0)
+
         builtins["print"] = BoundFunc("print", 1, _print)
         builtins["len"] = BoundFunc("len", 1, _len)
         builtins["push"] = BoundFunc("push", 2, _push)
@@ -440,4 +614,23 @@ class VM:
         builtins["max"] = BoundFunc("max", 2, _max)
         builtins["min"] = BoundFunc("min", 2, _min)
         builtins["assert"] = BoundFunc("assert", -1, _assert)  # variable arity
+        # String builtins
+        builtins["upper"] = BoundFunc("upper", 1, _upper)
+        builtins["lower"] = BoundFunc("lower", 1, _lower)
+        builtins["contains"] = BoundFunc("contains", 2, _contains)
+        builtins["slice"] = BoundFunc("slice", 3, _slice)
+        builtins["charAt"] = BoundFunc("charAt", 2, _charat)
+        builtins["split"] = BoundFunc("split", 2, _split)
+        # Array builtins
+        builtins["pop"] = BoundFunc("pop", 1, _pop)
+        builtins["reverse"] = BoundFunc("reverse", 1, _reverse)
+        builtins["concat"] = BoundFunc("concat", 2, _concat)
+        builtins["find"] = BoundFunc("find", 2, _find)
+        builtins["sort"] = BoundFunc("sort", 1, _sort)
+        builtins["sum"] = BoundFunc("sum", 1, _sum)
+        # Type introspection
+        builtins["typeof"] = BoundFunc("typeof", 1, _typeof)
+        # Utility
+        builtins["time"] = BoundFunc("time", 0, _time)
+        builtins["randint"] = BoundFunc("randint", 2, _randint)
         return builtins

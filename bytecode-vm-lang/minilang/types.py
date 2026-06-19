@@ -86,16 +86,32 @@ class TypeChecker:
     """Walks the AST, checks types, allocates local slots, returns metadata."""
 
     # Built-in function signatures: name -> (param_types, return_type)
+    # Only used as a membership check; actual type checking is in _check_call.
     BUILTINS: dict[str, tuple[tuple[TypeNode, ...], TypeNode]] = {
-        "print": ((IntType(),), UnitType()),  # will accept any type
-        "len": ((ArrayType(IntType()),), IntType()),  # array or string
-        "push": ((ArrayType(IntType()), IntType()), UnitType()),  # any array + any
-        "str": ((IntType(),), StringType()),  # any type
-        "int": ((IntType(),), IntType()),  # string/bool/int
+        "print": ((IntType(),), UnitType()),
+        "len": ((ArrayType(IntType()),), IntType()),
+        "push": ((ArrayType(IntType()), IntType()), UnitType()),
+        "str": ((IntType(),), StringType()),
+        "int": ((IntType(),), IntType()),
         "abs": ((IntType(),), IntType()),
         "max": ((IntType(), IntType()), IntType()),
         "min": ((IntType(), IntType()), IntType()),
-        "assert": ((IntType(),), UnitType()),  # bool + optional string message
+        "assert": ((IntType(),), UnitType()),
+        "upper": ((StringType(),), StringType()),
+        "lower": ((StringType(),), StringType()),
+        "contains": ((StringType(), StringType()), BoolType()),
+        "slice": ((StringType(), IntType(), IntType()), StringType()),
+        "charAt": ((StringType(), IntType()), StringType()),
+        "split": ((StringType(), StringType()), ArrayType(StringType())),
+        "pop": ((ArrayType(IntType()),), IntType()),
+        "reverse": ((ArrayType(IntType()),), ArrayType(IntType())),
+        "concat": ((ArrayType(IntType()), ArrayType(IntType())), ArrayType(IntType())),
+        "find": ((ArrayType(IntType()), IntType()), IntType()),
+        "sort": ((ArrayType(IntType()),), ArrayType(IntType())),
+        "sum": ((ArrayType(IntType()),), IntType()),
+        "typeof": ((IntType(),), StringType()),
+        "time": ((), IntType()),
+        "randint": ((IntType(), IntType()), IntType()),
     }
 
     def __init__(self):
@@ -413,6 +429,115 @@ class TypeChecker:
                     if not isinstance(mt, StringType):
                         raise TypeError("assert message must be string", expr.line, expr.col)
                 return UnitType()
+            # ---- string manipulation builtins ---- #
+            if name == "upper" or name == "lower":
+                if len(expr.args) != 1:
+                    raise TypeError(f"{name} expects 1 argument", expr.line, expr.col)
+                at = self._check_expr(expr.args[0], scope)
+                if not isinstance(at, StringType):
+                    raise TypeError(f"{name}() expects string, got {at}", expr.line, expr.col)
+                return StringType()
+            if name == "contains":
+                if len(expr.args) != 2:
+                    raise TypeError("contains expects 2 arguments", expr.line, expr.col)
+                at1 = self._check_expr(expr.args[0], scope)
+                at2 = self._check_expr(expr.args[1], scope)
+                if not isinstance(at1, StringType) or not isinstance(at2, StringType):
+                    raise TypeError("contains() expects two strings", expr.line, expr.col)
+                return BoolType()
+            if name == "slice":
+                if len(expr.args) != 3:
+                    raise TypeError("slice expects 3 arguments", expr.line, expr.col)
+                at = self._check_expr(expr.args[0], scope)
+                st = self._check_expr(expr.args[1], scope)
+                en = self._check_expr(expr.args[2], scope)
+                if not isinstance(at, StringType):
+                    raise TypeError(f"slice() expects string, got {at}", expr.line, expr.col)
+                if not isinstance(st, IntType) or not isinstance(en, IntType):
+                    raise TypeError("slice() start/end must be int", expr.line, expr.col)
+                return StringType()
+            if name == "charAt":
+                if len(expr.args) != 2:
+                    raise TypeError("charAt expects 2 arguments", expr.line, expr.col)
+                at = self._check_expr(expr.args[0], scope)
+                it = self._check_expr(expr.args[1], scope)
+                if not isinstance(at, StringType):
+                    raise TypeError(f"charAt() expects string, got {at}", expr.line, expr.col)
+                if not isinstance(it, IntType):
+                    raise TypeError("charAt() index must be int", expr.line, expr.col)
+                return StringType()
+            if name == "split":
+                if len(expr.args) != 2:
+                    raise TypeError("split expects 2 arguments", expr.line, expr.col)
+                at1 = self._check_expr(expr.args[0], scope)
+                at2 = self._check_expr(expr.args[1], scope)
+                if not isinstance(at1, StringType) or not isinstance(at2, StringType):
+                    raise TypeError("split() expects two strings", expr.line, expr.col)
+                return ArrayType(StringType())
+            # ---- array manipulation builtins ---- #
+            if name == "pop":
+                if len(expr.args) != 1:
+                    raise TypeError("pop expects 1 argument", expr.line, expr.col)
+                at = self._check_expr(expr.args[0], scope)
+                if not isinstance(at, ArrayType):
+                    raise TypeError(f"pop() expects array, got {at}", expr.line, expr.col)
+                return at.element
+            if name == "reverse":
+                if len(expr.args) != 1:
+                    raise TypeError("reverse expects 1 argument", expr.line, expr.col)
+                at = self._check_expr(expr.args[0], scope)
+                if not isinstance(at, ArrayType):
+                    raise TypeError(f"reverse() expects array, got {at}", expr.line, expr.col)
+                return at
+            if name == "concat":
+                if len(expr.args) != 2:
+                    raise TypeError("concat expects 2 arguments", expr.line, expr.col)
+                at1 = self._check_expr(expr.args[0], scope)
+                at2 = self._check_expr(expr.args[1], scope)
+                if not isinstance(at1, ArrayType) or not isinstance(at2, ArrayType):
+                    raise TypeError("concat() expects two arrays", expr.line, expr.col)
+                return at1
+            if name == "find":
+                if len(expr.args) != 2:
+                    raise TypeError("find expects 2 arguments", expr.line, expr.col)
+                at = self._check_expr(expr.args[0], scope)
+                self._check_expr(expr.args[1], scope)
+                if not isinstance(at, ArrayType):
+                    raise TypeError(f"find() expects array, got {at}", expr.line, expr.col)
+                return IntType()
+            if name == "sort":
+                if len(expr.args) != 1:
+                    raise TypeError("sort expects 1 argument", expr.line, expr.col)
+                at = self._check_expr(expr.args[0], scope)
+                if not isinstance(at, ArrayType):
+                    raise TypeError(f"sort() expects array, got {at}", expr.line, expr.col)
+                return at
+            if name == "sum":
+                if len(expr.args) != 1:
+                    raise TypeError("sum expects 1 argument", expr.line, expr.col)
+                at = self._check_expr(expr.args[0], scope)
+                if not isinstance(at, ArrayType):
+                    raise TypeError(f"sum() expects array, got {at}", expr.line, expr.col)
+                return IntType()
+            # ---- type introspection ---- #
+            if name == "typeof":
+                if len(expr.args) != 1:
+                    raise TypeError("typeof expects 1 argument", expr.line, expr.col)
+                self._check_expr(expr.args[0], scope)
+                return StringType()
+            # ---- utility builtins ---- #
+            if name == "time":
+                if len(expr.args) != 0:
+                    raise TypeError("time expects 0 arguments", expr.line, expr.col)
+                return IntType()
+            if name == "randint":
+                if len(expr.args) != 2:
+                    raise TypeError("randint expects 2 arguments", expr.line, expr.col)
+                at1 = self._check_expr(expr.args[0], scope)
+                at2 = self._check_expr(expr.args[1], scope)
+                if not isinstance(at1, IntType) or not isinstance(at2, IntType):
+                    raise TypeError("randint() expects two ints", expr.line, expr.col)
+                return IntType()
             raise TypeError(f"unknown builtin {name}", expr.line, expr.col)
         else:
             ct = self._check_expr(expr.callee, scope)

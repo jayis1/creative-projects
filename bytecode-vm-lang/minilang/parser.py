@@ -128,7 +128,7 @@ class Parser:
         return ExprStmt(expr)
 
     def _if_stmt(self) -> IfStmt:
-        tok = self._advance()  # 'if'
+        tok = self._advance()  # 'if' or 'elif'
         cond = self._expression()
         then_branch = self._block()
         else_branch: Block | None = None
@@ -137,8 +137,16 @@ class Parser:
                 # else if → wrap nested if in a block
                 nested = self._if_stmt()
                 else_branch = Block((nested,), tok.line, tok.col)
+            elif self._check(TokenKind.ELIF):
+                # elif chain → parse as nested if in a block
+                nested = self._if_stmt()
+                else_branch = Block((nested,), tok.line, tok.col)
             else:
                 else_branch = self._block()
+        elif self._check(TokenKind.ELIF):
+            # elif without else: parse elif chain as else branch
+            nested = self._if_stmt()
+            else_branch = Block((nested,), tok.line, tok.col)
         return IfStmt(cond, then_branch, else_branch, tok.line, tok.col)
 
     def _while_stmt(self) -> WhileStmt:
