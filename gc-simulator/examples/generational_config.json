@@ -1,0 +1,15 @@
+{
+  "heap_size": 512,
+  "collector": "generational",
+  "allocator": "bump",
+  "allocator_policy": "first_fit",
+  "scenario": "churn",
+  "scenario_params": {
+    "n_short": 100,
+    "n_long": 5,
+    "obj_size": 4
+  },
+  "num_collections": 5,
+  "output_format": "text",
+  "seed": 42
+}

@@ -8,12 +8,18 @@ building allocation scenarios, running collections and inspecting results.
 It also provides several ready-made *scenario* generators (linked lists,
 binary trees, random graphs) that produce realistic object-graph shapes for
 benchmarking different collectors.
+
+Event tracing
+-------------
+Pass ``trace=True`` to record every allocation, root, link, and collection
+as an :class:`~gc_sim.events.Event`.  Traces can be exported as JSON and
+replayed on different collectors via :mod:`gc_sim.replay`.
 """
 
 from __future__ import annotations
 
 import random
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from .heap import Heap, Object, ObjectRef, RootSet
 from .allocators import BumpAllocator, FreeListAllocator, Allocator
@@ -27,6 +33,7 @@ from .collectors import (
     get_collector,
 )
 from .stats import StatsTracker, CollectionStats
+from .events import EventTracer, EventType
 
 
 class GCSimulator:
@@ -43,6 +50,9 @@ class GCSimulator:
         Allocator name (``"bump"`` or ``"free_list"``).
     allocator_policy : str
         Free-list policy (``"first_fit"``, ``"best_fit"``, ``"worst_fit"``).
+    trace : bool
+        If ``True``, record every operation as an :class:`~gc_sim.events.Event`
+        for later replay and analysis.
     **collector_kwargs
         Extra keyword arguments forwarded to the collector constructor.
     """
@@ -53,11 +63,14 @@ class GCSimulator:
         collector: str = "mark_sweep",
         allocator: str = "bump",
         allocator_policy: str = "first_fit",
+        *,
+        trace: bool = False,
         **collector_kwargs,
     ):
         self.heap = Heap(heap_size)
         self.roots = RootSet()
         self.stats = StatsTracker()
+        self.tracer: Optional[EventTracer] = EventTracer() if trace else None
 
         # build allocator
         if allocator == "bump":
@@ -86,6 +99,8 @@ class GCSimulator:
         """Allocate a new object of ``size`` cells.  Returns the
         :class:`Object`.  Raises :class:`~gc_sim.heap.HeapError` if the
         allocator cannot satisfy the request (out of memory)."""
+        if size <= 0:
+            raise ValueError("allocation size must be positive")
         obj = self.allocator.allocate(size, name=name)
         if obj is None:
             raise MemoryError(
@@ -96,6 +111,8 @@ class GCSimulator:
         # ref_count collector needs an initial count of 0
         if isinstance(self.collector, RefCountCollector):
             self.collector.refcounts[obj.oid] = 0
+        if self.tracer is not None:
+            self.tracer.record(EventType.ALLOCATE, size=size, name=name, oid=obj.oid)
         return obj
 
     # -- root management -----------------------------------------------------
@@ -103,18 +120,24 @@ class GCSimulator:
         self.roots.add(name, obj)
         if isinstance(self.collector, RefCountCollector):
             self.collector.update_count(obj, +1)
+        if self.tracer is not None:
+            self.tracer.record(EventType.ADD_ROOT, name=name, oid=obj.oid)
 
     def remove_root(self, name: str) -> None:
         obj = self.roots[name]
         self.roots.remove(name)
         if obj is not None and isinstance(self.collector, RefCountCollector):
             self.collector.update_count(obj, -1)
+        if self.tracer is not None:
+            self.tracer.record(EventType.REMOVE_ROOT, name=name)
 
     def clear_root(self, name: str) -> None:
         obj = self.roots[name]
         self.roots.clear_root(name)
         if obj is not None and isinstance(self.collector, RefCountCollector):
             self.collector.update_count(obj, -1)
+        if self.tracer is not None:
+            self.tracer.record(EventType.CLEAR_ROOT, name=name)
 
     # -- reference management ------------------------------------------------
     def link(self, src: Object, tgt: Object, name: str = "") -> ObjectRef:
@@ -130,6 +153,14 @@ class GCSimulator:
         ref = src.add_ref(tgt, name=name)
         if isinstance(self.collector, RefCountCollector):
             self.collector.update_count(tgt, +1)
+        if self.tracer is not None:
+            self.tracer.record(
+                EventType.LINK,
+                src_oid=src.oid,
+                tgt_oid=tgt.oid,
+                name=name,
+                ref_index=len(src.refs) - 1,
+            )
         return ref
 
     def weak_link(self, src: Object, tgt: Object, name: str = "") -> ObjectRef:
@@ -143,7 +174,15 @@ class GCSimulator:
             raise TypeError("src must be an Object")
         if not isinstance(tgt, Object):
             raise TypeError("tgt must be an Object")
-        return src.add_weak_ref(tgt, name=name)
+        ref = src.add_weak_ref(tgt, name=name)
+        if self.tracer is not None:
+            self.tracer.record(
+                EventType.WEAK_LINK,
+                src_oid=src.oid,
+                tgt_oid=tgt.oid,
+                name=name,
+            )
+        return ref
 
     def add_finalizer(self, obj: Object, fn) -> None:
         """Register a finalizer callback on ``obj``.
@@ -155,13 +194,22 @@ class GCSimulator:
         if not callable(fn):
             raise TypeError("fn must be callable")
         obj.add_finalizer(fn)
+        if self.tracer is not None:
+            self.tracer.record(EventType.ADD_FINALIZER, oid=obj.oid)
 
     def unlink(self, src: Object, ref: ObjectRef) -> None:
         """Remove ``ref`` from ``src.refs`` and decrement the target's count."""
         if ref in src.refs:
+            idx = src.refs.index(ref)
             src.refs.remove(ref)
             if ref.target is not None and isinstance(self.collector, RefCountCollector):
                 self.collector.update_count(ref.target, -1)
+            if self.tracer is not None:
+                self.tracer.record(
+                    EventType.UNLINK,
+                    src_oid=src.oid,
+                    ref_index=idx,
+                )
 
     # -- collection ---------------------------------------------------------
     def collect(self, **kwargs) -> CollectionStats:
@@ -177,6 +225,15 @@ class GCSimulator:
             # only reset if a compacting collector ran
             if self.collector_name in ("mark_compact", "copying"):
                 self.allocator.reset()
+        if self.tracer is not None:
+            self.tracer.record(
+                EventType.COLLECT,
+                cycle=stats.cycle,
+                collected=stats.collected,
+                bytes_freed=stats.bytes_freed,
+                pause_cells=stats.pause_cells,
+                force_major=kwargs.get("force_major", False),
+            )
         return stats
 
     # -- queries ------------------------------------------------------------
@@ -211,6 +268,14 @@ class GCSimulator:
     def scenario_linked_list(self, n: int, obj_size: int = 8) -> Object:
         """Allocate a singly-linked list of ``n`` nodes, root the head, and
         return the head object."""
+        if n <= 0:
+            raise ValueError("n must be positive")
+        if obj_size <= 0:
+            raise ValueError("obj_size must be positive")
+        if self.tracer is not None:
+            self.tracer.record(
+                EventType.SCENARIO_START, scenario="linked_list",
+                n=n, obj_size=obj_size)
         head = self.allocate(obj_size, name="list_head")
         self.add_root("list_head", head)
         cur = head
@@ -218,6 +283,8 @@ class GCSimulator:
             node = self.allocate(obj_size, name=f"node_{i}")
             self.link(cur, node, name="next")
             cur = node
+        if self.tracer is not None:
+            self.tracer.record(EventType.SCENARIO_END, scenario="linked_list")
         return head
 
     def scenario_binary_tree(self, depth: int, obj_size: int = 8) -> Object:
@@ -225,6 +292,12 @@ class GCSimulator:
         depth 0).  Returns the root object."""
         if depth < 0:
             raise ValueError("depth must be >= 0")
+        if obj_size <= 0:
+            raise ValueError("obj_size must be positive")
+        if self.tracer is not None:
+            self.tracer.record(
+                EventType.SCENARIO_START, scenario="binary_tree",
+                depth=depth, obj_size=obj_size)
         # build level by level
         root = self.allocate(obj_size, name="tree_root")
         self.add_root("tree_root", root)
@@ -239,6 +312,8 @@ class GCSimulator:
                 cur_level.append(left)
                 cur_level.append(right)
             prev_level = cur_level
+        if self.tracer is not None:
+            self.tracer.record(EventType.SCENARIO_END, scenario="binary_tree")
         return root
 
     def scenario_random_graph(self, n: int, edge_prob: float = 0.1,
@@ -247,6 +322,17 @@ class GCSimulator:
                                seed: Optional[int] = None) -> List[Object]:
         """Allocate ``n`` random objects with ``edge_prob`` probability of a
         reference between any pair, and root the first ``n_roots`` objects."""
+        if n <= 0:
+            raise ValueError("n must be positive")
+        if not 0.0 <= edge_prob <= 1.0:
+            raise ValueError("edge_prob must be in [0, 1]")
+        if obj_size <= 0:
+            raise ValueError("obj_size must be positive")
+        if self.tracer is not None:
+            self.tracer.record(
+                EventType.SCENARIO_START, scenario="random_graph",
+                n=n, edge_prob=edge_prob, obj_size=obj_size,
+                n_roots=n_roots, seed=seed)
         rng = random.Random(seed)
         objs: List[Object] = []
         for i in range(n):
@@ -257,7 +343,77 @@ class GCSimulator:
             for j in range(n):
                 if i != j and rng.random() < edge_prob:
                     self.link(objs[i], objs[j], name=f"ref_{i}_{j}")
+        if self.tracer is not None:
+            self.tracer.record(EventType.SCENARIO_END, scenario="random_graph")
         return objs
+
+    def scenario_churn(self, n_short: int = 100, n_long: int = 3,
+                        obj_size: int = 4) -> List[Object]:
+        """Allocation churn scenario: many short-lived objects plus a few
+        long-lived roots.  Models the *generational hypothesis* — most
+        objects die young.
+
+        Parameters
+        ----------
+        n_short : int
+            Number of short-lived (unrooted) objects to allocate.
+        n_long : int
+            Number of long-lived rooted objects.
+        obj_size : int
+            Object size in cells.
+        """
+        if n_short < 0 or n_long < 0 or obj_size <= 0:
+            raise ValueError("n_short, n_long >= 0 and obj_size > 0 required")
+        if self.tracer is not None:
+            self.tracer.record(
+                EventType.SCENARIO_START, scenario="churn",
+                n_short=n_short, n_long=n_long, obj_size=obj_size)
+        long_lived: List[Object] = []
+        for i in range(n_long):
+            obj = self.allocate(obj_size, name=f"long_{i}")
+            self.add_root(f"long_{i}", obj)
+            long_lived.append(obj)
+        for i in range(n_short):
+            obj = self.allocate(obj_size, name=f"short_{i}")
+            if i % 10 == 0 and long_lived:
+                ref = self.link(long_lived[i % len(long_lived)], obj,
+                                name=f"temp_{i}")
+                self.unlink(long_lived[i % len(long_lived)], ref)
+        if self.tracer is not None:
+            self.tracer.record(EventType.SCENARIO_END, scenario="churn")
+        return long_lived
+
+    def scenario_cycle_heavy(self, n_cycles: int = 10, n_roots: int = 3,
+                              obj_size: int = 4) -> List[Object]:
+        """Create many cyclic structures (challenging for ref counting).
+
+        Parameters
+        ----------
+        n_cycles : int
+            Number of 2-node cycles to create.
+        n_roots : int
+            Number of cycles that get a root (rest become garbage).
+        obj_size : int
+            Object size in cells.
+        """
+        if n_cycles < 0 or n_roots < 0 or obj_size <= 0:
+            raise ValueError("n_cycles, n_roots >= 0 and obj_size > 0 required")
+        if self.tracer is not None:
+            self.tracer.record(
+                EventType.SCENARIO_START, scenario="cycle_heavy",
+                n_cycles=n_cycles, n_roots=n_roots, obj_size=obj_size)
+        rooted: List[Object] = []
+        for i in range(n_cycles):
+            a = self.allocate(obj_size, name=f"cyc_a_{i}")
+            b = self.allocate(obj_size, name=f"cyc_b_{i}")
+            self.link(a, b, name="next")
+            self.link(b, a, name="back")
+            if i < n_roots:
+                self.add_root(f"cyc_root_{i}", a)
+                rooted.append(a)
+        if self.tracer is not None:
+            self.tracer.record(EventType.SCENARIO_END, scenario="cycle_heavy")
+        return rooted
 
     def __repr__(self) -> str:  # pragma: no cover - trivial
         return (f"GCSimulator(heap={self.heap}, collector={self.collector_name}, "

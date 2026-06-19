@@ -1,0 +1,13 @@
+heap_size: 1024
+collector: mark_compact
+allocator: free_list
+allocator_policy: best_fit
+scenario: random_graph
+scenario_params:
+  n: 50
+  edge_prob: 0.08
+  obj_size: 4
+  n_roots: 5
+num_collections: 3
+output_format: text
+seed: 42

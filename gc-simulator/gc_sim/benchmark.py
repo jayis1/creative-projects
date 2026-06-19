@@ -113,17 +113,6 @@ def benchmark_all(
         collectors = available_collectors()
     results: List[BenchmarkResult] = []
     for cname in collectors:
-        kw = {}
-        if cname == "copying":
-            kw["allocator"] = None  # copying manages its own allocation
-        # rebuild simulator with proper allocator
-        sim_kwargs = dict(
-            heap_size=heap_size,
-            collector=cname,
-            allocator=allocator,
-            allocator_policy=allocator_policy,
-        )
-        # Use run_benchmark but override allocator for copying
         result = run_benchmark(
             cname, heap_size, scenario_fn, num_collections,
             allocator=allocator, allocator_policy=allocator_policy,

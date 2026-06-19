@@ -1,4 +1,4 @@
-"""Heap & garbage collector simulator.
+"""Heap & garbage-collector simulator.
 
 A from-scratch, pure-Python toolkit for modelling memory allocation and
 automatic memory management.  It simulates a tiny, fixed-size "machine heap"
@@ -11,17 +11,22 @@ Public surface
 ---------------
 The package is organised into the following sub-modules:
 
-* :mod:`gc_sim.heap`   -- :class:`Heap`, :class:`Object` and the object graph.
-* :gc_sim.allocators`  -- bump, free-list and coalescing allocators.
-* :gc_sim.collectors`  -- mark-sweep, mark-compact, copying, generational and
+* :mod:`gc_sim.heap`        -- :class:`Heap`, :class:`Object` and the object graph.
+* :mod:`gc_sim.allocators`  -- bump, free-list and coalescing allocators.
+* :mod:`gc_sim.collectors`  -- mark-sweep, mark-compact, copying, generational and
   reference-counting collectors.
-* :gc_sim.tracer`      -- graph traversal utilities (DFS/BFS marking, roots).
-* :gc_sim.stats`       -- collection statistics & reporting.
-* :gc_sim.simulator`   -- high-level :class:`GCSimulator` driver tying it all
+* :mod:`gc_sim.tracer`      -- graph traversal utilities (DFS/BFS marking, roots).
+* :mod:`gc_sim.stats`       -- collection statistics & reporting.
+* :mod:`gc_sim.simulator`   -- high-level :class:`GCSimulator` driver tying it all
   together.
-* :gc_sim.visualizer`  -- ASCII visualisations of the heap layout.
-* :gc_sim.config`      -- configuration loading (JSON/YAML/TOML).
-* :gc_sim.cli`         -- command-line interface.
+* :mod:`gc_sim.visualizer`  -- ASCII visualisations of the heap layout.
+* :mod:`gc_sim.benchmark`   -- cross-collector benchmarking harness.
+* :mod:`gc_sim.config`      -- configuration loading (JSON/YAML/TOML).
+* :mod:`gc_sim.logging_utils` -- structured logging.
+* :mod:`gc_sim.events`      -- event-sourcing trace recording.
+* :mod:`gc_sim.replay`      -- replay recorded traces on any collector.
+* :mod:`gc_sim.reporting`   -- pause-time analysis, histograms, reports.
+* :mod:`gc_sim.cli`         -- command-line interface.
 
 Example
 -------
@@ -55,8 +60,17 @@ from .benchmark import (
     benchmark_all,
     format_benchmark_table,
 )
+from .events import EventTracer, Event, EventType
+from .replay import TraceReplayer, replay_from_file, load_trace
+from .reporting import (
+    PauseHistogram,
+    CollectorReport,
+    format_comparison_report,
+    generate_report_json,
+    analyse_from_sims,
+)
 
-__version__ = "1.0.0"
+__version__ = "2.0.0"
 __all__ = [
     "Heap",
     "Object",
@@ -79,4 +93,15 @@ __all__ = [
     "run_benchmark",
     "benchmark_all",
     "format_benchmark_table",
+    "EventTracer",
+    "Event",
+    "EventType",
+    "TraceReplayer",
+    "replay_from_file",
+    "load_trace",
+    "PauseHistogram",
+    "CollectorReport",
+    "format_comparison_report",
+    "generate_report_json",
+    "analyse_from_sims",
 ]
