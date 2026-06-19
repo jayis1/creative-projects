@@ -13,10 +13,8 @@ constructs a fresh tree each step so positions stay consistent).
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import List, Optional, Tuple
-
-from .vec import Vec2, add, scale, sub
 
 # A softening length (Plummer) keeps accelerations finite at very small
 # separations. The value is exposed via the :class:`BHTree` constructor so the

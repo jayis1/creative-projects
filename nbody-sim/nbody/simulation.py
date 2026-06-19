@@ -172,8 +172,10 @@ class Simulation:
             G=self.G,
         )
 
+        # Record the initial state at the *current* simulation time (self.t),
+        # not a hardcoded 0.0 — this matters if run() is called after prior steps.
         if snapshot_every > 0:
-            result.snapshots.append(self._snapshot(0, 0.0))
+            result.snapshots.append(self._snapshot(self.step_count, self.t))
 
         for i in range(n_steps):
             self.step()
@@ -287,7 +289,12 @@ class Simulation:
         for _ in range(n):
             # Sample radius via inverse CDF of Plummer: r = R * u^(1/3)/sqrt(1-u^(2/3))
             u = rng.random()
+            # Guard u away from 1.0 to avoid divergence (Plummer has infinite
+            # extent; without a cap some bodies end up absurdly far away).
+            u = min(u, 0.999)
             r = radius * (u ** (1.0 / 3.0)) / math.sqrt(max(1e-12, 1.0 - u ** (2.0 / 3.0)))
+            # Cap to 10x the nominal radius to keep the cluster compact.
+            r = min(r, 10.0 * radius)
             # Isotropic angle
             theta = 2.0 * math.pi * rng.random()
             x = r * math.cos(theta)

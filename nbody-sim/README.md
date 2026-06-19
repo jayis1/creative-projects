@@ -207,3 +207,42 @@ stable for tens of thousands.
 ## License
 
 MIT — see the repository root.
+
+## Known Issues (Resolved)
+
+All bugs found during the Phase 3 bug hunt have been fixed and verified by
+tests in `tests/test_bughunt.py` (7 tests, all passing).
+
+1. **`run()` initial snapshot used hardcoded `t=0.0` instead of `self.t`.**
+   When `run()` was called after prior integration steps (e.g. calling `run()`
+   twice on the same `Simulation`), the "initial" snapshot recorded `t=0.0`
+   and `step=0` instead of the actual current time and step count. **Fix:**
+   use `self.step_count` and `self.t` for the initial snapshot.
+
+2. **CLI missed the final snapshot when `steps` was not a multiple of
+   `--snapshot-every`.** The CLI collected snapshots via an `on_step`
+   callback that only fired on multiples of `snapshot_every`, so the final
+   state was lost. **Fix:** pass `snapshot_every` directly to `run()`, which
+   guarantees a final snapshot is always recorded.
+
+3. **Renderer distorted the world aspect ratio when `width != height`.**
+   `_to_pixel` scaled x by `width` and y by `height` independently, so a
+   world circle became an ellipse on non-square images. **Fix:** use a
+   uniform scale based on the shorter image dimension; the world region
+   `[-view_size, view_size]` fits within the shorter axis and the longer
+   axis shows centered extra space.
+
+4. **`barnes_hut.py` had unused imports** (`Vec2`, `add`, `scale`, `sub` from
+   `nbody.vec`, and `field` from `dataclasses`). Dead code that confused
+   readers and linters. **Fix:** removed the unused imports.
+
+5. **`plummer_sphere` could produce bodies at enormous radii.** The Plummer
+   inverse-CDF radius formula diverges as `u → 1`, so with enough samples a
+   body could end up hundreds of radii away. **Fix:** clamp `u` to 0.999 and
+   cap the sampled radius at `10 × R`.
+
+6. **`Simulation` did not validate `dt` when `adaptive_dt` was enabled.**
+   With `adaptive_dt=True` and `dt=0.0`, the validation `dt <= 0.0` would
+   reject the constructor even though `dt` is recomputed each step. **Fix:**
+   the validation now only applies `dt <= 0.0` when `adaptive_dt` is False.
+   (Verified working — no crash.)

@@ -161,17 +161,18 @@ def main(argv=None) -> int:
         return 0
 
     snapshots = []
-    if args.snapshot_every > 0:
-        def on_step(s: Simulation) -> None:
-            if s.step_count % args.snapshot_every == 0:
-                snapshots.append(s._snapshot(s.step_count, s.t))
-                if args.verbose:
-                    e = s.integrator.total_energy(s.bodies)
-                    print(f"  step {s.step_count}: E={e:.6f}", file=sys.stderr)
-    else:
-        on_step = None
+    verbose_cb = None
+    if args.verbose:
+        def verbose_cb(s: Simulation) -> None:
+            if s.step_count % max(args.snapshot_every, 1) == 0:
+                e = s.integrator.total_energy(s.bodies)
+                print(f"  step {s.step_count}: E={e:.6f}", file=sys.stderr)
 
-    result = sim.run(args.steps, snapshot_every=0, on_step=on_step)
+    # Use snapshot_every in run() so the final snapshot is always captured
+    # (run() guarantees a final snapshot). The verbose callback is separate.
+    result = sim.run(args.steps, snapshot_every=args.snapshot_every,
+                     on_step=verbose_cb)
+    snapshots = result.snapshots
     print(
         f"Initial E={result.initial_energy:.6f}  "
         f"Final E={result.final_energy:.6f}  "

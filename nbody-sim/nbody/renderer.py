@@ -86,12 +86,19 @@ class Renderer:
     # -- coordinate mapping ---------------------------------------------
 
     def _to_pixel(self, x: float, y: float) -> Tuple[int, int]:
+        """Map world coordinates to pixel coordinates.
+
+        Uses a uniform scale (pixels per world unit) based on the *shorter*
+        image dimension so the world is not distorted when width != height.
+        The world region ``[-view_size, view_size]`` always fits within the
+        shorter axis; the longer axis shows extra space (centered).
+        """
         cx, cy = self.center
-        # World -> pixel: scale by half-width.
-        half_w = self.view_size
-        px = int((x - cx + half_w) / (2.0 * half_w) * self.width)
+        # Uniform scale: pixels per world unit, fit into the shorter dimension.
+        scale = min(self.width, self.height) / (2.0 * self.view_size)
+        px = int((x - cx) * scale + self.width / 2.0)
         # Y flipped: world up = image up.
-        py = int((half_w - (y - cy)) / (2.0 * half_w) * self.height)
+        py = int(self.height / 2.0 - (y - cy) * scale)
         return (px, py)
 
     # -- drawing --------------------------------------------------------
