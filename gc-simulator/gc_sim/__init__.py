@@ -49,6 +49,12 @@ from .collectors import (
 )
 from .simulator import GCSimulator
 from .stats import CollectionStats, StatsTracker
+from .benchmark import (
+    BenchmarkResult,
+    run_benchmark,
+    benchmark_all,
+    format_benchmark_table,
+)
 
 __version__ = "1.0.0"
 __all__ = [
@@ -69,4 +75,8 @@ __all__ = [
     "GCSimulator",
     "CollectionStats",
     "StatsTracker",
+    "BenchmarkResult",
+    "run_benchmark",
+    "benchmark_all",
+    "format_benchmark_table",
 ]

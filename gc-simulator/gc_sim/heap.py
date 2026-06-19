@@ -108,6 +108,9 @@ class Object:
     age: int = 0
     forwarding: int = -1
     name: str = ""
+    # -- weak references ------------------------------------------------------
+    weak_refs: list = field(default_factory=list)
+    """List of callables invoked when this object is freed (finalizers)."""
 
     # -- reference management ------------------------------------------------
     def add_ref(self, target: "Object", name: str = "") -> ObjectRef:
@@ -116,9 +119,40 @@ class Object:
         self.refs.append(ref)
         return ref
 
+    def add_weak_ref(self, target: "Object", name: str = "") -> ObjectRef:
+        """Add a weak reference — does not prevent collection of ``target``.
+
+        The returned :class:`ObjectRef` behaves like a normal ref but is
+        tracked separately in :attr:`weak_refs` so that collectors can ignore
+        it during marking.  When the target is freed the ref's ``target``
+        becomes ``None``.
+        """
+        ref = ObjectRef(target=target, name=name)
+        self.weak_refs.append(ref)
+        return ref
+
+    def add_finalizer(self, fn) -> None:
+        """Register a callable ``fn(obj)`` to be called when this object is
+        freed by the GC."""
+        if not callable(fn):
+            raise TypeError("finalizer must be callable")
+        self._finalizers.append(fn)
+
+    _finalizers: list = field(default_factory=list)
+
     def clear_dead_refs(self) -> None:
         """Drop references whose target has been freed."""
         self.refs = [r for r in self.refs if not r.is_dead]
+        self.weak_refs = [r for r in self.weak_refs if not r.is_dead]
+
+    def run_finalizers(self) -> None:
+        """Invoke all registered finalizers (called by Heap.free_obj)."""
+        for fn in self._finalizers:
+            try:
+                fn(self)
+            except Exception:
+                pass  # finalizers must not crash the GC
+        self._finalizers.clear()
 
     def __repr__(self) -> str:  # pragma: no cover - trivial
         tag = self.name or f"#{self.oid}"
@@ -271,11 +305,13 @@ class Heap:
         self.high_water_mark = max(self.high_water_mark, self.used)
 
     def free_obj(self, obj: Object) -> None:
-        """Mark the cells of ``obj`` as free."""
+        """Mark the cells of ``obj`` as free and run its finalizers."""
         if not obj.alive:
             return
         if obj.address < 0:
             raise HeapError(f"object {obj.oid} has no address to free")
+        # run finalizers before clearing cells
+        obj.run_finalizers()
         for i in range(obj.address, obj.address + obj.size):
             if i < 0 or i >= self.size:
                 continue
@@ -283,9 +319,18 @@ class Heap:
                 self.cells[i] = None
         obj.alive = False
         obj.address = -1
-        # clear any refs pointing *into* this object
+        # clear any refs pointing *out of* this object
         for ref in obj.refs:
             ref.target = None
+        for ref in obj.weak_refs:
+            ref.target = None
+        # clear weak refs pointing *to* this object from other live objects
+        for other in self._live_list:
+            if other is obj or not other.alive:
+                continue
+            for ref in other.weak_refs:
+                if ref.target is obj:
+                    ref.target = None
 
     def move(self, obj: Object, new_address: int) -> None:
         """Relocate ``obj`` to ``new_address`` (used by compact/copy GC).
@@ -333,3 +378,39 @@ class Heap:
     def __repr__(self) -> str:  # pragma: no cover - trivial
         return (f"Heap(size={self.size}, used={self.used}, "
                 f"live={self.num_live})")
+
+    # -- serialization -------------------------------------------------------
+    def snapshot(self) -> dict:
+        """Return a JSON-serialisable snapshot of the heap state.
+
+        Captures heap size, cell layout, and object metadata (not the Python
+        identity of objects, which is not serialisable).  Useful for
+        debugging, reproducibility and visualisation.
+        """
+        return {
+            "size": self.size,
+            "used": self.used,
+            "free": self.free,
+            "high_water_mark": self.high_water_mark,
+            "fragmentation": self.fragmentation(),
+            "cells": [
+                (cell.oid if cell is not None else -1)
+                for cell in self.cells
+            ],
+            "objects": [
+                {
+                    "oid": o.oid,
+                    "size": o.size,
+                    "address": o.address,
+                    "name": o.name,
+                    "age": o.age,
+                    "alive": o.alive,
+                    "refs": [
+                        {"target_oid": r.target.oid if r.target else -1,
+                         "name": r.name}
+                        for r in o.refs
+                    ],
+                }
+                for o in self._all_objects
+            ],
+        }

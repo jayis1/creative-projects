@@ -410,3 +410,142 @@ class TestCLI:
                         "--scenario-params", '{"n": 5, "obj_size": 8}'])
         assert ret == 0
         assert "mark_sweep" in buf.getvalue()
+
+    def test_benchmark(self):
+        from gc_sim.cli import main
+        import io, contextlib
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            ret = main(["benchmark", "--heap-size", "256",
+                        "--scenario", "linked_list",
+                        "--scenario-params", '{"n": 10, "obj_size": 4}'])
+        assert ret == 0
+        assert "mark_sweep" in buf.getvalue()
+
+    def test_snapshot(self):
+        from gc_sim.cli import main
+        import io, contextlib
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            ret = main(["snapshot", "--heap-size", "64",
+                        "--scenario", "linked_list",
+                        "--scenario-params", '{"n": 3, "obj_size": 8}'])
+        assert ret == 0
+        out = buf.getvalue()
+        assert '"heap"' in out
+        assert '"objects"' in out
+
+
+# ---------------------------------------------------------------------------
+# Enhanced features (Phase 2)
+# ---------------------------------------------------------------------------
+
+class TestWeakReferences:
+    def test_weak_ref_does_not_prevent_collection(self):
+        sim = GCSimulator(heap_size=256, collector="mark_sweep")
+        a = sim.allocate(8, "a")
+        b = sim.allocate(8, "b")
+        sim.add_root("a", a)
+        sim.weak_link(a, b, "weak_b")
+        # b is only weakly reachable -> should be collected
+        stats = sim.collect()
+        assert stats.collected == 1
+        assert not b.alive
+
+    def test_weak_ref_becomes_dead(self):
+        sim = GCSimulator(heap_size=256, collector="mark_sweep")
+        a = sim.allocate(8, "a")
+        b = sim.allocate(8, "b")
+        sim.add_root("a", a)
+        wref = sim.weak_link(a, b, "weak_b")
+        assert not wref.is_dead
+        sim.collect()
+        assert wref.is_dead
+        assert wref.target is None
+
+
+class TestFinalizers:
+    def test_finalizer_called_on_collection(self):
+        sim = GCSimulator(heap_size=256, collector="mark_sweep")
+        a = sim.allocate(8, "a")
+        called = []
+        sim.add_finalizer(a, lambda obj: called.append(obj.oid))
+        # a is unrooted -> will be collected
+        sim.collect()
+        assert called == [a.oid]
+
+    def test_finalizer_not_called_for_live_object(self):
+        sim = GCSimulator(heap_size=256, collector="mark_sweep")
+        a = sim.allocate(8, "a")
+        called = []
+        sim.add_finalizer(a, lambda obj: called.append(obj.oid))
+        sim.add_root("a", a)
+        sim.collect()
+        assert called == []
+
+    def test_finalizer_exception_does_not_crash(self):
+        sim = GCSimulator(heap_size=256, collector="mark_sweep")
+        a = sim.allocate(8, "a")
+        def bad_finalizer(obj):
+            raise RuntimeError("boom")
+        sim.add_finalizer(a, bad_finalizer)
+        # should not raise
+        sim.collect()
+
+
+class TestSnapshot:
+    def test_snapshot_structure(self):
+        sim = GCSimulator(heap_size=128, collector="mark_sweep")
+        sim.scenario_linked_list(n=3, obj_size=8)
+        snap = sim.snapshot()
+        assert snap["heap"]["size"] == 128
+        assert len(snap["heap"]["objects"]) == 3
+        assert all(o["alive"] for o in snap["heap"]["objects"])
+        assert snap["collector"] == "mark_sweep"
+
+    def test_snapshot_after_collection(self):
+        sim = GCSimulator(heap_size=128, collector="mark_sweep")
+        sim.scenario_linked_list(n=5, obj_size=8)
+        sim.clear_root("list_head")
+        sim.collect()
+        snap = sim.snapshot()
+        live = [o for o in snap["heap"]["objects"] if o["alive"]]
+        assert len(live) == 0
+
+
+class TestBenchmark:
+    def test_run_benchmark(self):
+        from gc_sim.benchmark import run_benchmark
+        def scenario(sim):
+            sim.scenario_linked_list(n=5, obj_size=8)
+        result = run_benchmark("mark_sweep", 256, scenario)
+        assert result.collector == "mark_sweep"
+        assert result.error is None
+        assert result.allocations == 5
+
+    def test_benchmark_all(self):
+        from gc_sim.benchmark import benchmark_all, format_benchmark_table
+        def scenario(sim):
+            sim.scenario_linked_list(n=5, obj_size=8)
+        results = benchmark_all(256, scenario, num_collections=1,
+                                 collectors=["mark_sweep", "ref_count"])
+        assert len(results) == 2
+        table = format_benchmark_table(results)
+        assert "mark_sweep" in table
+        assert "ref_count" in table
+
+    def test_predefined_scenarios(self):
+        from gc_sim.benchmark import scenario_churn, scenario_cycle_heavy
+        sim = GCSimulator(heap_size=512, collector="mark_sweep")
+        scenario_churn(sim)
+        assert sim.heap.num_live > 0
+        sim.collect()
+        # long-lived survive
+        assert sim.heap.num_live >= 3
+
+        sim2 = GCSimulator(heap_size=512, collector="ref_count",
+                           collect_cycles=True)
+        scenario_cycle_heavy(sim2)
+        sim2.collect()
+        # 3 rooted cycles survive (each cycle = 2 objects: a + b)
+        assert sim2.heap.num_live <= 6

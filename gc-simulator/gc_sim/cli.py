@@ -203,6 +203,51 @@ def cmd_config_load(args) -> int:
     return 0
 
 
+def cmd_benchmark(args) -> int:
+    from .benchmark import benchmark_all, format_benchmark_table
+    scenario_name = args.scenario
+    params = _parse_json(args.scenario_params)
+
+    def scenario_fn(sim: GCSimulator) -> None:
+        _run_scenario(sim, scenario_name, params, seed=args.seed)
+
+    collectors = args.collectors or available_collectors()
+    results = benchmark_all(
+        heap_size=args.heap_size,
+        scenario_fn=scenario_fn,
+        num_collections=args.num_collections,
+        collectors=collectors,
+        allocator=args.allocator,
+        allocator_policy=args.allocator_policy,
+    )
+    if args.json:
+        import json as _json
+        print(_json.dumps([r.as_dict() for r in results], indent=2))
+    else:
+        print(format_benchmark_table(results))
+    return 0
+
+
+def cmd_snapshot(args) -> int:
+    cfg = SimConfig(
+        heap_size=args.heap_size,
+        collector=args.collector,
+        allocator=args.allocator,
+        allocator_policy=args.allocator_policy,
+        scenario=args.scenario,
+        scenario_params=_parse_json(args.scenario_params),
+        seed=args.seed,
+    )
+    cfg.validate()
+    sim = _make_simulator(cfg)
+    _run_scenario(sim, cfg.scenario, cfg.scenario_params, seed=cfg.seed)
+    if args.after_collect:
+        sim.collect()
+    import json as _json
+    print(_json.dumps(sim.snapshot(), indent=2))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="gc-sim",
@@ -273,6 +318,33 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("config-load", help="Load and run config from file")
     sp.add_argument("path")
     sp.set_defaults(func=cmd_config_load)
+
+    # benchmark
+    sp = sub.add_parser("benchmark", help="Benchmark multiple collectors")
+    sp.add_argument("--heap-size", type=int, default=512)
+    sp.add_argument("--collector", "--collectors", dest="collectors",
+                    nargs="*", default=None)
+    sp.add_argument("--allocator", default="bump")
+    sp.add_argument("--allocator-policy", default="first_fit")
+    sp.add_argument("--scenario", default="random_graph")
+    sp.add_argument("--scenario-params", default="{}", help="JSON dict")
+    sp.add_argument("--num-collections", type=int, default=3)
+    sp.add_argument("--seed", type=int, default=42)
+    sp.add_argument("--json", action="store_true")
+    sp.set_defaults(func=cmd_benchmark)
+
+    # snapshot
+    sp = sub.add_parser("snapshot", help="Dump heap snapshot as JSON")
+    sp.add_argument("--heap-size", type=int, default=128)
+    sp.add_argument("--collector", default="mark_sweep")
+    sp.add_argument("--allocator", default="bump")
+    sp.add_argument("--allocator-policy", default="first_fit")
+    sp.add_argument("--scenario", default="linked_list")
+    sp.add_argument("--scenario-params", default="{}", help="JSON dict")
+    sp.add_argument("--seed", type=int, default=None)
+    sp.add_argument("--after-collect", action="store_true",
+                    help="Run a collection before snapshotting")
+    sp.set_defaults(func=cmd_snapshot)
 
     return p
 

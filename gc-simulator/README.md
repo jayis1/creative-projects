@@ -29,10 +29,15 @@ between collectors can be studied empirically.
 
 ### Tools
 - **Object graph tracer** — iterative DFS/BFS marking, reachable-set computation, Tarjan SCC cycle detection
-- **Statistics tracker** — per-collection stats (live before/after, collected, freed, moved, pause cost, fragmentation, survival ratio) with summary reporting
+- **Statistics tracker** — per-collection stats (live before/after, collected, freed, moved, pause cost, fragmentation, survival ratio) with summary reporting and JSON export
 - **Heap visualizer** — ASCII heap layout with ANSI colour, Graphviz DOT graph export, stats table renderer
+- **Benchmark harness** — cross-collector comparison with predefined scenarios (churn, growing tree, cycle-heavy), wall-time measurement, formatted comparison tables
+- **Heap snapshots** — JSON-serialisable heap state for debugging and reproducibility
+- **Weak references** — `ObjectRef` handles that don't prevent collection; automatically cleared when target is freed
+- **Finalizers** — callbacks invoked when an object is freed by the GC (with exception safety)
 - **Config system** — JSON/YAML/TOML configuration loading and saving
-- **CLI** — `run`, `viz`, `compare`, `list`, `config-save`, `config-load` subcommands
+- **Structured logging** — configurable log levels with stderr/file output
+- **CLI** — `run`, `viz`, `compare`, `benchmark`, `snapshot`, `list`, `config-save`, `config-load` subcommands
 
 ## How It Works
 
@@ -124,17 +129,20 @@ gc-sim config-load my_run.json
 gc-simulator/
 ├── gc_sim/
 │   ├── __init__.py      # Package exports
-│   ├── heap.py          # Heap, Object, ObjectRef, RootSet
+│   ├── __main__.py      # python -m gc_sim entry point
+│   ├── heap.py          # Heap, Object, ObjectRef, RootSet, weak refs, finalizers
 │   ├── allocators.py    # BumpAllocator, FreeListAllocator
 │   ├── tracer.py        # DFS/BFS marking, reachable set, cycle detection
 │   ├── collectors.py     # 5 GC algorithms
 │   ├── simulator.py     # GCSimulator high-level driver
 │   ├── stats.py         # CollectionStats, StatsTracker
 │   ├── visualizer.py    # ASCII heap rendering, DOT export, stats tables
+│   ├── benchmark.py     # Cross-collector benchmarking harness
 │   ├── config.py        # JSON/YAML/TOML config loading
-│   └── cli.py           # argparse CLI
+│   ├── logging_utils.py # Structured logging
+│   └── cli.py           # argparse CLI (8 subcommands)
 ├── tests/
-│   └── test_gc_sim.py   # 34 tests
+│   └── test_gc_sim.py   # 46 tests
 ├── pyproject.toml
 └── README.md
 ```

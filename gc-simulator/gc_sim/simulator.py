@@ -119,10 +119,42 @@ class GCSimulator:
     # -- reference management ------------------------------------------------
     def link(self, src: Object, tgt: Object, name: str = "") -> ObjectRef:
         """Add a reference from ``src`` to ``tgt`` and update ref counts."""
+        if not isinstance(src, Object):
+            raise TypeError("src must be an Object")
+        if not isinstance(tgt, Object):
+            raise TypeError("tgt must be an Object")
+        if not src.alive:
+            raise ValueError("cannot link from a dead object")
+        if not tgt.alive:
+            raise ValueError("cannot link to a dead object")
         ref = src.add_ref(tgt, name=name)
         if isinstance(self.collector, RefCountCollector):
             self.collector.update_count(tgt, +1)
         return ref
+
+    def weak_link(self, src: Object, tgt: Object, name: str = "") -> ObjectRef:
+        """Add a *weak* reference from ``src`` to ``tgt``.
+
+        Weak references do not prevent the target from being collected and
+        do not update reference counts.  The returned :class:`ObjectRef`
+        becomes dead (``target=None``) when the target is freed.
+        """
+        if not isinstance(src, Object):
+            raise TypeError("src must be an Object")
+        if not isinstance(tgt, Object):
+            raise TypeError("tgt must be an Object")
+        return src.add_weak_ref(tgt, name=name)
+
+    def add_finalizer(self, obj: Object, fn) -> None:
+        """Register a finalizer callback on ``obj``.
+
+        ``fn(obj)`` will be called when ``obj`` is freed by the GC.
+        """
+        if not isinstance(obj, Object):
+            raise TypeError("obj must be an Object")
+        if not callable(fn):
+            raise TypeError("fn must be callable")
+        obj.add_finalizer(fn)
 
     def unlink(self, src: Object, ref: ObjectRef) -> None:
         """Remove ``ref`` from ``src.refs`` and decrement the target's count."""
@@ -162,6 +194,15 @@ class GCSimulator:
 
     def fragmentation(self) -> float:
         return self.heap.fragmentation()
+
+    def snapshot(self) -> dict:
+        """Return a JSON-serialisable snapshot of the entire simulation state."""
+        return {
+            "heap": self.heap.snapshot(),
+            "collector": self.collector_name,
+            "stats": self.stats.as_dict(),
+            "roots": [name for name in self.roots.labels()],
+        }
 
     def summary(self) -> str:
         return self.stats.summary()
