@@ -143,6 +143,10 @@ class ConstantFolder:
         if isinstance(left, StringLit) and isinstance(right, StringLit):
             a, b = left.value, right.value
             if op == "+": return StringLit(a + b, left.line, left.col)
+            if op == "<": return BoolLit(a < b, left.line, left.col)
+            if op == "<=": return BoolLit(a <= b, left.line, left.col)
+            if op == ">": return BoolLit(a > b, left.line, left.col)
+            if op == ">=": return BoolLit(a >= b, left.line, left.col)
             if op == "==": return BoolLit(a == b, left.line, left.col)
             if op == "!=": return BoolLit(a != b, left.line, left.col)
         return None

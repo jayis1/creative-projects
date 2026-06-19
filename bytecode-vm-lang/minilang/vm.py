@@ -104,7 +104,14 @@ class VM:
                     raise VMError("stack underflow on POP")
                 frame.stack.pop()
             elif op == OpCode.ADD:
-                last_value = self._binop_int(frame, lambda a, b: a + b, "+")
+                b = self._pop(frame); a = self._pop(frame)
+                if a.tag == ValueTag.INT and b.tag == ValueTag.INT:
+                    frame.stack.append(Value.int(a.payload + b.payload))
+                elif a.tag == ValueTag.STRING and b.tag == ValueTag.STRING:
+                    frame.stack.append(Value.str_(a.payload + b.payload))
+                else:
+                    raise VMError(
+                        f"'+' requires int+int or string+string, got {a.tag.name}, {b.tag.name}")
             elif op == OpCode.SUB:
                 last_value = self._binop_int(frame, lambda a, b: a - b, "-")
             elif op == OpCode.MUL:
@@ -128,19 +135,19 @@ class VM:
                 frame.stack.append(Value.bool_(not a.equals(b)))
             elif op == OpCode.LT:
                 b = self._pop(frame); a = self._pop(frame)
-                self._check_int_pair(a, b, "<")
+                self._check_comparable(a, b, "<")
                 frame.stack.append(Value.bool_(a.payload < b.payload))
             elif op == OpCode.LE:
                 b = self._pop(frame); a = self._pop(frame)
-                self._check_int_pair(a, b, "<=")
+                self._check_comparable(a, b, "<=")
                 frame.stack.append(Value.bool_(a.payload <= b.payload))
             elif op == OpCode.GT:
                 b = self._pop(frame); a = self._pop(frame)
-                self._check_int_pair(a, b, ">")
+                self._check_comparable(a, b, ">")
                 frame.stack.append(Value.bool_(a.payload > b.payload))
             elif op == OpCode.GE:
                 b = self._pop(frame); a = self._pop(frame)
-                self._check_int_pair(a, b, ">=")
+                self._check_comparable(a, b, ">=")
                 frame.stack.append(Value.bool_(a.payload >= b.payload))
             elif op == OpCode.NOT:
                 v = self._pop(frame)
@@ -207,7 +214,7 @@ class VM:
                 func_name = name[5:] if name.startswith("call:") else name
                 if func_name in self._builtins:
                     bf = self._builtins[func_name]
-                    if arg_count != bf.arity:
+                    if bf.arity != -1 and arg_count != bf.arity:
                         raise VMError(
                             f"builtin {func_name} expects {bf.arity} args, "
                             f"got {arg_count}")
@@ -296,6 +303,16 @@ class VM:
     def _check_int_pair(a: Value, b: Value, opname: str) -> None:
         if a.tag != ValueTag.INT or b.tag != ValueTag.INT:
             raise VMError(f"{opname} requires int operands, got {a.tag.name}, {b.tag.name}")
+
+    @staticmethod
+    def _check_comparable(a: Value, b: Value, opname: str) -> None:
+        """Check that a and b are both int or both string for comparison."""
+        if a.tag == ValueTag.INT and b.tag == ValueTag.INT:
+            return
+        if a.tag == ValueTag.STRING and b.tag == ValueTag.STRING:
+            return
+        raise VMError(
+            f"{opname} requires int or string operands, got {a.tag.name}, {b.tag.name}")
 
     def _track(self, obj: Object) -> None:
         self.heap.append(obj)
@@ -386,9 +403,41 @@ class VM:
                 return Value.int(1 if v.payload else 0)
             raise VMError(f"cannot convert {v.tag.name} to int")
 
+        def _abs(args: list[Value]) -> Value:
+            v = args[0]
+            if v.tag != ValueTag.INT:
+                raise VMError(f"abs() expects int, got {v.tag.name}")
+            return Value.int(abs(v.payload))
+
+        def _max(args: list[Value]) -> Value:
+            a, b = args[0], args[1]
+            if a.tag != ValueTag.INT or b.tag != ValueTag.INT:
+                raise VMError("max() expects int")
+            return Value.int(max(a.payload, b.payload))
+
+        def _min(args: list[Value]) -> Value:
+            a, b = args[0], args[1]
+            if a.tag != ValueTag.INT or b.tag != ValueTag.INT:
+                raise VMError("min() expects int")
+            return Value.int(min(a.payload, b.payload))
+
+        def _assert(args: list[Value]) -> Value:
+            v = args[0]
+            if v.tag != ValueTag.BOOL:
+                raise VMError("assert() expects bool")
+            if not v.payload:
+                if len(args) > 1 and args[1].tag == ValueTag.STRING:
+                    raise VMError(f"assertion failed: {args[1].payload}")
+                raise VMError("assertion failed")
+            return Value.nil()
+
         builtins["print"] = BoundFunc("print", 1, _print)
         builtins["len"] = BoundFunc("len", 1, _len)
         builtins["push"] = BoundFunc("push", 2, _push)
         builtins["str"] = BoundFunc("str", 1, _str)
         builtins["int"] = BoundFunc("int", 1, _int)
+        builtins["abs"] = BoundFunc("abs", 1, _abs)
+        builtins["max"] = BoundFunc("max", 2, _max)
+        builtins["min"] = BoundFunc("min", 2, _min)
+        builtins["assert"] = BoundFunc("assert", -1, _assert)  # variable arity
         return builtins

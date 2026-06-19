@@ -92,6 +92,10 @@ class TypeChecker:
         "push": ((ArrayType(IntType()), IntType()), UnitType()),  # any array + any
         "str": ((IntType(),), StringType()),  # any type
         "int": ((IntType(),), IntType()),  # string/bool/int
+        "abs": ((IntType(),), IntType()),
+        "max": ((IntType(), IntType()), IntType()),
+        "min": ((IntType(), IntType()), IntType()),
+        "assert": ((IntType(),), UnitType()),  # bool + optional string message
     }
 
     def __init__(self):
@@ -307,14 +311,27 @@ class TypeChecker:
         lt = self._check_expr(expr.left, scope)
         rt = self._check_expr(expr.right, scope)
         op = expr.op
-        if op in ("+", "-", "*", "/", "%"):
+        if op == "+":
+            # String concatenation: string + string -> string
+            if isinstance(lt, StringType) and isinstance(rt, StringType):
+                return StringType()
+            # Int addition
+            if isinstance(lt, IntType) and isinstance(rt, IntType):
+                return IntType()
+            raise TypeError(f"'+' requires int+int or string+string, got {lt}, {rt}",
+                            expr.line, expr.col)
+        if op in ("-", "*", "/", "%"):
             if not isinstance(lt, IntType) or not isinstance(rt, IntType):
                 raise TypeError(f"'{op}' requires int operands", expr.line, expr.col)
             return IntType()
         if op in ("<", "<=", ">", ">="):
-            if not isinstance(lt, IntType) or not isinstance(rt, IntType):
-                raise TypeError(f"'{op}' requires int operands", expr.line, expr.col)
-            return BoolType()
+            # Allow comparisons on both int and string (lexicographic)
+            if isinstance(lt, IntType) and isinstance(rt, IntType):
+                return BoolType()
+            if isinstance(lt, StringType) and isinstance(rt, StringType):
+                return BoolType()
+            raise TypeError(f"'{op}' requires int or string operands, got {lt}, {rt}",
+                            expr.line, expr.col)
         if op in ("==", "!="):
             if not self._assignable(lt, rt) and not self._assignable(rt, lt):
                 raise TypeError(f"'{op}' on incompatible types {lt}, {rt}",
@@ -368,6 +385,33 @@ class TypeChecker:
                 if not isinstance(at, ArrayType):
                     raise TypeError(f"push() expects array, got {at}",
                                     expr.line, expr.col)
+                return UnitType()
+            if name == "abs":
+                if len(expr.args) != 1:
+                    raise TypeError("abs expects 1 argument", expr.line, expr.col)
+                at = self._check_expr(expr.args[0], scope)
+                if not isinstance(at, IntType):
+                    raise TypeError(f"abs() expects int, got {at}", expr.line, expr.col)
+                return IntType()
+            if name == "max" or name == "min":
+                if len(expr.args) != 2:
+                    raise TypeError(f"{name} expects 2 arguments", expr.line, expr.col)
+                at1 = self._check_expr(expr.args[0], scope)
+                at2 = self._check_expr(expr.args[1], scope)
+                if not isinstance(at1, IntType) or not isinstance(at2, IntType):
+                    raise TypeError(f"{name}() expects int, got {at1}, {at2}",
+                                    expr.line, expr.col)
+                return IntType()
+            if name == "assert":
+                if len(expr.args) < 1 or len(expr.args) > 2:
+                    raise TypeError("assert expects 1 or 2 arguments", expr.line, expr.col)
+                at = self._check_expr(expr.args[0], scope)
+                if not isinstance(at, BoolType):
+                    raise TypeError(f"assert() expects bool, got {at}", expr.line, expr.col)
+                if len(expr.args) == 2:
+                    mt = self._check_expr(expr.args[1], scope)
+                    if not isinstance(mt, StringType):
+                        raise TypeError("assert message must be string", expr.line, expr.col)
                 return UnitType()
             raise TypeError(f"unknown builtin {name}", expr.line, expr.col)
         else:

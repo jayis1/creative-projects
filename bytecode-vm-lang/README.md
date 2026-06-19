@@ -29,8 +29,9 @@ Source code
 - **Functions**: first-class declarations with type-checked parameters and return types, recursion supported
 - **Control flow**: `if`/`else`, `while`, `for i in start..end`, `break`, `continue`, `return`
 - **Expressions**: arithmetic (`+ - * / %`), comparison (`< <= > >= == !=`), logical (`&& || !` with short-circuit evaluation), unary (`- !`)
+- **String operations**: concatenation (`string + string`), lexicographic comparison (`< <= > >=`), escape sequences
 - **Arrays**: literal `[1, 2, 3]`, indexing `arr[i]`, index assignment `arr[i] = x`, `len()`, `push()`
-- **Builtins**: `print(x)`, `len(x)`, `push(arr, x)`, `str(x)`, `int(x)`
+- **Builtins**: `print(x)`, `len(x)`, `push(arr, x)`, `str(x)`, `int(x)`, `abs(x)`, `max(a,b)`, `min(a,b)`, `assert(cond, msg?)`
 - **Comments**: line `// comment` and block `/* comment */`
 - **Strings**: with escape sequences `\n \t \r \\ \" \0`
 
@@ -46,9 +47,11 @@ The VM is a stack-based interpreter with:
 ### Optimizer
 
 The AST-level optimizer performs:
-1. **Constant folding** — evaluates `2 + 3` → `5` at compile time
+1. **Constant folding** — evaluates `2 + 3` → `5` at compile time (int, bool, and string literals)
 2. **Dead-code elimination** — removes statements after unconditional `return`/`break`/`continue`
 3. **Jump threading** — collapses `JUMP → JUMP` chains in bytecode
+4. **If-lifting** — `if true { A } else { B }` → `A`; `if false { A } else { B }` → `B`
+5. **While-removal** — `while false { ... }` → empty block
 
 ### Usage
 

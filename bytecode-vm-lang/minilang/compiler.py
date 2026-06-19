@@ -21,12 +21,12 @@ from .ast import (
     WhileStmt,
 )
 from .bytecode import Instruction, OpCode
-from .errors import CompileError
+from .errors import CompileError, MiniLangError
 from .types import TypeChecker
 
 
 # Built-in function names known to the compiler and VM.
-BUILTIN_NAMES = {"print", "len", "push", "str", "int"}
+BUILTIN_NAMES = {"print", "len", "push", "str", "int", "abs", "max", "min", "assert"}
 
 
 @dataclass
@@ -434,10 +434,26 @@ class ScopeFrame:
 
 
 def compile_program(source: str, name: str = "<string>", debug: bool = False) -> CompiledProgram:
-    """Full pipeline: lex → parse → type-check → compile."""
+    """Full pipeline: lex → parse → type-check → compile.
+
+    The *source* string is attached to errors so that :meth:`MiniLangError.format`
+    can show source context with a caret.
+    """
     from .lexer import tokenize
     from .parser import Parser
-    prog = Parser(tokenize(source, name), name).parse_program()
+    try:
+        prog = Parser(tokenize(source, name), name).parse_program()
+    except MiniLangError as e:
+        e.source = source
+        raise
     tc = TypeChecker()
-    tc.check(prog)
-    return Compiler(prog, tc, debug).compile()
+    try:
+        tc.check(prog)
+    except MiniLangError as e:
+        e.source = source
+        raise
+    try:
+        return Compiler(prog, tc, debug).compile()
+    except MiniLangError as e:
+        e.source = source
+        raise
