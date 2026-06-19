@@ -1,0 +1,21 @@
+{
+  "preset": "binary",
+  "dt": 0.005,
+  "theta": 0.5,
+  "softening": 0.1,
+  "G": 1.0,
+  "steps": 5000,
+  "snapshot_every": 25,
+  "render": {
+    "enabled": true,
+    "width": 512,
+    "height": 512,
+    "view_size": 8.0,
+    "trails": true,
+    "out_dir": "frames"
+  },
+  "output": {
+    "log_csv": "energy.csv",
+    "verbose": false
+  }
+}

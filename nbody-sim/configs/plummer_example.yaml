@@ -1,0 +1,28 @@
+# nbody-sim configuration file
+# ============================
+# Run with: python -m nbody --config configs/plummer_example.yaml
+
+preset: plummer
+n_bodies: 200
+seed: 42
+dt: 0.01
+theta: 0.7
+softening: 0.5
+G: 1.0
+steps: 2000
+recenter_com: true
+snapshot_every: 20
+
+render:
+  enabled: true
+  width: 512
+  height: 512
+  view_size: 15.0
+  trails: true
+  color_by_mass: true
+  out_dir: frames
+
+output:
+  log_csv: energy.csv
+  save_json: run.json
+  verbose: false

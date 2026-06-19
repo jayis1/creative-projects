@@ -1,0 +1,11 @@
+.venv/
+*.pyc
+__pycache__/
+*.egg-info
+__pycache__/
+*.egg-info/
+build/
+dist/
+frames/
+energy.csv
+run.json

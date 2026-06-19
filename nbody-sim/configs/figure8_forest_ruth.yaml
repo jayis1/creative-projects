@@ -1,0 +1,24 @@
+# nbody-sim configuration file — figure-eight with Forest-Ruth integrator
+# =======================================================================
+# Run with: python -m nbody --config configs/figure8_forest_ruth.yaml
+
+preset: figure-eight
+dt: 0.002
+theta: 0.0
+softening: 0.0
+G: 1.0
+steps: 10000
+snapshot_every: 50
+
+render:
+  enabled: true
+  width: 512
+  height: 512
+  view_size: 2.0
+  trails: true
+  color_by_speed: true
+  out_dir: frames
+
+output:
+  log_csv: energy.csv
+  verbose: false
