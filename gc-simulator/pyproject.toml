@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gc-sim"
+version = "1.0.0"
+description = "A from-scratch heap & garbage-collector simulator with 5 GC algorithms"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "creative-projects"}]
+keywords = ["gc", "garbage-collection", "memory", "simulation", "allocator"]
+classifiers = [
+    "Topic :: Software Development :: Debuggers",
+    "Topic :: Software Development :: Interpreters",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+]
+dependencies = [
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "pytest-cov"]
+
+[project.scripts]
+gc-sim = "gc_sim.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["gc_sim*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

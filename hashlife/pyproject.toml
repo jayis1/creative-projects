@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hashlife"
+version = "1.0.0"
+description = "Hashlife — Conway's Game of Life via memoized-quadtree Hashlife algorithm"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [{name = "Creative Projects"}]
+
+[project.scripts]
+hashlife = "hashlife.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["hashlife*"]
