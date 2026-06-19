@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bytecode-vm-lang"
+version = "1.0.0"
+description = "MiniLang — a statically-typed language with lexer, Pratt parser, type checker, optimizer, and stack-based bytecode VM with garbage collector"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "creative-projects"}]
+keywords = ["compiler", "bytecode", "vm", "interpreter", "language"]
+
+[project.scripts]
+minilang = "minilang.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["minilang*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
