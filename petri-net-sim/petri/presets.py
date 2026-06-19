@@ -238,3 +238,127 @@ def readers_writers(n_readers: int = 2) -> PetriNet:
     net.place("r_waiting").initial = 1
     net.place("w_waiting").initial = 1
     return net
+
+
+def token_ring(n: int = 3) -> PetriNet:
+    """Token ring network: n stations share a token that circulates.
+
+    Each station can only transmit when it holds the token, then passes
+    it to the next station. The token circulates indefinitely.
+    """
+    net = PetriNet(name=f"token_ring_{n}")
+    # Add all places first (so cross-references work)
+    for i in range(n):
+        net.add_place(Place(f"has_token_{i}", initial=1 if i == 0 else 0))
+        net.add_place(Place(f"wait_{i}", initial=0 if i == 0 else 1))
+    # Add all transitions
+    for i in range(n):
+        net.add_transition(Transition(f"send_{i}"))
+        net.add_transition(Transition(f"pass_{i}"))
+    # Add all arcs
+    for i in range(n):
+        net.add_arc(f"has_token_{i}", f"send_{i}")
+        net.add_arc(f"send_{i}", f"has_token_{i}")  # keep token while sending
+        net.add_arc(f"has_token_{i}", f"pass_{i}")
+        next_i = (i + 1) % n
+        net.add_arc(f"pass_{i}", f"has_token_{next_i}")
+    return net
+
+
+def elevator_system(floors: int = 4) -> PetriNet:
+    """An elevator controller for ``floors`` floors.
+
+    Models elevator movement: idle -> moving up/down -> arrive -> doors open/close.
+    The elevator services floor requests.
+    """
+    net = PetriNet(name=f"elevator_{floors}")
+    net.add_place(Place("idle", initial=1))
+    net.add_place(Place("moving_up", initial=0))
+    net.add_place(Place("moving_down", initial=0))
+    net.add_place(Place("doors_open", initial=0))
+
+    for f in range(floors):
+        net.add_place(Place(f"floor_{f}", initial=1 if f == 0 else 0))
+        net.add_place(Place(f"request_{f}", initial=0))
+        net.add_transition(Transition(f"goto_{f}"))
+        net.add_transition(Transition(f"arrive_{f}"))
+
+        net.add_arc("idle", f"goto_{f}")
+        if f > 0:
+            net.add_arc(f"goto_{f}", "moving_up")
+        elif f == 0:
+            net.add_arc(f"goto_{f}", "moving_down")
+        net.add_arc(f"request_{f}", f"goto_{f}")
+        net.add_arc(f"arrive_{f}", "doors_open")
+
+    # Simplified: just model one direction for now
+    net.add_transition(Transition("close_doors"))
+    net.add_arc("doors_open", "close_doors")
+    net.add_arc("close_doors", "idle")
+    return net
+
+
+def producer_consumer_chain(n: int = 3) -> PetriNet:
+    """A chain of n producer-consumer stages.
+
+    Each stage consumes from the previous and produces for the next.
+    Demonstrates a pipeline processing pattern.
+    """
+    net = PetriNet(name=f"pipeline_{n}")
+    net.add_place(Place("source", initial=5))  # initial work items
+
+    for i in range(n):
+        net.add_place(Place(f"stage_{i}_in", initial=0, capacity=3))
+        net.add_place(Place(f"stage_{i}_busy", initial=0))
+        net.add_place(Place(f"stage_{i}_done", initial=0))
+        net.add_transition(Transition(f"start_{i}"))
+        net.add_transition(Transition(f"finish_{i}"))
+
+    for i in range(n):
+        if i == 0:
+            net.add_arc("source", f"start_{i}")
+        else:
+            net.add_arc(f"stage_{i-1}_done", f"start_{i}")
+        net.add_arc(f"start_{i}", f"stage_{i}_in")
+        net.add_arc(f"stage_{i}_in", f"finish_{i}")
+        net.add_arc(f"finish_{i}", f"stage_{i}_done")
+
+    # Add a transition to move from last stage to sink
+    net.add_place(Place("sink", initial=0))
+    net.add_transition(Transition("deliver"))
+    net.add_arc(f"stage_{n-1}_done", "deliver")
+    net.add_arc("deliver", "sink")
+    return net
+
+
+def database_transaction() -> PetriNet:
+    """Model a database transaction: begin -> read/write -> commit/abort.
+
+    The transaction can either commit (success) or abort (failure),
+    with a retry path back to the beginning.
+    """
+    net = PetriNet(name="db_transaction")
+    net.add_place(Place("idle", initial=1))
+    net.add_place(Place("active", initial=0))
+    net.add_place(Place("validated", initial=0))
+    net.add_place(Place("committed", initial=0))
+    net.add_place(Place("aborted", initial=0))
+
+    net.add_transition(Transition("begin"))
+    net.add_transition(Transition("validate"))
+    net.add_transition(Transition("commit"))
+    net.add_transition(Transition("abort"))
+    net.add_transition(Transition("retry"))
+
+    net.add_arc("idle", "begin")
+    net.add_arc("begin", "active")
+    net.add_arc("active", "validate")
+    net.add_arc("validate", "validated")
+    net.add_arc("validated", "commit")
+    net.add_arc("commit", "committed")
+    net.add_arc("validated", "abort")
+    net.add_arc("active", "abort")
+    net.add_arc("abort", "aborted")
+    net.add_arc("aborted", "retry")
+    net.add_arc("retry", "idle")
+    return net

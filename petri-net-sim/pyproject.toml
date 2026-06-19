@@ -4,22 +4,37 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "petri-net-sim"
-version = "1.0.0"
-description = "Petri net (P/T net) simulator and analysis toolkit"
+version = "3.0.0"
+description = "Petri net (P/T net) simulator and analysis toolkit with stochastic nets, colored nets, PNML, and batch analysis"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.9"
 authors = [{name = "creative-projects"}]
-keywords = ["petri-net", "simulation", "reachability", "concurrency", "verification"]
+keywords = ["petri-net", "simulation", "reachability", "concurrency", "verification", "stochastic", "colored-petri-net", "pnml"]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
     "Topic :: Scientific/Engineering",
+    "Topic :: Software Development :: Libraries",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: MIT License",
 ]
+
+[project.optional-dependencies]
+yaml = ["pyyaml>=6.0"]
+dev = ["pytest>=7.0", "pytest-cov>=4.0"]
 
 [project.scripts]
 petri = "petri.cli:main"
 
 [tool.setuptools]
 packages = ["petri"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
