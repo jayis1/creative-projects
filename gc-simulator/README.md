@@ -155,6 +155,36 @@ pip install -e ".[dev]"
 pytest tests/ -v
 ```
 
+## Known Issues (Resolved)
+
+The following bugs were identified during the Phase 3 bug hunt and have been
+fixed with targeted patches. Each fix is covered by a dedicated test in
+`tests/test_bug_hunt.py`.
+
+1. **Generational `_major_collect` TypeError (Bug A/G)**: `mark_dfs()` returns
+   a `Set[int]`, but `_major_collect` assigned it directly to `stats.marked`
+   (typed `int`) and used it in `marked + collected` arithmetic, causing a
+   `TypeError` at runtime. **Fix**: use `len(marked)` to convert the set to
+   an integer count.
+
+2. **Copying collector skips finalizers and weak-ref cleanup (Bug B)**: The
+   copying collector freed dead objects by directly setting `alive = False`
+   and `address = -1`, bypassing `Heap.free_obj()`. This meant finalizers
+   were never called and weak references to dead objects were never cleared.
+   **Fix**: call `self.heap.free_obj(o)` instead, which runs finalizers and
+   clears weak refs.
+
+3. **`_is_young` returns True for dead objects (Bug C)**:
+   `GenerationalCollector._is_young()` checked only `obj.address <
+   young_size`, which is `True` for dead objects (address = -1). This could
+   cause freed objects to be mistaken for young-gen objects, leading to
+   incorrect sweep behaviour. **Fix**: check `obj.alive` and `obj.address >=
+   0` first.
+
+4. **Dead code in CopyingCollector (Bug H)**: The variable `scan_ptr =
+   to_start` was assigned but never used (the actual working variable is
+   `scan_ptr_current`). Removed to avoid confusion.
+
 ## License
 
 MIT

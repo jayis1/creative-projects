@@ -228,7 +228,6 @@ class CopyingCollector(Collector):
         queue: deque = deque()
         copied: dict = {}  # oid -> new address
         copied_objs: List[Object] = []
-        scan_ptr = to_start
 
         def copy_obj(o: Object) -> int:
             if o.oid in copied:
@@ -279,10 +278,11 @@ class CopyingCollector(Collector):
             o.mark = True
 
         # 4. free everything that was NOT copied (in from_space)
+        # FIX: use heap.free_obj() instead of directly setting alive=False,
+        # so that finalizers run and weak references are properly cleared.
         for o in list(self.heap.live_objects):
             if o.alive and o.oid not in copied:
-                o.alive = False
-                o.address = -1
+                self.heap.free_obj(o)
 
         # 5. flip semispace
         self.semispace = 1 - self.semispace
@@ -425,7 +425,12 @@ class GenerationalCollector(Collector):
         self.remembered_set: set = set()  # oids of old objects pointing young
 
     def _is_young(self, obj: Object) -> bool:
-        return obj.address < self.young_size
+        """Return True if ``obj`` is in the young generation.
+
+        Dead objects (address=-1) are treated as *not* young so they are
+        not mistaken for young-gen objects during sweep.
+        """
+        return obj.alive and obj.address >= 0 and obj.address < self.young_size
 
     def _minor_collect(self) -> CollectionStats:
         """Copy-collect the young generation only."""
@@ -558,13 +563,16 @@ class GenerationalCollector(Collector):
                 self.heap.free_obj(obj)
                 collected += 1
         clear_marks(self.heap.live_objects)
-        stats.marked = marked
+        # FIX: mark_dfs returns a Set[int]; convert to int count for stats.
+        # Previously this assigned the set directly to stats.marked and used
+        # it in arithmetic (marked + collected), causing TypeError at runtime.
+        stats.marked = len(marked)
         stats.live_after = self.heap.num_live
         stats.collected = collected
         stats.bytes_freed = stats.heap_used_before - self.heap.used
         stats.fragmentation_after = self.heap.fragmentation()
         stats.heap_used_after = self.heap.used
-        stats.pause_cells = marked + collected
+        stats.pause_cells = len(marked) + collected
         return stats
 
     def _find_by_oid(self, oid: int) -> Optional[Object]:
