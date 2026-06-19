@@ -68,23 +68,78 @@ class Simulation:
         theta: float = 0.5,
         softening: float = 1.0,
         G: float = 1.0,
+        recenter_com: bool = False,
+        adaptive_dt: bool = False,
+        adaptive_eta: float = 0.02,
+        dt_min: float = 1e-6,
+        dt_max: float = 0.1,
     ) -> None:
         # Defensive copy so external mutation doesn't corrupt the run.
         self.bodies: List[Body] = [b.copy() for b in bodies]
+        # Validate inputs.
+        if not self.bodies:
+            raise ValueError("Simulation requires at least one body")
+        for i, b in enumerate(self.bodies):
+            if b.m < 0.0:
+                raise ValueError(f"body {i} has negative mass {b.m}")
+        if not (0.0 <= theta <= 2.0):
+            raise ValueError(f"theta must be in [0, 2], got {theta}")
+        if softening < 0.0:
+            raise ValueError(f"softening must be non-negative, got {softening}")
+        if dt <= 0.0 and not adaptive_dt:
+            raise ValueError(f"dt must be positive (or use adaptive_dt), got {dt}")
         self.dt = dt
+        self._base_dt = dt
         self.theta = theta
         self.softening = softening
         self.G = G
+        self.recenter_com = recenter_com
+        self.adaptive_dt = adaptive_dt
+        self.adaptive_eta = adaptive_eta
+        self.dt_min = dt_min
+        self.dt_max = dt_max
         self.integrator = LeapfrogIntegrator(
             theta=theta, softening=softening, G=G
         )
         self.step_count = 0
         self.t = 0.0
+        # Optionally recenter to the center-of-mass frame (zero total momentum
+        # and COM at origin). This improves numerical stability for
+        # self-gravitating systems.
+        if recenter_com:
+            self._recenter_to_com_frame()
+
+    def _recenter_to_com_frame(self) -> None:
+        """Shift positions so COM is at the origin, and subtract COM velocity
+        so the total momentum is zero."""
+        from .diagnostics import com_velocity
+        M = sum(b.m for b in self.bodies)
+        if M == 0.0:
+            return
+        cx = sum(b.m * b.x for b in self.bodies) / M
+        cy = sum(b.m * b.y for b in self.bodies) / M
+        vx_com, vy_com = com_velocity(self.bodies)
+        for b in self.bodies:
+            b.x -= cx
+            b.y -= cy
+            b.vx -= vx_com
+            b.vy -= vy_com
 
     # -- stepping -------------------------------------------------------
 
     def step(self) -> None:
-        """Advance the simulation by one ``dt``."""
+        """Advance the simulation by one ``dt`` step.
+
+        If ``adaptive_dt`` is enabled, the timestep is recomputed each step
+        from the current acceleration field (see
+        :func:`nbody.diagnostics.adaptive_dt`).
+        """
+        if self.adaptive_dt:
+            from .diagnostics import adaptive_dt
+            self.dt = adaptive_dt(
+                self.bodies, G=self.G, softening=self.softening,
+                eta=self.adaptive_eta, dt_min=self.dt_min, dt_max=self.dt_max,
+            )
         self.integrator.step(self.bodies, self.dt)
         self.step_count += 1
         self.t += self.dt

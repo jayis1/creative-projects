@@ -53,11 +53,16 @@ class Renderer:
         body_color: Tuple[int, int, int] = (255, 240, 200),
         trails: bool = True,
         trail_decay: float = 0.92,
+        color_by_mass: bool = False,
+        color_by_speed: bool = False,
+        speed_scale: float = 2.0,
     ) -> None:
         if width <= 0 or height <= 0:
             raise ValueError("width and height must be positive")
         if view_size <= 0:
             raise ValueError("view_size must be positive")
+        if not (0.0 <= trail_decay <= 1.0):
+            raise ValueError("trail_decay must be in [0, 1]")
         self.width = width
         self.height = height
         self.view_size = view_size
@@ -66,6 +71,11 @@ class Renderer:
         self.body_color = body_color
         self.trails = trails
         self.trail_decay = trail_decay
+        self.color_by_mass = color_by_mass
+        self.color_by_speed = color_by_speed
+        self.speed_scale = speed_scale
+        # Track the max speed seen so far for speed-based coloring.
+        self._max_speed_seen = 1e-6
         # Persistent pixel buffer for trails (RGB triples per pixel).
         self._buffer: Optional[List[List[List[int]]]] = None
         if trails:
@@ -123,6 +133,29 @@ class Renderer:
                         if self._buffer is not None:
                             self._buffer[ny][nx] = list(c)
 
+    # -- coloring -------------------------------------------------------
+
+    @staticmethod
+    def _mass_color(m: float, m_min: float, m_max: float) -> Tuple[int, int, int]:
+        """Color bodies from cool blue (low mass) to warm orange (high mass)."""
+        span = max(m_max - m_min, 1e-9)
+        t = max(0.0, min(1.0, (m - m_min) / span))
+        # Blue (50, 120, 255) -> orange (255, 160, 50).
+        r = int(50 + t * (255 - 50))
+        g = int(120 + t * (160 - 120))
+        b = int(255 + t * (50 - 255))
+        return (r, g, b)
+
+    @staticmethod
+    def _speed_color(speed: float, max_speed: float) -> Tuple[int, int, int]:
+        """Color bodies from deep red (slow) to bright yellow (fast)."""
+        t = max(0.0, min(1.0, speed / max(max_speed, 1e-9)))
+        # Dark red (180, 30, 20) -> bright yellow (255, 230, 80).
+        r = int(180 + t * (255 - 180))
+        g = int(30 + t * (230 - 30))
+        b = int(20 + t * (80 - 20))
+        return (r, g, b)
+
     # -- public API -----------------------------------------------------
 
     def render_frame(self, bodies: Sequence[Body]) -> bytes:
@@ -142,12 +175,30 @@ class Renderer:
                     for i in range(3):
                         px[i] = int(px[i] * d + bg[i] * (1 - d))
 
+        # Precompute mass / speed ranges for coloring, if requested.
+        m_vals = [b.m for b in bodies] if self.color_by_mass else []
+        m_min = min(m_vals) if m_vals else 0.0
+        m_max = max(m_vals) if m_vals else 1.0
+        if self.color_by_speed:
+            speeds = [math.hypot(b.vx, b.vy) for b in bodies]
+            cur_max = max(speeds) if speeds else 0.0
+            # Smoothly update the running max so colors stay stable across frames.
+            self._max_speed_seen = max(self._max_speed_seen * 0.995, cur_max)
+
         # Draw each body.
         for b in bodies:
             px, py = self._to_pixel(b.x, b.y)
             # Radius scales with mass (logarithmic to avoid huge discs).
             r = max(1, int(1 + math.log10(max(b.m, 1e-9)) * 1.5 + 1))
-            self._draw_disc(px, py, r, self.body_color)
+            # Pick a color.
+            if self.color_by_mass:
+                color = self._mass_color(b.m, m_min, m_max)
+            elif self.color_by_speed:
+                speed = math.hypot(b.vx, b.vy)
+                color = self._speed_color(speed, self._max_speed_seen)
+            else:
+                color = self.body_color
+            self._draw_disc(px, py, r, color)
 
         return self._encode_ppm()
 

@@ -10,15 +10,33 @@ Subpackages
 - :mod:`nbody.cli`       – command-line front-end
 """
 
-from .simulation import Simulation, Body, SimulationResult
+from .simulation import Simulation, SimulationResult
 from .barnes_hut import BHTree
+from .body import Body
+from .brute_force import benchmark, brute_force_accelerations
+from .diagnostics import (
+    total_angular_momentum,
+    com_velocity,
+    virial_ratio,
+    min_separation,
+    max_acceleration,
+    adaptive_dt,
+)
 
 __all__ = [
     "Simulation",
     "Body",
     "SimulationResult",
     "BHTree",
+    "benchmark",
+    "brute_force_accelerations",
+    "total_angular_momentum",
+    "com_velocity",
+    "virial_ratio",
+    "min_separation",
+    "max_acceleration",
+    "adaptive_dt",
     "__version__",
 ]
 
-__version__ = "1.0.0"
+__version__ = "2.0.0"

@@ -72,8 +72,11 @@ nbody-sim/
 │   ├── body.py            # Body dataclass
 │   ├── barnes_hut.py      # quadtree + θ-opening force evaluator
 │   ├── integrator.py      # leapfrog (KDK) integrator
+│   ├── diagnostics.py     # angular momentum, virial ratio, adaptive dt
+│   ├── brute_force.py     # O(N²) ground truth + benchmark harness
 │   ├── simulation.py      # Simulation orchestrator + presets
-│   ├── renderer.py        # PPM frame renderer with trails
+│   ├── renderer.py        # PPM frame renderer with trails + mass/speed coloring
+│   ├── serialize.py       # JSON snapshot/run serialization
 │   └── cli.py             # argparse CLI
 ├── examples/
 │   ├── two_body.py        # circular orbit demo
@@ -102,13 +105,25 @@ print(f"dE/E = {abs(result.final_energy - result.initial_energy) / abs(result.in
 # Run a two-body orbit and log energy/momentum to CSV.
 python3 -m nbody --preset two-body --steps 1000 --dt 0.01 --log energy.csv
 
-# Render the figure-eight to a sequence of PPM frames.
+# Render the figure-eight to a sequence of PPM frames, colored by speed.
 python3 -m nbody --preset figure-eight --steps 500 --dt 0.005 \
-    --snapshot-every 5 --render frames/ --width 512 --height 512
+    --snapshot-every 5 --render frames/ --width 512 --height 512 \
+    --color-by-speed
 
-# Simulate a 200-body Plummer sphere.
+# Simulate a 200-body Plummer sphere, recentered to the COM frame.
 python3 -m nbody --preset plummer --n-bodies 200 --steps 2000 --dt 0.01 \
-    --theta 0.7 --softening 0.5
+    --theta 0.7 --softening 0.5 --recenter-com
+
+# Run with adaptive timestep based on the max acceleration.
+python3 -m nbody --preset random --n-bodies 100 --adaptive-dt \
+    --adaptive-eta 0.01 --steps 200 --snapshot-every 10 --render frames/
+
+# Benchmark Barnes-Hut vs brute force at a given N.
+python3 -m nbody --preset random --n-bodies 400 --benchmark --theta 0.8
+
+# Save the full run (snapshots + diagnostics) to JSON.
+python3 -m nbody --preset figure-eight --steps 200 --snapshot-every 10 \
+    --save-json run.json
 ```
 
 Run `python3 -m nbody --help` for the full option list.
@@ -130,9 +145,54 @@ The :class:`Simulation` exposes:
 - `total_momentum(bodies)` — conserved vector (should be constant).
 - `center_of_mass(bodies)` — for COM-relative rendering.
 
+Additional diagnostics are available in :mod:`nbody.diagnostics`:
+
+- `total_angular_momentum(bodies, about)` — conserved z-component of L.
+- `com_velocity(bodies)` — mass-weighted average velocity.
+- `virial_ratio(bodies, G, softening)` — `2T/|U|`, equals 1 at virial equilibrium.
+- `min_separation(bodies)` — smallest pairwise distance.
+- `max_acceleration(bodies, G, softening)` — largest acceleration magnitude.
+- `adaptive_dt(bodies, ...)` — stable timestep from `η·√(ε/a_max)`.
+
 The CLI prints the initial/final energy, the relative drift `dE/E`, and both
 momentum vectors; with `--log energy.csv` it writes a per-snapshot CSV with
 columns `step, t, energy, px, py`.
+
+## Advanced features
+
+### COM-frame recentering (`--recenter-com`)
+
+Subtracts the center-of-mass position and velocity from every body at start,
+so the total momentum is exactly zero and the COM sits at the origin. This
+removes spurious bulk drift from random clouds and improves long-run
+stability.
+
+### Adaptive timestep (`--adaptive-dt`)
+
+Instead of a fixed `dt`, recompute the step each iteration from the current
+maximum acceleration: `dt = η · √(ε / a_max)`, clamped to `[dt_min, dt_max]`.
+The step shrinks during close encounters (where accelerations spike) and
+grows during quiet phases. The safety factor `η` (`--adaptive-eta`) trades
+accuracy against speed.
+
+### Barnes–Hut vs brute-force benchmark (`--benchmark`)
+
+Builds both evaluators for the same configuration and reports wall-clock
+times, speedup, and the max/mean relative force error of Barnes–Hut versus the
+exact pairwise answer. Useful for picking θ for a given N. Barnes–Hut wins
+above a few hundred bodies; below ~100 the tree-build overhead makes
+brute-force competitive.
+
+### Mass- and speed-based coloring (`--color-by-mass`, `--color-by-speed`)
+
+The renderer can color each body by its mass (cool blue → warm orange) or by
+its speed (deep red → bright yellow). The speed colormap uses a slowly
+decaying running maximum so colors stay comparable across frames.
+
+### JSON serialization (`--save-json`)
+
+Full runs (config + all snapshots + energy/momentum) can be saved to JSON
+and reloaded via :mod:`nbody.serialize` for offline analysis or re-rendering.
 
 ## Why symplectic matters
 

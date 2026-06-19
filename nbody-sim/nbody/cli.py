@@ -27,17 +27,25 @@ from .simulation import Body, Simulation
 PRESETS = {
     "two-body": lambda args: Simulation.two_body_orbit(
         dt=args.dt, theta=args.theta, softening=args.softening, G=args.G,
+        recenter_com=args.recenter_com, adaptive_dt=args.adaptive_dt,
+        adaptive_eta=args.adaptive_eta,
     ),
     "figure-eight": lambda args: Simulation.figure_eight(
         dt=args.dt, theta=args.theta, softening=args.softening, G=args.G,
+        recenter_com=args.recenter_com, adaptive_dt=args.adaptive_dt,
+        adaptive_eta=args.adaptive_eta,
     ),
     "plummer": lambda args: Simulation.plummer_sphere(
         n=args.n_bodies, seed=args.seed, dt=args.dt, theta=args.theta,
         softening=args.softening, G=args.G,
+        recenter_com=args.recenter_com, adaptive_dt=args.adaptive_dt,
+        adaptive_eta=args.adaptive_eta,
     ),
     "random": lambda args: Simulation.random_cloud(
         n=args.n_bodies, seed=args.seed, dt=args.dt, theta=args.theta,
         softening=args.softening, G=args.G,
+        recenter_com=args.recenter_com, adaptive_dt=args.adaptive_dt,
+        adaptive_eta=args.adaptive_eta,
     ),
 }
 
@@ -96,12 +104,40 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-trails", action="store_true", help="Disable motion trails"
     )
     p.add_argument(
+        "--color-by-mass", action="store_true",
+        help="Color bodies by mass (blue=light, orange=heavy)",
+    )
+    p.add_argument(
+        "--color-by-speed", action="store_true",
+        help="Color bodies by speed (red=slow, yellow=fast)",
+    )
+    p.add_argument(
+        "--recenter-com", action="store_true",
+        help="Recenter to COM frame (zero total momentum) at start",
+    )
+    p.add_argument(
+        "--adaptive-dt", action="store_true",
+        help="Use adaptive timestep based on max acceleration",
+    )
+    p.add_argument(
+        "--adaptive-eta", type=float, default=0.02,
+        help="Adaptive timestep safety factor (smaller = more accurate)",
+    )
+    p.add_argument(
+        "--benchmark", action="store_true",
+        help="Compare Barnes-Hut vs brute-force accuracy and speed, then exit",
+    )
+    p.add_argument(
+        "--save-json", type=str, default="",
+        help="Save snapshots + result to a JSON file",
+    )
+    p.add_argument(
         "--verbose", action="store_true", help="Print per-step progress"
     )
     return p
 
 
-def main(argv: List[str] = None) -> int:
+def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
     sim = PRESETS[args.preset](args)
     print(
@@ -110,6 +146,19 @@ def main(argv: List[str] = None) -> int:
         f"softening={args.softening} G={args.G}",
         file=sys.stderr,
     )
+
+    # Benchmark mode: compare BH vs brute force and exit.
+    if args.benchmark:
+        from .brute_force import benchmark
+        res = benchmark(sim.bodies, theta=args.theta, G=args.G,
+                        softening=args.softening)
+        print(f"Benchmark (N={res['n']}, theta={res['theta']}):")
+        print(f"  Barnes-Hut time : {res['bh_time']*1000:.2f} ms")
+        print(f"  Brute force time: {res['bf_time']*1000:.2f} ms")
+        print(f"  Speedup         : {res['speedup']:.2f}x")
+        print(f"  Max rel error   : {res['max_rel_err']:.6e}")
+        print(f"  Mean rel error  : {res['mean_rel_err']:.6e}")
+        return 0
 
     snapshots = []
     if args.snapshot_every > 0:
@@ -151,9 +200,19 @@ def main(argv: List[str] = None) -> int:
             height=args.height,
             view_size=args.view_size,
             trails=not args.no_trails,
+            color_by_mass=args.color_by_mass,
+            color_by_speed=args.color_by_speed,
         )
         paths = r.render_sequence(snapshots, args.render)
         print(f"Wrote {len(paths)} PPM frames to {args.render}", file=sys.stderr)
+
+    # JSON serialization of full result.
+    if args.save_json:
+        from .serialize import save_result
+        # Attach the in-memory snapshots to the result object.
+        result.snapshots = snapshots
+        save_result(result, sim, args.save_json)
+        print(f"Saved run to {args.save_json}", file=sys.stderr)
 
     return 0
 
