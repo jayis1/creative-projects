@@ -11,18 +11,23 @@ This toolkit provides:
 - **Net model**: Places (with optional capacity), Transitions (with optional guard functions), weighted Arcs.
 - **Firing semantics**: Single-step firing, in-place mutation, capacity-aware enabling checks.
 - **Simulation**: Random walk, fixed-sequence execution, maximal-step (concurrent firing), fire-until-target, and step-by-step iteration.
-- **Reachability graph**: BFS construction of all reachable markings with deadlock detection and ω-abstraction hooks for unboundedness.
+- **Reachability graph**: BFS construction of all reachable markings with deadlock detection.
+- **Coverability tree**: Karp-Miller algorithm with ω-abstraction for unboundedness detection.
 - **Structural analysis**:
   - **T-invariants** — transition multisets whose firing returns the net to the same marking.
   - **P-invariants** — place weightings whose token sum is conserved (computed via Gaussian elimination over the rationals).
   - **Incidence matrix** (Post − Pre).
+  - **Traps** — sets of places that, once marked, stay marked.
+  - **Siphons** — sets of places that, once unmarked, stay unmarked (potential deadlocks).
 - **Behavioral analysis**:
   - **Boundedness** — k-boundedness detection via reachability exploration.
-  - **Liveness** — L0–L4 classification (dead, L1, L2, L3, L4/live).
+  - **Liveness** — L0–L4 classification (dead, L1, L4/live).
+  - **Reachability checking** — can a specific marking be reached?
+  - **Reversibility** — is the initial marking a home state (reachable from every reachable marking)?
 - **Visualization**: ASCII net diagrams, ASCII marking display, ASCII reachability graph, Graphviz DOT export.
 - **Serialization**: Full JSON round-trip (save/load nets).
 - **8 preset nets**: dining philosophers, producer-consumer, mutual exclusion, workflow, state machine, free-choice, readers-writers, simple buffer.
-- **CLI**: `petri` command with `simulate`, `reachability`, `invariants`, `analyze`, `show`, `fire`, `export`, and `presets` subcommands.
+- **CLI**: `petri` command with 10 subcommands: `simulate`, `reachability`, `invariants`, `analyze`, `show`, `fire`, `export`, `presets`, `reachable`, `cover`.
 
 ## Installation
 
@@ -40,6 +45,7 @@ Or use directly without installation by running `python3 -m petri.cli`.
 ```python
 from petri import PetriNet, Place, Transition, Simulator, ascii_marking
 from petri import reachability_graph, compute_t_invariants, compute_p_invariants
+from petri import is_reachable, is_reversible, coverability_tree, analyze_traps_siphons
 
 # Build a simple producer-consumer net
 net = PetriNet("pc")
@@ -64,6 +70,23 @@ print(f"Final: {ascii_marking(result.final_marking, net)}")
 # Analyze
 rg = reachability_graph(net)
 print(f"Reachability: {rg.num_states} states, {rg.num_edges} edges")
+
+# Check reachability
+print(f"Can reach consumed=5: {is_reachable(net, {'consumed': 5})}")
+
+# Check reversibility
+print(f"Reversible: {is_reversible(net)}")
+
+# Coverability tree (for unbounded nets)
+tree = coverability_tree(net)
+print(f"Unbounded: {tree.is_unbounded}")
+
+# Traps and siphons
+ts = analyze_traps_siphons(net)
+print(f"Traps: {ts.traps}")
+print(f"Siphons: {ts.siphons}")
+
+# Invariants
 print(f"T-invariants: {compute_t_invariants(net)}")
 print(f"P-invariants: {compute_p_invariants(net)}")
 ```
@@ -95,8 +118,14 @@ petri --preset mutual_exclusion reachability --dot > reachability.dot
 # Compute invariants
 petri --preset producer_consumer invariants --type both
 
-# Full analysis (boundedness + liveness)
+# Full analysis (boundedness, liveness, reversibility, traps/siphons)
 petri --preset workflow analyze
+
+# Check if a marking is reachable
+petri --preset workflow reachable end=1
+
+# Build coverability tree
+petri --preset mutual_exclusion cover
 
 # Fire a specific sequence
 petri --preset workflow fire submit review approve
@@ -128,16 +157,37 @@ M'(p) = M(p) + w(t,p)    for each output place p
 
 ### Reachability Graph
 
-Built via BFS from the initial marking. Each reachable marking becomes a node; each firing becomes an edge labeled with the transition name. Deadlock states (no enabled transitions) are flagged. The `detect_omega` flag enables ω-abstraction for unboundedness detection.
+Built via BFS from the initial marking. Each reachable marking becomes a node; each firing becomes an edge labeled with the transition name. Deadlock states (no enabled transitions) are flagged.
+
+### Coverability Tree (Karp-Miller)
+
+For unbounded nets (where the reachability graph is infinite), the coverability tree uses **ω-abstraction**: when a marking M' is reached that covers a predecessor M on the path, places that strictly increased are replaced by ω (infinity). This makes the tree finite while preserving boundedness information. If any node contains ω, the net is unbounded.
 
 ### Invariants
 
-The **incidence matrix** `C = Post − Pre` captures the net effect of each transition on each place. 
+The **incidence matrix** `C = Post − Pre` captures the net effect of each transition on each place.
 
 - **T-invariants** satisfy `C · x = 0` — firing the transition multiset `x` returns to the same marking.
 - **P-invariants** satisfy `y^T · C = 0` — the weighted sum `y · M` is conserved.
 
 Both are computed via Gaussian elimination over the rationals, extracting null-space basis vectors from free variables, then normalizing to coprime integers.
+
+### Traps and Siphons
+
+- **Trap**: A set of places S where every transition that consumes from S also produces into S. Once marked, a trap can never become empty.
+- **Siphon**: A set of places S where every transition that produces into S also consumes from S. Once unmarked, a siphon can never become marked (dead).
+
+An initially-unmarked siphon indicates a potential structural deadlock.
+
+### Liveness
+
+- **L0 (dead)**: The transition can never fire from any reachable marking.
+- **L1**: The transition can fire from at least one reachable marking.
+- **L4 (live)**: The transition can fire from every reachable marking.
+
+### Reversibility
+
+A net is **reversible** if the initial marking is reachable from every reachable marking (i.e., it's a home state). This means the system can always return to its starting configuration.
 
 ## Presets
 
@@ -160,12 +210,13 @@ petri-net-sim/
 │   ├── __init__.py      # Public API
 │   ├── net.py           # PetriNet, Place, Transition, Arc
 │   ├── simulator.py     # Simulator (random walk, sequences, maximal step)
-│   ├── analysis.py      # Reachability, invariants, boundedness, liveness
+│   ├── analysis.py      # Reachability, coverability, invariants, boundedness, liveness, traps/siphons
 │   ├── presets.py       # 8 preset nets
 │   ├── visualizer.py    # ASCII + DOT visualization
 │   └── cli.py           # Command-line interface
 ├── tests/
-│   └── test_petri.py    # Test suite
+│   ├── test_petri.py    # Core test suite (39 tests)
+│   └── test_enhanced.py # Enhanced analysis tests (12 tests)
 ├── pyproject.toml
 └── README.md
 ```

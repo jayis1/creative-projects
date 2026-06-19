@@ -11,6 +11,8 @@ from . import (
     Simulator,
     compute_t_invariants, compute_p_invariants,
     reachability_graph, analyze_boundedness, analyze_liveness,
+    is_reachable, is_reversible,
+    coverability_tree, analyze_traps_siphons,
     ascii_net, ascii_marking, reachability_ascii, reachability_dot,
 )
 from .presets import (
@@ -98,6 +100,59 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     print("Liveness:")
     l = analyze_liveness(net, max_states=args.max_states)
     print(l)
+    print()
+
+    print("Reversibility:")
+    rev = is_reversible(net, max_states=args.max_states)
+    print(f"  Reversible (home state): {rev}")
+    print()
+
+    print("Traps & Siphons:")
+    ts = analyze_traps_siphons(net)
+    print(f"  {ts}")
+    return 0
+
+
+def cmd_reachable(args: argparse.Namespace) -> int:
+    """Check if a target marking is reachable."""
+    net = _get_net(args)
+    # parse target marking from command line: place=value pairs
+    target: dict[str, int] = {}
+    for pair in args.target:
+        if "=" not in pair:
+            print(f"Error: expected place=value, got '{pair}'", file=sys.stderr)
+            return 1
+        name, val = pair.split("=", 1)
+        target[name.strip()] = int(val.strip())
+    result = is_reachable(net, target, max_states=args.max_states)
+    print(f"Target marking {target} is {'reachable' if result else 'NOT reachable'}")
+    return 0
+
+
+def cmd_cover(args: argparse.Namespace) -> int:
+    """Build and display the coverability tree."""
+    net = _get_net(args)
+    tree = coverability_tree(net, max_nodes=args.max_nodes)
+    print(f"Coverability Tree: {len(tree.nodes)} nodes, {len(tree.edges)} edges")
+    print(f"Unbounded: {tree.is_unbounded}")
+    if tree.omega_places:
+        print(f"Unbounded places (ω): {sorted(tree.omega_places)}")
+    print()
+    for node_id, node in tree.nodes.items():
+        marking_str = ", ".join(
+            f"{k}=ω" if v == -1 else f"{k}={v}"
+            for k, v in sorted(node.marking.items())
+        )
+        flags = []
+        if node_id == tree.initial_id:
+            flags.append("initial")
+        if node.is_terminal:
+            flags.append("terminal")
+        if node.has_omega:
+            flags.append("ω")
+        flag_str = f" [{', '.join(flags)}]" if flags else ""
+        print(f"  {node_id}{flag_str}")
+        print(f"    [{marking_str}]")
     return 0
 
 
@@ -178,9 +233,18 @@ def build_parser() -> argparse.ArgumentParser:
     p_inv.add_argument("--type", choices=["t", "p", "both"], default="both")
     p_inv.set_defaults(func=cmd_invariants)
 
-    p_an = sub.add_parser("analyze", help="Full analysis: boundedness + liveness")
+    p_an = sub.add_parser("analyze", help="Full analysis: boundedness, liveness, reversibility, traps/siphons")
     p_an.add_argument("--max-states", type=int, default=10000)
     p_an.set_defaults(func=cmd_analyze)
+
+    p_reach_target = sub.add_parser("reachable", help="Check if a target marking is reachable")
+    p_reach_target.add_argument("target", nargs="+", help="Target marking as place=value pairs")
+    p_reach_target.add_argument("--max-states", type=int, default=10000)
+    p_reach_target.set_defaults(func=cmd_reachable)
+
+    p_cover = sub.add_parser("cover", help="Build coverability tree (Karp-Miller)")
+    p_cover.add_argument("--max-nodes", type=int, default=50000)
+    p_cover.set_defaults(func=cmd_cover)
 
     p_show = sub.add_parser("show", help="Show net structure")
     p_show.set_defaults(func=cmd_show)
