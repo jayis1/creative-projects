@@ -9,8 +9,15 @@ from typing import Optional
 from .net import PetriNet
 
 
-def _marking_key(marking: dict[str, int]) -> tuple[int, ...]:
-    """Hashable key for a marking (ordered by place name)."""
+def _marking_key(marking: dict[str, int], place_names: Optional[list[str]] = None) -> tuple[int, ...]:
+    """Hashable key for a marking (ordered by place name).
+
+    If ``place_names`` is provided, uses those names; otherwise uses the
+    sorted keys of the marking dict. Using explicit place_names is preferred
+    for consistency, as markings may not include all places.
+    """
+    if place_names is not None:
+        return tuple(marking.get(p, 0) for p in place_names)
     return tuple(marking.get(p, 0) for p in sorted(marking))
 
 
@@ -311,13 +318,16 @@ def coverability_tree(
                 )
                 stack.append((new_id, dict(new_marking), new_path))
             else:
-                # already visited — this is a back-edge (terminal for tree property)
-                if _marking_le(tree.nodes[new_id].marking, new_marking, places):
-                    # existing node is covered by new marking — update it
+                # already visited — if the new marking is strictly larger,
+                # update the node and re-queue it for expansion (the ω-abstraction
+                # may now apply to more places)
+                if _marking_strictly_less(tree.nodes[new_id].marking, new_marking, places):
                     tree.nodes[new_id].marking = dict(new_marking)
                     tree.nodes[new_id].has_omega = has_om
+                    tree.nodes[new_id].is_terminal = False  # allow re-expansion
                     if has_om:
                         tree.is_unbounded = True
+                    stack.append((new_id, dict(new_marking), new_path))
 
     return tree
 
@@ -341,11 +351,19 @@ def analyze_boundedness(
     initial_marking: Optional[dict[str, int]] = None,
     max_states: int = 100_000,
 ) -> BoundednessResult:
-    """Determine if the net is bounded by exploring the reachability graph."""
-    rg = reachability_graph(net, initial_marking, max_states=max_states, detect_omega=False)
+    """Determine if the net is bounded.
 
-    if rg.omega_markings:
+    Uses the coverability tree (Karp-Miller ω-abstraction) to detect
+    unboundedness. If unbounded, returns bound=-1. Otherwise explores
+    the reachability graph to find the maximum token count per place.
+    """
+    # First, check unboundedness via coverability tree
+    tree = coverability_tree(net, initial_marking, max_nodes=max_states)
+    if tree.is_unbounded:
         return BoundednessResult(is_bounded=False, max_tokens={}, bound=-1)
+
+    # Net is bounded — explore reachability graph for max token counts
+    rg = reachability_graph(net, initial_marking, max_states=max_states, detect_omega=False)
 
     max_tokens: dict[str, int] = {}
     for node in rg.nodes.values():
@@ -453,15 +471,16 @@ def is_reversible(
     rg = reachability_graph(net, initial_marking, max_states=max_states, detect_omega=False)
 
     # Build adjacency for BFS
+    place_names = sorted(net.places)
     succ: dict[str, list[str]] = {}
     for node_id, node in rg.nodes.items():
         succ[node_id] = [target_id for _, target_id in node.successors]
 
     # For each reachable marking, check if initial marking is reachable from it
-    initial_key = _marking_key(initial_marking)
+    initial_key = _marking_key(initial_marking, place_names)
     initial_id = None
     for node_id, node in rg.nodes.items():
-        if _marking_key(node.marking) == initial_key:
+        if _marking_key(node.marking, place_names) == initial_key:
             initial_id = node_id
             break
 

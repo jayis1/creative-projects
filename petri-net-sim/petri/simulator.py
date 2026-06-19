@@ -173,18 +173,28 @@ class Simulator:
         max_steps: int = 10000,
         marking: Optional[dict[str, int]] = None,
     ) -> Optional[list[str]]:
-        """Random-walk until ``target`` is reached. Returns the firing sequence or None."""
+        """Random-walk until ``target`` is reached. Returns the firing sequence or None.
+
+        Checks the target marking both before and after each firing,
+        so a target reached on the final step is still detected.
+        """
         current = dict(marking) if marking is not None else self.net.initial_marking()
         sequence: list[str] = []
+
+        # Check if already at target before any firing
+        if all(current.get(k, 0) == v for k, v in target.items()):
+            return sequence
+
         for _ in range(max_steps):
-            if all(current.get(k, 0) == v for k, v in target.items()):
-                return sequence
             enabled = self.net.enabled_transitions(current)
             if not enabled:
                 return None
             choice = self._rng.choice(enabled)
             current = self.net.fire(choice, current)
             sequence.append(choice)
+            # Check target after each firing (including the last one)
+            if all(current.get(k, 0) == v for k, v in target.items()):
+                return sequence
         return None
 
     # ------------------------------------------------------------------

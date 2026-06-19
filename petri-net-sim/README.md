@@ -221,6 +221,32 @@ petri-net-sim/
 └── README.md
 ```
 
+## Known Issues (Resolved)
+
+### Bug 1: Boundedness analysis failed to detect unbounded nets
+
+**Problem**: `analyze_boundedness` used `detect_omega=False` when building the reachability graph, then checked `rg.omega_markings` — which was always empty because omega detection was disabled. Unbounded nets were incorrectly reported as bounded.
+
+**Fix**: Use the coverability tree (Karp-Miller algorithm with ω-abstraction) to detect unboundedness before falling back to reachability graph exploration for bounded nets.
+
+### Bug 2: `fire_until` missed target reached on the final step
+
+**Problem**: `fire_until` checked the target marking *before* each firing but not *after*. If the target was reached on the last allowed step, it was missed and `None` was returned.
+
+**Fix**: Check the target marking both before the loop (for the initial marking) and after each firing.
+
+### Bug 3: `_marking_key` used dict keys instead of all place names
+
+**Problem**: `_marking_key(marking)` iterated over `sorted(marking)` (the dict's keys), which could produce different keys for the same logical marking if some places had 0 tokens and were omitted from the dict.
+
+**Fix**: Added an optional `place_names` parameter. `is_reversible` now passes the full list of place names to ensure consistent key generation.
+
+### Bug 4: Coverability tree didn't re-expand updated nodes
+
+**Problem**: When a node's marking was updated to a larger value in the coverability tree, it wasn't re-queued for expansion. This meant the ω-abstraction might not propagate correctly, potentially missing unbounded places.
+
+**Fix**: When a node's marking is updated, re-queue it for expansion and clear its `is_terminal` flag. Also changed the comparison from `_marking_le` (≤) to `_marking_strictly_less` (<) to avoid unnecessary re-expansion when markings are equal.
+
 ## License
 
 MIT

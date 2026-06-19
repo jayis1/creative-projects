@@ -306,18 +306,18 @@ class TestBoundedness:
         assert b.bound >= 1
 
     def test_unbounded_net(self):
+        """A net with a transition that has no input arcs is unbounded."""
         net = PetriNet("unbounded")
         net.add_place(Place("source", initial=0))
         net.add_place(Place("sink", initial=0))
         net.add_transition(Transition("gen"))
         net.add_arc("gen", "source")
         net.add_arc("source", "gen")
-        # This net can produce unbounded tokens in "sink"
+        # "move" has no input arc — always enabled, produces unbounded tokens
         net.add_transition(Transition("move"))
         net.add_arc("move", "sink")
-        # "move" is never enabled, so the net is actually bounded (trivially)
         b = analyze_boundedness(net)
-        assert b.is_bounded
+        assert not b.is_bounded, "Net with a transition that has no inputs is unbounded"
 
 
 class TestLiveness:
