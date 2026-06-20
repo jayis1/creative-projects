@@ -172,6 +172,10 @@ class XYRect(Primitive):
         self.material = material if material is not None else Matte(Vec3(0.9, 0.9, 0.9))
 
     def hit(self, ray: Ray, tmin: float, tmax: float) -> Optional[HitRecord]:
+        # Guard against rays parallel to the rectangle plane (dir.z == 0),
+        # which would otherwise divide by zero.
+        if ray.direction.z == 0.0:
+            return None
         t = (self.z - ray.origin.z) / ray.direction.z
         if t < tmin or t > tmax:
             return None

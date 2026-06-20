@@ -170,13 +170,25 @@ class Renderer:
     # ------------------------------------------------------------------ #
     # Pixel + image
     # ------------------------------------------------------------------ #
-    def render_pixel(self, camera, s: float, t: float) -> Vec3:
+    def render_pixel(
+        self,
+        camera,
+        s: float,
+        t: float,
+        pixel_width: float = 0.0,
+        pixel_height: float = 0.0,
+    ) -> Vec3:
         """Render a single pixel at normalized coord (s, t) in [0, 1]^2.
 
-        Anti-aliasing: ``samples`` jittered rays within a unit pixel cell are
-        averaged.  For AO mode the per-pixel sample count instead controls the
-        hemisphere occlusion samples (the primary ray itself is not
-        supersampled in AO to keep it cheap); pass ``--samples`` accordingly.
+        Anti-aliasing: ``samples`` jittered rays within the pixel cell are
+        averaged.  The jitter is centred on the pixel centre (s, t) and bounded
+        to ``±pixel_width/2`` / ``±pixel_height/2`` so samples never leave the
+        pixel cell — this prevents edge bleed where the last pixel would
+        otherwise sample beyond the image plane.
+
+        For AO mode the per-pixel sample count instead controls the hemisphere
+        occlusion samples (the primary ray itself is not supersampled in AO to
+        keep it cheap); pass ``--samples`` accordingly.
         """
         if self.mode == "ao":
             # One primary ray; hemisphere sampling count == samples.
@@ -185,9 +197,12 @@ class Renderer:
             return self._shade_primary(camera.get_ray(s, t))
         color = Vec3.zero()
         inv = 1.0 / float(self.samples)
+        half_w = pixel_width * 0.5
+        half_h = pixel_height * 0.5
         for _ in range(self.samples):
-            ss = s + _mat._drand48()
-            tt = t + _mat._drand48()
+            # Jitter within the pixel cell, centred on (s, t).
+            ss = s + (_mat._drand48() - 0.5) * pixel_width
+            tt = t + (_mat._drand48() - 0.5) * pixel_height
             color = color + self._shade_primary(camera.get_ray(ss, tt))
         return color * inv
 
@@ -213,14 +228,19 @@ class Renderer:
     def _render_serial(
         self, camera, width: int, height: int, progress
     ) -> "list[list[Vec3]]":
+        # Pixel-cell extents in normalized image space (so jitter stays inside
+        # the pixel and never samples beyond the [0, 1] image plane).
+        pw = 1.0 / width
+        ph = 1.0 / height
         rows: list[list[Vec3]] = []
         for j in range(height):
             row: list[Vec3] = []
             # Render top-to-bottom; flip v so y=0 is the bottom of the image.
-            v_coord = (height - 1 - j) / max(1, height - 1)
+            # Use pixel *centres*: (i+0.5)/width keeps every sample in [0, 1].
+            v_center = 1.0 - (j + 0.5) / height
             for i in range(width):
-                u_coord = i / max(1, width - 1)
-                row.append(self.render_pixel(camera, u_coord, v_coord))
+                u_center = (i + 0.5) / width
+                row.append(self.render_pixel(camera, u_center, v_center, pw, ph))
             rows.append(row)
             if progress is not None:
                 progress(j + 1, height)
@@ -297,12 +317,15 @@ def _encode_gamma(color: Vec3, gamma: float) -> tuple:
 def _render_rows(renderer: Renderer, camera, width: int, height: int,
                  start: int, end: int) -> "list[list[Vec3]]":
     """Render rows ``[start, end)`` of the image — module-level for pickling."""
+    pw = 1.0 / width
+    ph = 1.0 / height
     out: list[list[Vec3]] = []
     for j in range(start, end):
-        v_coord = (height - 1 - j) / max(1, height - 1)
+        # Top-to-bottom display; v=0 is the bottom of the image.
+        v_center = 1.0 - (j + 0.5) / height
         row: list[Vec3] = []
         for i in range(width):
-            u_coord = i / max(1, width - 1)
-            row.append(renderer.render_pixel(camera, u_coord, v_coord))
+            u_center = (i + 0.5) / width
+            row.append(renderer.render_pixel(camera, u_center, v_center, pw, ph))
         out.append(row)
     return out

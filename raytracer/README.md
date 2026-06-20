@@ -222,15 +222,41 @@ raytracer/
 └── pyproject.toml
 ```
 
+## Known Issues (Resolved)
+
+The following bugs were found during the Phase 3 bug hunt and have been fixed,
+each with a regression test in `tests/test_bug_hunt.py`:
+
+1. **AABB slab division by zero** — the axis-aligned bounding-box intersection
+   divided by `ray.direction.<axis>` unconditionally; rays with a zero
+   direction component (e.g. axis-aligned rays) crashed with
+   `ZeroDivisionError`. *Fix: detect zero-direction axes and test whether the
+   ray origin lies within the slab extents instead of dividing.*
+2. **Pixel jitter exceeded the image plane** — anti-aliasing jitter used
+   `s + random()` which for the last pixel (`s = 1.0`) sampled at coordinates up
+   to ~1.62, far beyond the `[0, 1]` image bounds, causing edge bleed. The
+   pixel-coordinate mapping also used edge-aligned `i/(width-1)` rather than
+   pixel centres. *Fix: map each pixel to its centre `(i+0.5)/width` and jitter
+   within `±half-pixel`, so every sample stays inside its pixel cell.*
+3. **`XYRect.hit` division by zero** — the axis-aligned rectangle divided by
+   `ray.direction.z` without guarding; a ray parallel to the rectangle plane
+   crashed with `ZeroDivisionError`. *Fix: return `None` when
+   `ray.direction.z == 0`.*
+4. **Unpicklable backgrounds broke multi-process rendering** — `constant_background`
+   returned a nested closure and the Cornell scene used a `lambda`, neither of
+   which can cross process boundaries, so `--threads N` failed with
+   `AttributeError: Can't get local object`. *Fix: introduced a picklable
+   `ConstantBackground` class and replaced the lambda with it.*
+
 ## Tests
 
 ```bash
 python -m pytest tests/ -q
 ```
 
-72 tests covering vector math, intersections, materials, BVH, camera, all
-three integrator modes, JSON serialization, parallel rendering, image I/O, and
-the CLI.
+91 tests covering vector math, intersections, materials, BVH, camera, all
+three integrator modes, JSON serialization, parallel rendering, image I/O, the
+CLI, and regression tests for 4 fixed bugs.
 
 ## License
 
