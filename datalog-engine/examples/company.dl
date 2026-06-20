@@ -1,0 +1,44 @@
+% company.dl — a company database with arithmetic and negation
+
+% --- Employees ---
+employee(alice, engineering, 90000).
+employee(bob, engineering, 75000).
+employee(carol, engineering, 85000).
+employee(dave, sales, 65000).
+employee(eve, sales, 70000).
+employee(frank, sales, 55000).
+employee(grace, engineering, 95000).
+
+% --- Management ---
+manager(alice, bob).
+manager(alice, carol).
+manager(bob, grace).
+manager(dave, eve).
+manager(dave, frank).
+
+% --- Rules ---
+
+% An employee is well-paid if their salary exceeds 80000
+well_paid(X) :- employee(X, Dept, Sal), Sal > 80000.
+
+% An employee is underpaid if their salary is below 60000
+underpaid(X) :- employee(X, Dept, Sal), Sal < 60000.
+
+% Total compensation doubled
+comp_doubled(X, D) :- employee(X, Dept, Sal), mul(Sal, 2, D).
+
+% Department members
+dept_member(Dept, X) :- employee(X, Dept, Sal).
+
+% An employee is a manager if they manage someone
+is_manager(X) :- manager(X, Y).
+
+% An employee is a worker (not a manager)
+worker(X) :- employee(X, Dept, Sal), not is_manager(X).
+
+% Senior employee: well-paid and in engineering
+senior(X) :- employee(X, engineering, Sal), Sal > 85000.
+
+% Chain of command: transitive management
+reports_to(X, Y) :- manager(Y, X).
+reports_to(X, Y) :- manager(Y, Z), reports_to(X, Z).

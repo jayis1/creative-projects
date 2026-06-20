@@ -106,9 +106,33 @@ _BUILTIN_BINARY = {
     "==": lambda a, b: a == b,
 }
 
+# Arithmetic builtins: result is bound to the 3rd argument (the output
+# variable).  e.g.  add(X, Y, Z)  binds Z = X + Y.  These are treated
+# specially by the evaluator because they produce a binding rather than
+# just succeeding/failing.
+_BUILTIN_ARITH = {
+    "add": lambda a, b: a + b,
+    "sub": lambda a, b: a - b,
+    "mul": lambda a, b: a * b,
+    "div": lambda a, b: a / b if b != 0 else None,
+    "idiv": lambda a, b: a // b if b != 0 else None,
+    "mod": lambda a, b: a % b if b != 0 else None,
+}
+
+# Aggregation builtins: operate over a group of bindings.
+_BUILTIN_AGGREG = {"count", "sum", "min", "max", "avg"}
+
 
 def _is_builtin(pred: str) -> bool:
     return pred in _BUILTIN_BINARY
+
+
+def _is_arith_builtin(pred: str) -> bool:
+    return pred in _BUILTIN_ARITH
+
+
+def _is_aggreg_builtin(pred: str) -> bool:
+    return pred in _BUILTIN_AGGREG
 
 
 def _eval_builtin(pred: str, terms: Tuple[Term, ...], binding: Binding) -> bool:
@@ -132,6 +156,54 @@ def _eval_builtin(pred: str, terms: Tuple[Term, ...], binding: Binding) -> bool:
         return _BUILTIN_BINARY[pred](vals[0], vals[1])
     except TypeError:
         return False
+
+
+def _eval_arith(pred: str, terms: Tuple[Term, ...], binding: Binding) -> Optional[Binding]:
+    """Evaluate an arithmetic builtin like ``add(X, Y, Z)``.
+
+    The first two arguments must be bound; the third is the output
+    variable that receives the result. Returns an extended binding or
+    None if the operation fails (e.g. division by zero)."""
+    if pred not in _BUILTIN_ARITH:
+        return None
+    if len(terms) != 3:
+        raise DatalogError(f"arithmetic builtin {pred} requires 3 arguments, got {len(terms)}")
+    vals: List[Any] = []
+    for t in terms[:2]:
+        if isinstance(t, Constant):
+            vals.append(t.value)
+        elif isinstance(t, Variable):
+            if t.name not in binding:
+                return None
+            vals.append(binding[t.name].value)
+        else:
+            return None
+    try:
+        result = _BUILTIN_ARITH[pred](vals[0], vals[1])
+    except (TypeError, ValueError):
+        return None
+    if result is None:
+        return None
+    # Coerce: if both inputs are int and result is float-but-integral,
+    # keep as int for cleaner output.
+    if isinstance(result, float) and result.is_integer() and all(isinstance(v, int) for v in vals):
+        result = int(result)
+    out_term = terms[2]
+    result_const = Constant(result)
+    if isinstance(out_term, Variable):
+        if out_term.name in binding:
+            # Must match existing binding
+            if binding[out_term.name] != result_const:
+                return None
+            return binding
+        b = dict(binding)
+        b[out_term.name] = result_const
+        return b
+    elif isinstance(out_term, Constant):
+        if out_term == result_const:
+            return binding
+        return None
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -292,6 +364,124 @@ class Engine:
     def predicates(self) -> List[str]:
         return sorted(set(self._edb) | set(self._idb) | self._derived)
 
+    def arity(self, predicate: str) -> Optional[int]:
+        """Return the arity of a predicate, or None if unknown."""
+        return self._pred_arity.get(predicate)
+
+    def rules(self) -> List[Rule]:
+        """Return a copy of the list of loaded rules."""
+        return list(self._rules)
+
+    def facts(self, predicate: str) -> List[Tuple[Any, ...]]:
+        """Return EDB (base) facts for a predicate, excluding derived
+        tuples. Useful for introspection."""
+        rel = self._edb.get(predicate)
+        if rel is None:
+            return []
+        return [tuple(c.value for c in tup) for tup in rel]
+
+    def retract_fact(self, predicate: str, *args: Any) -> bool:
+        """Remove a base fact from the EDB. Returns True if the fact
+        existed and was removed, False otherwise."""
+        consts = tuple(_to_constant(a) for a in args)
+        rel = self._edb.get(predicate)
+        if rel is None or consts not in rel.tuples:
+            return False
+        rel.tuples.discard(consts)
+        # Invalidate indexes
+        rel._indexes.clear()
+        self._dirty = True
+        return True
+
+    def retract_rule(self, rule: Rule) -> bool:
+        """Remove a rule from the IDB. Returns True if removed."""
+        if rule in self._rules:
+            self._rules.remove(rule)
+            # Check if the head predicate still has rules
+            head_pred = rule.head.predicate
+            if not any(r.head.predicate == head_pred for r in self._rules):
+                self._derived.discard(head_pred)
+            self._dirty = True
+            return True
+        return False
+
+    def clear(self) -> None:
+        """Remove all facts and rules, resetting the engine."""
+        self._edb.clear()
+        self._idb.clear()
+        self._rules.clear()
+        self._pred_arity.clear()
+        self._derived.clear()
+        self._strata = None
+        self._dirty = True
+
+    def explain(self, predicate: str) -> str:
+        """Return a human-readable explanation of how a predicate is
+        defined: its stratum, rules, and whether it's EDB or IDB."""
+        self._evaluate()
+        lines: List[str] = []
+        is_edb = predicate in self._edb
+        is_idb = predicate in self._derived
+        arity = self._pred_arity.get(predicate, "?")
+        lines.append(f"Predicate: {predicate}/{arity}")
+        if is_edb and is_idb:
+            lines.append("  Type: EDB (base facts) + IDB (derived)")
+        elif is_edb:
+            lines.append("  Type: EDB (base facts only)")
+        elif is_idb:
+            lines.append("  Type: IDB (derived)")
+        else:
+            lines.append("  Type: unknown/undefined")
+            return "\n".join(lines)
+        # Show stratum
+        if self._strata:
+            for i, stratum in enumerate(self._strata):
+                for r in stratum:
+                    if r.head.predicate == predicate:
+                        lines.append(f"  Stratum: {i}")
+                        break
+        # Show rules
+        pred_rules = [r for r in self._rules if r.head.predicate == predicate]
+        if pred_rules:
+            lines.append("  Rules:")
+            for r in pred_rules:
+                lines.append(f"    {r}")
+        # Show fact count
+        rel = self._get_relation_eval(predicate)
+        if rel:
+            lines.append(f"  Extension: {len(rel)} tuple(s)")
+        return "\n".join(lines)
+
+    def to_json(self) -> str:
+        """Export all base facts (EDB) and rules as a JSON string.
+
+        Derived (IDB) facts are not exported — they can be recomputed
+        from EDB + rules."""
+        import json
+        data: dict = {"facts": {}, "rules": []}
+        for pred, rel in sorted(self._edb.items()):
+            data["facts"][pred] = {
+                "arity": rel.arity,
+                "tuples": [[c.value for c in tup] for tup in sorted(rel.tuples, key=lambda t: [str(x) for x in t])],
+            }
+        for r in self._rules:
+            data["rules"].append(str(r))
+        return json.dumps(data, indent=2, default=str)
+
+    def from_json(self, json_str: str) -> None:
+        """Import facts and rules from a JSON string (as produced by
+        :meth:`to_json`). Existing facts/rules are preserved."""
+        import json
+        data = json.loads(json_str)
+        for pred, info in data.get("facts", {}).items():
+            arity = info["arity"]
+            for tup in info["tuples"]:
+                self.add_fact(pred, *tup)
+        for rule_str in data.get("rules", []):
+            prog = parse(rule_str)
+            for rule in prog.rules:
+                self.add_rule(rule)
+
     # -- internal: loading --
 
     def _load_program(self, prog) -> None:
@@ -348,12 +538,13 @@ class Engine:
         for r in self._rules:
             h = r.head.predicate
             for lit in r.body:
-                if _is_builtin(lit.atom.predicate):
+                pred = lit.atom.predicate
+                if _is_builtin(pred) or _is_arith_builtin(pred) or _is_aggreg_builtin(pred):
                     continue
                 if lit.positive:
-                    pos_edges[h].add(lit.atom.predicate)
+                    pos_edges[h].add(pred)
                 else:
-                    neg_edges[h].add(lit.atom.predicate)
+                    neg_edges[h].add(pred)
 
         # Tarjan's SCC
         sccs = _tarjan_scc(predicates, pos_edges, neg_edges)
@@ -571,7 +762,17 @@ class Engine:
     ) -> List[Binding]:
         pred = lit.atom.predicate
 
-        # Built-in predicates
+        # Arithmetic built-ins (add/sub/mul/div/idiv/mod)
+        # These produce bindings, so they can't be negated.
+        if _is_arith_builtin(pred):
+            if not lit.positive:
+                raise DatalogError(f"arithmetic builtin {pred} cannot be negated")
+            result = _eval_arith(pred, lit.atom.terms, binding)
+            if result is not None:
+                return [result]
+            return []
+
+        # Built-in comparison predicates
         if _is_builtin(pred):
             if lit.positive:
                 if _eval_builtin(pred, lit.atom.terms, binding):

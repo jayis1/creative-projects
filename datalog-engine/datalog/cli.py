@@ -4,6 +4,8 @@ Usage::
 
     python -m datalog.cli program.dl
     python -m datalog.cli program.dl --query "path(a, Y)"
+    python -m datalog.cli program.dl --explain path
+    python -m datalog.cli program.dl --export state.json
     python -m datalog.cli --repl
     cat facts.dl | python -m datalog.cli -
 """
@@ -19,17 +21,19 @@ from .parser import parse, ParseError, LexError
 
 
 def _format_binding(binding: dict) -> str:
+    """Format a query result binding for display."""
     parts = []
     for k in sorted(binding):
         v = binding[k]
         if isinstance(v, str):
-            parts.append(f"{k} = {v}")
+            parts.append(f"{k} = {v!r}")
         else:
             parts.append(f"{k} = {v}")
     return ", ".join(parts)
 
 
 def _load_files(engine: Engine, files: List[str]) -> None:
+    """Load one or more .dl source files into the engine."""
     for f in files:
         if f == "-":
             src = sys.stdin.read()
@@ -39,22 +43,38 @@ def _load_files(engine: Engine, files: List[str]) -> None:
         engine.add_source(src)
 
 
-def _run_query(engine: Engine, q: str) -> None:
+def _run_query(engine: Engine, q: str) -> int:
+    """Run a single query and print results. Returns answer count."""
     try:
         results = engine.query(q)
     except (DatalogError, ParseError, LexError) as e:
         print(f"error: {e}", file=sys.stderr)
-        return
+        return -1
     if not results:
         print("false.")
-    else:
-        for r in results:
-            print(f"{_format_binding(r)}")
-        print(f"({len(results)} answer{'s' if len(results) != 1 else ''})")
+        return 0
+    for r in results:
+        print(f"{_format_binding(r)}")
+    print(f"({len(results)} answer{'s' if len(results) != 1 else ''})")
+    return len(results)
+
+
+def _run_multiple_queries(engine: Engine, queries: List[str]) -> None:
+    """Run multiple queries in sequence."""
+    for q in queries:
+        print(f"?- {q}")
+        _run_query(engine, q)
+        print()
 
 
 def repl(engine: Engine) -> None:
-    """Interactive read-eval-print loop."""
+    """Interactive read-eval-print loop.
+
+    Supports:
+    - Loading facts and rules (terminated by '.')
+    - Queries (starting with ?- or bare atoms)
+    - Meta-commands starting with ':'
+    """
     print("datalog-engine REPL. Type :help for commands, :quit to exit.")
     buffer = ""
     while True:
@@ -73,20 +93,47 @@ def repl(engine: Engine) -> None:
                 print("  :quit            Exit the REPL")
                 print("  :preds           List all predicates")
                 print("  :rel NAME        Show all tuples of predicate NAME")
+                print("  :explain NAME    Explain predicate NAME")
+                print("  :rules           List all rules")
+                print("  :export FILE     Export state to JSON file")
                 print("  :reset           Clear all facts and rules")
                 print("Statements end with '.' — queries start with ?-")
                 continue
             if stripped == ":preds":
                 for p in engine.predicates():
-                    print(f"  {p}/{engine._pred_arity.get(p, '?')}")
+                    print(f"  {p}/{engine.arity(p)}")
                 continue
             if stripped.startswith(":rel "):
                 name = stripped[5:].strip()
                 for tup in engine.relation(name):
                     print(f"  {tup}")
                 continue
+            if stripped.startswith(":explain"):
+                name = stripped.split(None, 1)[1].strip() if len(stripped.split(None, 1)) > 1 else ""
+                if name:
+                    print(engine.explain(name))
+                else:
+                    print("Usage: :explain PREDICATE")
+                continue
+            if stripped == ":rules":
+                for r in engine.rules():
+                    print(f"  {r}")
+                continue
+            if stripped.startswith(":export"):
+                parts = stripped.split(None, 1)
+                if len(parts) < 2:
+                    print("Usage: :export FILENAME")
+                    continue
+                filename = parts[1].strip()
+                try:
+                    with open(filename, "w") as fh:
+                        fh.write(engine.to_json())
+                    print(f"Exported to {filename}")
+                except OSError as e:
+                    print(f"error: {e}", file=sys.stderr)
+                continue
             if stripped == ":reset":
-                engine.__init__()
+                engine.clear()
                 print("engine reset.")
                 continue
         buffer += line + "\n"
@@ -99,40 +146,67 @@ def repl(engine: Engine) -> None:
                         _run_query(engine, str(q.atom))
                 else:
                     engine.add_source(buffer)
-                buffer = ""
             except (ParseError, LexError, DatalogError) as e:
                 print(f"error: {e}", file=sys.stderr)
-                buffer = ""
+            buffer = ""
 
 
 def main(argv=None) -> int:
+    """CLI entry point."""
     parser = argparse.ArgumentParser(
         prog="datalog",
         description="Datalog deductive database engine",
     )
     parser.add_argument("files", nargs="*", help="Datalog source files (use - for stdin)")
-    parser.add_argument("--query", "-q", help="Query to run after loading files")
+    parser.add_argument("--query", "-q", action="append", default=[],
+                        help="Query to run after loading files (can repeat)")
     parser.add_argument("--repl", action="store_true", help="Start interactive REPL")
     parser.add_argument("--show", metavar="PRED", help="Show all tuples of predicate PRED after loading")
+    parser.add_argument("--explain", metavar="PRED", help="Explain a predicate (rules, stratum, extension)")
+    parser.add_argument("--export", metavar="FILE", help="Export EDB facts + rules to JSON file")
+    parser.add_argument("--import", dest="import_file", metavar="FILE", help="Import JSON state before loading files")
     args = parser.parse_args(argv)
 
     engine = Engine()
 
+    # Import JSON state first (before files, so files can override)
+    if args.import_file:
+        try:
+            with open(args.import_file, "r") as fh:
+                engine.from_json(fh.read())
+        except (OSError, ValueError) as e:
+            print(f"error importing: {e}", file=sys.stderr)
+            return 1
+
     if args.files:
         try:
             _load_files(engine, args.files)
-        except (DatalogError, ParseError, LexError, FileNotFoundError) as e:
+        except (DatalogError, ParseError, LexError, OSError) as e:
             print(f"error: {e}", file=sys.stderr)
             return 1
 
     if args.query:
-        _run_query(engine, args.query)
+        for q in args.query:
+            _run_query(engine, q)
 
     if args.show:
         for tup in engine.relation(args.show):
             print(tup)
 
-    if args.repl or (not args.files and not args.query and not args.show):
+    if args.explain:
+        print(engine.explain(args.explain))
+
+    if args.export:
+        try:
+            with open(args.export, "w") as fh:
+                fh.write(engine.to_json())
+            print(f"Exported to {args.export}", file=sys.stderr)
+        except OSError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 1
+
+    if args.repl or (not args.files and not args.query and not args.show
+                     and not args.explain and not args.export and not args.import_file):
         repl(engine)
 
     return 0
