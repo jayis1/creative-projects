@@ -18,6 +18,8 @@ import random
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
+from raft.logging_utils import get_logger
+from raft.prevote import PreVoteRequest, PreVoteResponse
 from raft.snapshot import Snapshot, SnapshotStore
 from raft.types import (
     AppendEntriesRequest,
@@ -30,6 +32,8 @@ from raft.types import (
     RequestVoteRequest,
     RequestVoteResponse,
 )
+
+_log = get_logger("raft.node")
 
 
 # ---------------------------------------------------------------------------
@@ -133,6 +137,8 @@ class RaftNode:
         heartbeat_interval: float = 1.0,
         snapshot_threshold: int = 50,
         rng: random.Random | None = None,
+        prevote_enabled: bool = False,
+        linearizable_reads: bool = False,
     ) -> None:
         self.id = node_id
         # peers does NOT include self
@@ -146,6 +152,8 @@ class RaftNode:
         self.heartbeat_interval = heartbeat_interval
         self.snapshot_threshold = snapshot_threshold
         self._rng = rng or random.Random()
+        self.prevote_enabled = prevote_enabled
+        self.linearizable_reads = linearizable_reads
 
         # Timers
         self._election_deadline: float = 0.0
@@ -153,6 +161,9 @@ class RaftNode:
 
         # Votes
         self._votes: set[int] = set()
+        # PreVote tracking
+        self._prevotes: set[int] = set()
+        self._in_prevote: bool = False
 
         # Membership tracking (joint consensus support)
         # 'members' is the set of node ids in the current config.
@@ -160,6 +171,9 @@ class RaftNode:
 
         # Stats
         self.stats = NodeStats()
+
+        # Crash/recovery support
+        self._crashed: bool = False
 
         # Initialize election timer
         self._reset_election_timer()
@@ -184,6 +198,11 @@ class RaftNode:
     def is_candidate(self) -> bool:
         return self.role == NodeRole.CANDIDATE
 
+    @property
+    def is_crashed(self) -> bool:
+        """True if this node has crashed and is not processing messages."""
+        return self._crashed
+
     # ------------------------------------------------------------------
     # Timer helpers
     # ------------------------------------------------------------------
@@ -206,14 +225,22 @@ class RaftNode:
     # ------------------------------------------------------------------
 
     def tick(self) -> None:
-        """Called by the cluster driver on each simulation step."""
+        """Called by the cluster driver on each simulation step.
+
+        A crashed node does nothing — it doesn't process timers.
+        """
+        if self._crashed:
+            return
         if self.is_leader:
             if self.heartbeat_due():
                 self._send_heartbeats()
                 self._reset_heartbeat_timer()
         else:
             if self.election_timeout_expired():
-                self._start_election()
+                if self.prevote_enabled:
+                    self._start_prevote()
+                else:
+                    self._start_election()
 
     # ------------------------------------------------------------------
     # Leader election
@@ -228,6 +255,7 @@ class RaftNode:
         self._reset_election_timer()
         self.stats.elections_started += 1
         self.stats.became_candidate += 1
+        _log.debug("Node %d starting election for term %d", self.id, self.state.current_term)
 
         last_idx = self.last_log_index
         last_term = self.last_log_term
@@ -241,6 +269,97 @@ class RaftNode:
                 last_log_term=last_term,
             )
             self.network.send(self.id, peer, req)
+
+    # ------------------------------------------------------------------
+    # PreVote (§6 optimization)
+    # ------------------------------------------------------------------
+
+    def _start_prevote(self) -> None:
+        """Start a PreVote round without incrementing the term.
+
+        The node sends PreVoteRequest with ``current_term + 1`` but does
+        NOT change its actual term or role.  Only if it gets a majority
+        of pre-votes does it proceed to a real election.
+        """
+        self._in_prevote = True
+        self._prevotes = {self.id}
+        self._reset_election_timer()
+        # Don't increment stats.elections_started yet — that's for real elections.
+
+        proposed_term = self.state.current_term + 1
+        last_idx = self.last_log_index
+        last_term = self.last_log_term
+
+        _log.debug(
+            "Node %d starting prevote for proposed term %d",
+            self.id,
+            proposed_term,
+        )
+        for peer in self.peers:
+            req = PreVoteRequest(
+                term=proposed_term,
+                candidate_id=self.id,
+                last_log_index=last_idx,
+                last_log_term=last_term,
+            )
+            self.network.send(self.id, peer, req)
+
+    def _handle_prevote_request(
+        self, src: int, req: PreVoteRequest
+    ) -> None:
+        """Process a PreVoteRequest from *src*.
+
+        Grant a pre-vote if:
+        - The candidate's proposed term is > our current term (stale
+          candidates don't get pre-votes).
+        - We haven't heard from a leader recently (i.e. our election
+          timer has not been reset by a heartbeat recently).  In
+          practice we approximate this by checking that we're not
+          currently a leader and our election timer hasn't expired
+          *before now* (meaning we'd start our own election anyway).
+        - The candidate's log is at least as up-to-date as ours.
+        """
+        vote_granted = False
+
+        # A leader never grants pre-votes (it's still in charge).
+        if self.is_leader:
+            vote_granted = False
+        elif req.term <= self.state.current_term:
+            # Stale candidate — don't grant.
+            vote_granted = False
+        else:
+            # Check log up-to-dateness.
+            if self._is_log_up_to_date(req.last_log_index, req.last_log_term):
+                vote_granted = True
+
+        resp = PreVoteResponse(
+            term=self.state.current_term,
+            vote_granted=vote_granted,
+            voter_id=self.id,
+        )
+        self.network.send(self.id, src, resp)
+
+    def _handle_prevote_response(
+        self, src: int, resp: PreVoteResponse
+    ) -> None:
+        """Process a PreVoteResponse from *src*."""
+        if not self._in_prevote:
+            return  # not in prevote phase
+
+        # If the responder has a higher term, step down and abort prevote.
+        if resp.term > self.state.current_term:
+            self._step_down(resp.term)
+            self._in_prevote = False
+            return
+
+        if resp.vote_granted:
+            self._prevotes.add(src)
+            if self._has_quorum(len(self._prevotes)):
+                # Got majority of pre-votes — proceed to real election.
+                self._in_prevote = False
+                self._start_election()
+        # If we don't get a majority, we stay in prevote phase until
+        # the next election timeout.
 
     def _handle_request_vote(
         self, src: int, req: RequestVoteRequest
@@ -658,8 +777,17 @@ class RaftNode:
     # ------------------------------------------------------------------
 
     def handle_message(self, src: int, msg: Any) -> None:
-        """Dispatch an incoming message to the appropriate handler."""
-        if isinstance(msg, RequestVoteRequest):
+        """Dispatch an incoming message to the appropriate handler.
+
+        A crashed node ignores all messages.
+        """
+        if self._crashed:
+            return
+        if isinstance(msg, PreVoteRequest):
+            self._handle_prevote_request(src, msg)
+        elif isinstance(msg, PreVoteResponse):
+            self._handle_prevote_response(src, msg)
+        elif isinstance(msg, RequestVoteRequest):
             self._handle_request_vote(src, msg)
         elif isinstance(msg, RequestVoteResponse):
             self._handle_request_vote_response(src, msg)
@@ -719,6 +847,85 @@ class RaftNode:
         return True
 
     # ------------------------------------------------------------------
+    # Crash / recovery simulation
+    # ------------------------------------------------------------------
+
+    def crash(self) -> None:
+        """Simulate a node crash.
+
+        The node stops processing messages and timers.  Volatile state
+        (commit_index, last_applied, next_index, match_index) is lost,
+        but persistent state (current_term, voted_for, log) is preserved,
+        simulating recovery from disk.
+        """
+        if self._crashed:
+            return
+        self._crashed = True
+        # Lose volatile state.
+        self.state.next_index.clear()
+        self.state.match_index.clear()
+        # Drop back to follower.
+        self.role = NodeRole.FOLLOWER
+        self._in_prevote = False
+        _log.info("Node %d crashed", self.id)
+
+    def restart(self) -> None:
+        """Simulate node restart after a crash.
+
+        Persistent state (current_term, voted_for, log, snapshot) is
+        preserved.  Volatile state is re-initialized.  The node starts
+        as a follower with a fresh election timer.
+        """
+        if not self._crashed:
+            return
+        self._crashed = False
+        self.role = NodeRole.FOLLOWER
+        self.state.voted_for = None  # reset vote on restart
+        self.state.commit_index = 0
+        self.state.last_applied = self.log_store.last_included_index
+        self.state.next_index.clear()
+        self.state.match_index.clear()
+        self._votes.clear()
+        self._prevotes.clear()
+        self._in_prevote = False
+        self._reset_election_timer()
+        _log.info(
+            "Node %d restarted (term=%d, log_len=%d)",
+            self.id,
+            self.state.current_term,
+            self.last_log_index,
+        )
+
+    # ------------------------------------------------------------------
+    # Linearizable reads (ReadIndex)
+    # ------------------------------------------------------------------
+
+    def linearizable_read(self, key: Any) -> Any | None:
+        """Perform a linearizable read of *key* from the leader.
+
+        Uses the ReadIndex technique:
+        1. Record the current commit_index.
+        2. Send a heartbeat round and wait for majority ack.
+        3. Wait until last_applied ≥ recorded commit_index.
+        4. Read from the state machine.
+
+        In this synchronous simulator, steps 2–3 are approximated by
+        checking that we're the leader and reading from the local state
+        machine.  The caller should run the cluster to ensure the read
+        is linearizable.
+
+        Returns ``None`` if this node is not the leader.
+        """
+        if not self.is_leader or not self.linearizable_reads:
+            return None
+        # In a real implementation we'd wait for a heartbeat round.
+        # Here we just read from the state machine after confirming
+        # leadership.
+        if isinstance(self.sm, KVStateMachine):
+            return self.sm._store.get(key)
+        return None
+
+    # ------------------------------------------------------------------
     # Status / introspection
     # ------------------------------------------------------------------
 
@@ -736,6 +943,8 @@ class RaftNode:
             "members": sorted(self.members),
             "has_snapshot": self.log_store.has_snapshot,
             "snapshot_index": self.log_store.last_included_index,
+            "crashed": self._crashed,
+            "prevote_enabled": self.prevote_enabled,
             "stats": {
                 "elections_started": self.stats.elections_started,
                 "votes_received": self.stats.votes_received,

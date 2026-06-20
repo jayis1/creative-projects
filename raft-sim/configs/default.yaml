@@ -1,0 +1,19 @@
+# Raft Simulator Configuration
+# This file can be passed to the CLI: python3 -m raft.cli run --config raft.yaml
+
+cluster:
+  size: 5
+  seed: 42
+  election_timeout_range: [4.0, 8.0]
+  heartbeat_interval: 1.0
+  snapshot_threshold: 50
+  prevote_enabled: false
+  crash_recovery_enabled: false
+  linearizable_reads: false
+
+network:
+  base_latency: 1.0
+  jitter: 0.5
+  drop_rate: 0.0
+  reorder: false
+  seed: 42

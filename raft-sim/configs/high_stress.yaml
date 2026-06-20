@@ -1,0 +1,17 @@
+# Raft Simulator — High Stress Configuration
+# Simulates a flaky, high-latency network with packet loss.
+
+cluster:
+  size: 7
+  seed: 100
+  election_timeout_range: [3.0, 6.0]
+  heartbeat_interval: 0.5
+  snapshot_threshold: 20
+  prevote_enabled: true
+
+network:
+  base_latency: 2.0
+  jitter: 1.5
+  drop_rate: 0.2
+  reorder: true
+  seed: 100

@@ -1,0 +1,17 @@
+# Raft Simulator — Large Cluster Configuration
+# 9-node cluster with frequent snapshotting.
+
+cluster:
+  size: 9
+  seed: 200
+  election_timeout_range: [5.0, 10.0]
+  heartbeat_interval: 1.0
+  snapshot_threshold: 10
+  prevote_enabled: false
+
+network:
+  base_latency: 0.5
+  jitter: 0.3
+  drop_rate: 0.0
+  reorder: false
+  seed: 200

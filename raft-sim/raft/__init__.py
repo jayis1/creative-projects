@@ -56,8 +56,12 @@ from raft.invariants import (
     check_commit_safety,
     check_all,
 )
+from raft.prevote import PreVoteRequest, PreVoteResponse
+from raft.config import ClusterConfig, load_config, save_config
+from raft.metrics import MetricsCollector, MetricSnapshot
+from raft.logging_utils import configure_logging, get_logger, StructuredEventLogger
 
-__version__ = "1.1.0"
+__version__ = "2.0.0"
 
 __all__ = [
     # Core types
@@ -108,4 +112,18 @@ __all__ = [
     "check_leader_completeness",
     "check_commit_safety",
     "check_all",
+    # PreVote
+    "PreVoteRequest",
+    "PreVoteResponse",
+    # Config
+    "ClusterConfig",
+    "load_config",
+    "save_config",
+    # Metrics
+    "MetricsCollector",
+    "MetricSnapshot",
+    # Logging
+    "configure_logging",
+    "get_logger",
+    "StructuredEventLogger",
 ]

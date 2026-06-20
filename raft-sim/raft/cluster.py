@@ -26,6 +26,8 @@ class ClusterEvent(enum.Enum):
     LOG_COMMITTED = "log_committed"
     SNAPSHOT_TAKEN = "snapshot_taken"
     MEMBERSHIP_CHANGE = "membership_change"
+    NODE_CRASHED = "node_crashed"
+    NODE_RESTARTED = "node_restarted"
 
 
 @dataclass
@@ -61,6 +63,8 @@ class Cluster:
         heartbeat_interval: float = 1.0,
         snapshot_threshold: int = 50,
         seed: int | None = None,
+        prevote_enabled: bool = False,
+        linearizable_reads: bool = False,
     ) -> None:
         if size < 1:
             raise ValueError("cluster size must be ≥ 1")
@@ -72,6 +76,7 @@ class Cluster:
         self.stats = ClusterStats()
         self._event_log: list[tuple[float, ClusterEvent, dict]] = []
         self._last_leader: int | None = None
+        self._observers: list[Callable[[ClusterEvent, dict], None]] = []
 
         # Create nodes.
         all_ids = list(range(size))
@@ -86,6 +91,8 @@ class Cluster:
                 heartbeat_interval=heartbeat_interval,
                 snapshot_threshold=snapshot_threshold,
                 rng=random.Random(seed + nid + 1 if seed is not None else None),
+                prevote_enabled=prevote_enabled,
+                linearizable_reads=linearizable_reads,
             )
             self.nodes[nid] = node
             self.network.register(nid)
@@ -106,13 +113,17 @@ class Cluster:
         delivered = self.network.drain()
         self.stats.total_messages_delivered += delivered
 
-        # Deliver messages to nodes.
+        # Deliver messages to nodes (skip crashed nodes).
         for nid, node in self.nodes.items():
+            if node.is_crashed:
+                # Clear inbox for crashed nodes — messages are lost.
+                self.network.inbox(nid)
+                continue
             msgs = self.network.inbox(nid)
             for src, payload, _recv in msgs:
                 node.handle_message(src, payload)
 
-        # Tick all nodes.
+        # Tick all non-crashed nodes.
         for node in self.nodes.values():
             node.tick()
 
@@ -202,8 +213,14 @@ class Cluster:
     # ------------------------------------------------------------------
 
     def get_leader(self) -> int | None:
-        """Return the current leader's id, or ``None`` if there is no leader."""
-        leaders = [nid for nid, n in self.nodes.items() if n.is_leader]
+        """Return the current leader's id, or ``None`` if there is no leader.
+
+        Crashed nodes are never considered leaders.
+        """
+        leaders = [
+            nid for nid, n in self.nodes.items()
+            if n.is_leader and not n.is_crashed
+        ]
         if len(leaders) == 1:
             return leaders[0]
         if len(leaders) > 1:
@@ -373,6 +390,58 @@ class Cluster:
         return self.has_leader()
 
     # ------------------------------------------------------------------
+    # Crash / recovery simulation
+    # ------------------------------------------------------------------
+
+    def crash_node(self, node_id: int) -> None:
+        """Simulate a node crash.
+
+        The node stops processing messages and timers.  Volatile state
+        is lost; persistent state is preserved.
+        """
+        self.nodes[node_id].crash()
+        self._log_event(
+            ClusterEvent.NODE_CRASHED, {"node": node_id}
+        )
+
+    def restart_node(self, node_id: int) -> None:
+        """Simulate a node restart after a crash."""
+        self.nodes[node_id].restart()
+        self._log_event(
+            ClusterEvent.NODE_RESTARTED, {"node": node_id}
+        )
+
+    def crashed_nodes(self) -> list[int]:
+        """Return ids of all crashed nodes."""
+        return [nid for nid, n in self.nodes.items() if n.is_crashed]
+
+    def alive_nodes(self) -> list[int]:
+        """Return ids of all non-crashed nodes."""
+        return [nid for nid, n in self.nodes.items() if not n.is_crashed]
+
+    # ------------------------------------------------------------------
+    # Observer / callback system
+    # ------------------------------------------------------------------
+
+    def add_observer(
+        self, callback: Callable[[ClusterEvent, dict], None]
+    ) -> None:
+        """Register an observer callback for cluster events.
+
+        The callback is called with ``(event, data)`` whenever a
+        :class:`ClusterEvent` is logged.  Observers are useful for
+        building dashboards, metrics exporters, or test assertions.
+        """
+        self._observers.append(callback)
+
+    def remove_observer(
+        self, callback: Callable[[ClusterEvent, dict], None]
+    ) -> None:
+        """Remove a previously registered observer."""
+        if callback in self._observers:
+            self._observers.remove(callback)
+
+    # ------------------------------------------------------------------
     # Status / reporting
     # ------------------------------------------------------------------
 
@@ -385,6 +454,12 @@ class Cluster:
 
     def _log_event(self, event: ClusterEvent, data: dict) -> None:
         self._event_log.append((self.network.time, event, data))
+        # Notify observers.
+        for observer in self._observers:
+            try:
+                observer(event, data)
+            except Exception:
+                pass  # observers must not crash the simulation
 
     def summary(self) -> str:
         """Human-readable cluster summary."""
@@ -407,7 +482,10 @@ class Cluster:
     # ------------------------------------------------------------------
 
     def reset(self) -> None:
-        """Reset the entire cluster (network, nodes, stats)."""
+        """Reset the entire cluster (network, nodes, stats).
+
+        Observers are preserved across resets.
+        """
         self.network.reset()
         for nid in self.nodes:
             self.network.register(nid)

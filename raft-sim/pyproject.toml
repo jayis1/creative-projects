@@ -1,11 +1,20 @@
 [project]
 name = "raft-sim"
-version = "1.1.0"
-description = "Discrete-event Raft consensus algorithm simulator"
+version = "2.0.0"
+description = "Discrete-event Raft consensus algorithm simulator with PreVote, crash recovery, metrics, and configuration support"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "creative-projects" }]
+dependencies = [
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
 
 [project.scripts]
 raft-sim = "raft.cli:main"
