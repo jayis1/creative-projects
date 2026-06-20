@@ -330,8 +330,20 @@ class RaftNode:
             self._send_append_entries(peer)
 
     def _send_append_entries(self, peer: int) -> None:
-        """Send AppendEntries to a single peer."""
+        """Send AppendEntries to a single peer.
+
+        If the peer is so far behind that the next entry is before the
+        snapshot boundary, send an InstallSnapshot RPC instead.
+        """
         next_idx = self.state.next_index.get(peer, 1)
+
+        # BUG FIX: Check if the peer needs a snapshot instead of
+        # AppendEntries. Previously this check was never performed,
+        # so lagging followers never received InstallSnapshot RPCs.
+        if next_idx <= self.log_store.last_included_index and self.log_store.has_snapshot:
+            self._maybe_send_snapshot(peer)
+            return
+
         prev_log_index = next_idx - 1
         prev_log_term = self.log_store.term_at_index(prev_log_index)
 
@@ -516,7 +528,10 @@ class RaftNode:
         if commit_candidate > self.state.commit_index:
             entry = self.log_store.get_entry(commit_candidate)
             if entry and entry.term == self.state.current_term:
+                # BUG FIX: Track the number of newly committed entries.
+                newly_committed = commit_candidate - self.state.commit_index
                 self.state.commit_index = commit_candidate
+                self.stats.entries_committed += newly_committed
                 self._apply_committed()
                 # Send heartbeats to propagate commit.
                 self._send_heartbeats()

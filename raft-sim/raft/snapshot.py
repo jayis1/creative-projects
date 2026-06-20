@@ -166,13 +166,24 @@ class SnapshotStore:
         """Remove all entries with index ≥ *index*.
 
         Returns the removed entries (for debugging / state-machine rollback).
+
+        Raises:
+            ValueError: If *index* falls within the snapshot region
+                (≤ last_included_index).  Truncating committed/snapshotted
+                entries is an invalid operation in Raft — those entries
+                are permanent.  Previously this silently discarded the
+                entire snapshot, corrupting the store.
         """
-        if index <= self.last_included_index:
-            # Truncating into the snapshot region — discard snapshot too.
-            removed = list(self._entries)
-            self._entries = []
-            self._snapshot = None
-            return removed
+        if index <= self.last_included_index and self._snapshot is not None:
+            # BUG FIX: Previously this silently removed the snapshot and
+            # all entries, which corrupts the store.  Truncating into the
+            # snapshot region is invalid in Raft (those entries are
+            # committed and permanent).  Raise an error instead.
+            raise ValueError(
+                f"Cannot truncate at index {index}: it falls within the "
+                f"snapshot region (last_included_index={self.last_included_index}). "
+                f"Committed entries cannot be removed."
+            )
         offset = index - self.last_included_index - 1
         if offset < 0:
             offset = 0

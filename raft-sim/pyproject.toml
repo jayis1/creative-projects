@@ -1,6 +1,6 @@
 [project]
 name = "raft-sim"
-version = "1.0.0"
+version = "1.1.0"
 description = "Discrete-event Raft consensus algorithm simulator"
 readme = "README.md"
 requires-python = ">=3.10"

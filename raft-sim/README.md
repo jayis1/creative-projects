@@ -250,7 +250,27 @@ pip install -e .
 pytest tests/ -v
 ```
 
-33 tests covering network, snapshots, leader election, log replication, partition recovery, persistence, visualization, scenarios, invariants, and batch submission.
+44 tests covering network, snapshots, leader election, log replication, partition recovery, persistence, visualization, scenarios, invariants, batch submission, and bug regression tests.
+
+## Known Issues (Resolved)
+
+The following bugs were found during the Phase 3 bug hunt and have been fixed:
+
+1. **InstallSnapshot never sent to lagging followers** — The `_maybe_send_snapshot()` method was defined but never called from `_send_append_entries()`. When a follower fell behind the leader's snapshot boundary, the leader attempted regular AppendEntries instead of sending an InstallSnapshot RPC. **Fix**: Added a check in `_send_append_entries()` that detects when `next_index` falls before the snapshot boundary and calls `_maybe_send_snapshot()` instead.
+
+2. **Statistics never incremented** — `NodeStats.entries_committed` and `ClusterStats.total_elections`/`commands_committed` were defined but never updated. **Fix**: `entries_committed` is now incremented in `_advance_commit_index()`. `total_elections` and `commands_committed` are tracked in `Cluster.step()` by diffing cumulative node stats.
+
+3. **Version mismatch** — `pyproject.toml` reported version 1.0.0 while `__init__.py` reported 1.1.0. **Fix**: Aligned `pyproject.toml` to 1.1.0.
+
+4. **Log bar committed/uncommitted indistinguishable** — `_render_log_bar()` applied `.lower()` to digit strings (e.g., `"1"`) which are already lowercase, making committed and uncommitted entries look identical. **Fix**: Uncommitted entries are now rendered as `~` instead of digits, making them visually distinct from committed entries (digits).
+
+5. **Cluster events never logged** — `ClusterEvent.ELECTION_STARTED`, `LOG_COMMITTED`, `SNAPSHOT_TAKEN`, and `MEMBERSHIP_CHANGE` were defined but never emitted to the event log. **Fix**: `ELECTION_STARTED` and `LOG_COMMITTED` are now logged in `Cluster.step()`.
+
+6. **`load_cluster` ignored passed network** — The function created a new `Cluster` (with its own network) instead of using the network passed as a parameter, making the parameter misleading. **Fix**: The function now directly constructs the cluster object using the passed network.
+
+7. **`all_agree` ambiguous for None values** — `all_agree()` returned `None` both when all nodes agreed the value was absent and when they disagreed, making the two cases indistinguishable. **Fix**: Added `all_agree_detailed()` which returns `(agreed: bool, value)` to disambiguate.
+
+8. **`truncate_from` into snapshot region silently corrupted store** — Truncating at an index within the snapshot region silently discarded the entire snapshot and all retained entries, corrupting the log store. **Fix**: The method now raises a `ValueError` when asked to truncate into the snapshot region, since committed entries are permanent in Raft.
 
 ## References
 

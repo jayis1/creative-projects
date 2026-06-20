@@ -8,10 +8,12 @@ for node state and snapshots, enabling save/restore of cluster state.
 from __future__ import annotations
 
 import json
+import random
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
+from raft.cluster import ClusterStats
 from raft.node import KVStateMachine, RaftNode, StateMachine
 from raft.snapshot import Snapshot, SnapshotStore
 from raft.types import LogEntry, NodeRole, NodeState
@@ -162,15 +164,29 @@ def load_cluster(
     data = json.loads(Path(path).read_text())
     size = data["size"]
 
-    # Create a fresh cluster.
-    cluster = Cluster(size=size, network_config=network.config)
-    cluster.network.set_time(data.get("time", 0.0))
+    # BUG FIX: Use the passed network instead of creating a new one.
+    # Previously, a new Cluster was created with its own network, making
+    # the `network` parameter misleading and causing the passed network
+    # to be discarded.
+    cluster = Cluster.__new__(Cluster)
+    cluster.size = size
+    cluster.network = network  # Use the passed network
+    cluster._sm_factory = KVStateMachine
+    cluster._rng = random.Random()
+    cluster.nodes = {}
+    cluster.stats = ClusterStats()
+    cluster._event_log = []
+    cluster._last_leader = None
+
+    # Register all nodes with the network.
+    for nid in range(size):
+        network.register(nid)
 
     # Restore each node.
     for nid_str, node_data in data["nodes"].items():
         nid = int(nid_str)
         sm = state_machine_factory() if state_machine_factory else KVStateMachine()
-        node = deserialize_node_state(node_data, cluster.network, sm)
+        node = deserialize_node_state(node_data, network, sm)
         cluster.nodes[nid] = node
 
     # Restore stats.

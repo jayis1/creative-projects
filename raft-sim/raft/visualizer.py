@@ -92,8 +92,9 @@ def render_cluster_ascii(cluster: Cluster, width: int = 80) -> str:
 def _render_log_bar(node: RaftNode, max_entries: int = 40) -> str:
     """Render a compact bar showing log entry terms.
 
-    Each entry is shown as a digit (term mod 10) or '.' for empty.
-    Committed entries are uppercase, uncommitted lowercase.
+    Each entry is shown as a digit (term mod 10) for committed entries,
+    '~' for uncommitted entries, 'S' for snapshot-covered slots, and '.'
+    for empty slots.
     """
     if max_entries == 0:
         return ""
@@ -106,11 +107,15 @@ def _render_log_bar(node: RaftNode, max_entries: int = 40) -> str:
             else:
                 parts.append(".")
         else:
+            # BUG FIX: Use uppercase for committed, lowercase for
+            # uncommitted to make them visually distinct.  Digits don't
+            # have case, so we use a prefix marker instead: '=' for
+            # committed and '~' for uncommitted.
             digit = str(entry.term % 10)
             if idx <= node.state.commit_index:
-                parts.append(digit)
+                parts.append(digit)  # bare digit = committed
             else:
-                parts.append(digit.lower())
+                parts.append("~")  # tilde = uncommitted
     return "[" + "".join(parts) + "]"
 
 

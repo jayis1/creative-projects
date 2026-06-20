@@ -126,6 +126,24 @@ class Cluster:
             )
             self._last_leader = leader
 
+        # BUG FIX: Track total elections started across all nodes.
+        total_elections = sum(n.stats.elections_started for n in self.nodes.values())
+        if total_elections > self.stats.total_elections:
+            newly_started = total_elections - self.stats.total_elections
+            self.stats.total_elections = total_elections
+            for _ in range(newly_started):
+                self._log_event(ClusterEvent.ELECTION_STARTED, {})
+
+        # BUG FIX: Track total commands committed across all nodes.
+        total_committed = sum(n.stats.entries_committed for n in self.nodes.values())
+        if total_committed > self.stats.commands_committed:
+            newly_committed = total_committed - self.stats.commands_committed
+            self.stats.commands_committed = total_committed
+            self._log_event(
+                ClusterEvent.LOG_COMMITTED,
+                {"total": total_committed, "newly": newly_committed},
+            )
+
         return delivered
 
     def run_for(self, duration: float, step_size: float = 0.5) -> int:
@@ -286,6 +304,24 @@ class Cluster:
 
         Returns the common value if they agree, ``None`` if they disagree
         or no node has applied anything.
+
+        .. deprecated:: Use :meth:`all_agree_detailed` to distinguish
+            between agreement-on-None and disagreement.
+        """
+        agreed, value = self.all_agree_detailed(key)
+        return value if agreed else None
+
+    def all_agree_detailed(self, key: Any) -> tuple[bool, Any]:
+        """Check agreement and return (agreed, value).
+
+        Unlike :meth:`all_agree`, this distinguishes between all nodes
+        agreeing that the value is ``None`` (returns ``(True, None)``)
+        and nodes disagreeing (returns ``(False, None)``).
+
+        Returns:
+            A tuple ``(agreed, value)`` where *agreed* is ``True`` if all
+            nodes have the same value for *key*, and *value* is that
+            common value.
         """
         values = set()
         for node in self.nodes.values():
@@ -293,10 +329,10 @@ class Cluster:
                 values.add(node.sm._store.get(key))
             else:
                 # Generic state machine — can't introspect.
-                return None
+                return False, None
         if len(values) == 1:
-            return values.pop()
-        return None
+            return True, values.pop()
+        return False, None
 
     def log_consistent(self) -> bool:
         """Check that all committed entries are identical across nodes.
