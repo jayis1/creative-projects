@@ -1,27 +1,39 @@
 """material.py — Surface materials and BSDFs.
 
 Supports:
-  * matte (Lambertian diffuse)
+  * matte (Lambertian diffuse) — optionally textured
   * metal (specular reflection with adjustable fuzziness)
   * dielectric (glass / transparent refraction with Schlick Fresnel)
   * emissive (for area light sources)
   * a "checker" procedural pattern that maps to two child materials based on
     world position.
+  * isotropic (volume scattering / participating media)
+  * textured variants via :class:`~raytracer.texture.Texture`
 
 Every material exposes ``scatter(...)`` which returns either ``None`` (full
-absorption) or a tuple ``(attenuation, scattered_ray)``.  The lighting integrator
-accumulates attenuation multiplicatively along the path.
+absorption) or a tuple ``(attenuation, scattered_ray)``.  The lighting
+integrator accumulates attenuation multiplicatively along the path.
 """
 
 from __future__ import annotations
 
 import math
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 
 from .vec import Vec3
 from .ray import Ray
+from .texture import Texture, SolidColor
 
-__all__ = ["Material", "Matte", "Metal", "Dielectric", "Emissive", "Checker"]
+__all__ = [
+    "Material",
+    "Matte",
+    "Metal",
+    "Dielectric",
+    "Emissive",
+    "Checker",
+    "Isotropic",
+    "HitRecord",
+]
 
 
 class HitRecord:
@@ -51,6 +63,17 @@ class HitRecord:
         self.normal = outward_normal if front_face else -outward_normal
 
 
+def _coerce_texture(albedo: Union[Vec3, Texture, None]) -> Texture:
+    """Accept either a Vec3 color or a Texture; wrap colors in SolidColor."""
+    if albedo is None:
+        return SolidColor(Vec3(0.8, 0.8, 0.8))
+    if isinstance(albedo, Texture):
+        return albedo
+    if isinstance(albedo, Vec3):
+        return SolidColor(albedo)
+    raise TypeError(f"albedo must be Vec3 or Texture, not {type(albedo).__name__}")
+
+
 class Material:
     """Base class.  Subclasses implement :meth:`scatter` and :meth:`emit`."""
 
@@ -66,12 +89,31 @@ class Material:
         """Luminance used for direct light sampling; 0 for non-emitters."""
         return Vec3.zero()
 
+    def scattering_pdf(self, ray_in: Ray, rec: HitRecord, scattered: Ray) -> float:
+        """Probability density for the given scattered ray.
 
+        Used by importance-sampled integrators.  The default (uniform
+        hemisphere) is a conservative estimate.
+        """
+        return 0.0
+
+
+# --------------------------------------------------------------------------- #
+# Matte (Lambertian diffuse) — now textured
+# --------------------------------------------------------------------------- #
 class Matte(Material):
-    """Lambertian diffuse surface."""
+    """Lambertian diffuse surface with optional texture."""
 
-    def __init__(self, albedo: Vec3) -> None:
-        self.albedo = albedo
+    def __init__(self, albedo: Union[Vec3, Texture]) -> None:
+        self.texture = _coerce_texture(albedo)
+
+    @property
+    def albedo(self) -> Vec3:
+        """Backward-compatible accessor: returns the texture's base color if
+        it is a :class:`SolidColor`, else white."""
+        if isinstance(self.texture, SolidColor):
+            return self.texture.color
+        return Vec3(0.8, 0.8, 0.8)
 
     def scatter(self, ray_in: Ray, rec: HitRecord):
         target = rec.point + rec.normal + _random_in_unit_sphere()
@@ -80,15 +122,30 @@ class Matte(Material):
         if scattered_dir.length_squared() < 1e-12:
             scattered_dir = rec.normal
         scattered = Ray(rec.point, scattered_dir, tmax=ray_in.tmax)
-        return (self.albedo, scattered)
+        attenuation = self.texture.value(rec.u, rec.v, rec.point)
+        return (attenuation, scattered)
+
+    def scattering_pdf(self, ray_in: Ray, rec: HitRecord, scattered: Ray) -> float:
+        # Cosine-weighted PDF: cos(theta) / pi.
+        cos = scattered.direction.dot(rec.normal)
+        return max(0.0, cos) / math.pi
 
 
+# --------------------------------------------------------------------------- #
+# Metal (specular reflection with fuzzy roughness) — now textured
+# --------------------------------------------------------------------------- #
 class Metal(Material):
-    """Specular metal with optional fuzzy reflection."""
+    """Specular metal with optional fuzzy reflection and texture."""
 
-    def __init__(self, albedo: Vec3, fuzz: float = 0.0) -> None:
-        self.albedo = albedo
+    def __init__(self, albedo: Union[Vec3, Texture], fuzz: float = 0.0) -> None:
+        self.texture = _coerce_texture(albedo)
         self.fuzz = max(0.0, min(1.0, fuzz))
+
+    @property
+    def albedo(self) -> Vec3:
+        if isinstance(self.texture, SolidColor):
+            return self.texture.color
+        return Vec3(0.8, 0.8, 0.8)
 
     def scatter(self, ray_in: Ray, rec: HitRecord):
         reflected = ray_in.direction.reflect(rec.normal)
@@ -98,9 +155,13 @@ class Metal(Material):
         if reflected.dot(rec.normal) <= 0.0:
             return None
         scattered = Ray(rec.point, reflected, tmax=ray_in.tmax)
-        return (self.albedo, scattered)
+        attenuation = self.texture.value(rec.u, rec.v, rec.point)
+        return (attenuation, scattered)
 
 
+# --------------------------------------------------------------------------- #
+# Dielectric (glass / transparent refraction with Schlick Fresnel)
+# --------------------------------------------------------------------------- #
 class Dielectric(Material):
     """Transparent dielectric (e.g. glass) using Schlick's Fresnel approx."""
 
@@ -138,20 +199,36 @@ class Dielectric(Material):
         return (self.albedo, scattered)
 
 
+# --------------------------------------------------------------------------- #
+# Emissive (area light source) — now with optional texture
+# --------------------------------------------------------------------------- #
 class Emissive(Material):
-    """Diffuse area light source."""
+    """Diffuse area light source with optional texture map."""
 
-    def __init__(self, color: Vec3, intensity: float = 1.0) -> None:
-        self.color = color
+    def __init__(
+        self,
+        color: Union[Vec3, Texture],
+        intensity: float = 1.0,
+    ) -> None:
+        self.texture = _coerce_texture(color)
         self.intensity = float(intensity)
 
+    @property
+    def color(self) -> Vec3:
+        if isinstance(self.texture, SolidColor):
+            return self.texture.color
+        return Vec3(1.0, 1.0, 1.0)
+
     def emit(self, u: float, v: float, p: Vec3) -> Vec3:
-        return self.color * self.intensity
+        return self.texture.value(u, v, p) * self.intensity
 
     def emitted_albedo(self) -> Vec3:
         return self.color * self.intensity
 
 
+# --------------------------------------------------------------------------- #
+# Checker (procedural checkerboard delegating to two child materials)
+# --------------------------------------------------------------------------- #
 class Checker(Material):
     """Procedural checkerboard that delegates to two child materials."""
 
@@ -175,6 +252,33 @@ class Checker(Material):
 
     def emit(self, u: float, v: float, p: Vec3) -> Vec3:
         return self._which(p).emit(u, v, p)
+
+
+# --------------------------------------------------------------------------- #
+# Isotropic (volume scattering / participating media)
+# --------------------------------------------------------------------------- #
+class Isotropic(Material):
+    """Isotropically scattering participating medium.
+
+    Used by volumetric primitives (e.g. constant-density fog / smoke).  Each
+    interaction randomly scatters the ray in any direction, attenuated by the
+    texture color.
+    """
+
+    def __init__(self, albedo: Union[Vec3, Texture]) -> None:
+        self.texture = _coerce_texture(albedo)
+
+    @property
+    def albedo(self) -> Vec3:
+        if isinstance(self.texture, SolidColor):
+            return self.texture.color
+        return Vec3(0.5, 0.5, 0.5)
+
+    def scatter(self, ray_in: Ray, rec: HitRecord):
+        direction = _random_in_unit_sphere()
+        scattered = Ray(rec.point, direction, tmax=ray_in.tmax)
+        attenuation = self.texture.value(rec.u, rec.v, rec.point)
+        return (attenuation, scattered)
 
 
 # --------------------------------------------------------------------------- #
@@ -202,3 +306,23 @@ def _random_in_unit_sphere() -> Vec3:
         v = Vec3(x, y, z)
         if v.length_squared() < 1.0:
             return v
+
+
+def _random_unit_vector() -> Vec3:
+    """Sample a uniformly-distributed unit vector on the sphere."""
+    while True:
+        p = _random_in_unit_sphere()
+        if p.length_squared() > 1e-12:
+            return p.normalized()
+
+
+def _random_in_hemisphere(normal: Vec3) -> Vec3:
+    """Cosine-weighted hemisphere sample around *normal*.
+
+    The returned vector lies in the hemisphere whose pole is *normal*.  Used
+    by the AO and path integrators for diffuse scattering.
+    """
+    v = _random_in_unit_sphere()
+    if v.dot(normal) < 0.0:
+        v = -v
+    return v

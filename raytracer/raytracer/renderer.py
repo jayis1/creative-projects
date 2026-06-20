@@ -1,14 +1,17 @@
 """renderer.py — Core recursive ray-tracing integrator.
 
-Provides three rendering modes selectable at render time:
+Provides four rendering modes selectable at render time:
 
-* ``"path"`` — a recursive Whitted-style path tracer.  Direct illumination is
+* ``"path"``   — a recursive Whitted-style path tracer.  Direct illumination is
   handled implicitly through emissive ``Material.emit()`` and indirect bounces
-  accumulate attenuation multiplicatively.  Bounded by ``max_depth``.
-* ``"ao"`` — ambient occlusion: for each hit point, sample the hemisphere and
+  accumulate attenuation multiplicatively.  Bounded by ``max_depth``.  Russian
+  roulette path termination kicks in after ``rr_start_depth`` bounces.
+* ``"ao"``    — ambient occlusion: for each hit point, sample the hemisphere and
   count occluded rays, shading grey by visibility.  Fast, no-light preview.
 * ``"normal"`` — a debug mode that shades each hit by its surface normal
   mapped into [0, 1] RGB.  Useful for validating geometry / camera setups.
+* ``"depth"`` — encodes the ray-hit distance as a grayscale, useful for
+  debugging the scene scale and camera placement.
 
 Common features across modes:
 
@@ -18,26 +21,35 @@ Common features across modes:
 * Deterministic rendering via an optional RNG seed.
 * Optional multi-threaded, tile-based rendering using a process pool so the
   heavy ray work fans out across CPU cores.
+* Optional Next Event Estimation (direct light sampling) for the path
+  integrator when a list of emissive primitives is provided.
+* Render statistics (rays cast, bounces, elapsed time) collected during a
+  render and available via :attr:`Renderer.stats`.
 """
 
 from __future__ import annotations
 
 import math
-from typing import Callable, Optional, Iterable
+import time
+from typing import Callable, Optional, Iterable, List
 
 from .vec import Vec3
 from .ray import Ray
-from .bvh import _Hittable
+from .bvh import _Hittable, HittableList
 from . import material as _mat
+from .material import Emissive
+from .logging import logger
 
 __all__ = [
     "Renderer",
+    "RenderStats",
     "sky_gradient",
     "constant_background",
+    "ConstantBackground",
     "MODES",
 ]
 
-MODES = ("path", "ao", "normal")
+MODES = ("path", "ao", "normal", "depth")
 
 
 def sky_gradient(ray: Ray) -> Vec3:
@@ -71,6 +83,44 @@ def constant_background(color: Vec3):
     return ConstantBackground(color)
 
 
+class RenderStats:
+    """Lightweight render-statistics counter."""
+
+    __slots__ = ("rays", "bounces", "hits", "misses", "elapsed", "width", "height")
+
+    def __init__(self) -> None:
+        self.rays: int = 0
+        self.bounces: int = 0
+        self.hits: int = 0
+        self.misses: int = 0
+        self.elapsed: float = 0.0
+        self.width: int = 0
+        self.height: int = 0
+
+    def __repr__(self) -> str:
+        return (
+            f"RenderStats(rays={self.rays}, bounces={self.bounces}, "
+            f"hits={self.hits}, misses={self.misses}, "
+            f"elapsed={self.elapsed:.3f}s, "
+            f"{self.width}x{self.height})"
+        )
+
+    def rays_per_second(self) -> float:
+        return self.rays / self.elapsed if self.elapsed > 0 else 0.0
+
+    def as_dict(self) -> dict:
+        return {
+            "rays": self.rays,
+            "bounces": self.bounces,
+            "hits": self.hits,
+            "misses": self.misses,
+            "elapsed_s": round(self.elapsed, 4),
+            "width": self.width,
+            "height": self.height,
+            "rays_per_second": round(self.rays_per_second(), 1),
+        }
+
+
 class Renderer:
     """Recursive path-tracing renderer with selectable integrator modes.
 
@@ -81,10 +131,15 @@ class Renderer:
         rays that miss all geometry, or ``None`` for black.
     max_depth : recursion depth for indirect bounces (path mode).
     samples : number of samples per pixel (supersampling / AO samples).
-    mode : integrator mode — ``"path"``, ``"ao"``, or ``"normal"``.
+    mode : integrator mode — ``"path"``, ``"ao"``, ``"normal"``, or ``"depth"``.
     ao_distance : maximum ray length for AO occlusion tests.
     gamma : display gamma applied during tone mapping.
     seed : optional integer seed for deterministic output.
+    rr_start_depth : Russian-roulette path termination starts after this many
+        bounces (only in path mode).  0 disables it.
+    lights : optional list of emissive hittables for Next Event Estimation
+        (direct light sampling) in path mode.  If non-empty, each diffuse
+        bounce samples a random light source explicitly.
     """
 
     def __init__(
@@ -97,6 +152,8 @@ class Renderer:
         ao_distance: float = 1e9,
         gamma: float = 2.0,
         seed: Optional[int] = None,
+        rr_start_depth: int = 0,
+        lights: Optional[List[_Hittable]] = None,
     ) -> None:
         if mode not in MODES:
             raise ValueError(f"unknown render mode '{mode}'; choose from {MODES}")
@@ -109,6 +166,9 @@ class Renderer:
         self.mode = mode
         self.ao_distance = float(ao_distance)
         self.gamma = max(0.1, float(gamma))
+        self.rr_start_depth = max(0, int(rr_start_depth))
+        self.lights: List[_Hittable] = list(lights) if lights else []
+        self.stats = RenderStats()
         if seed is not None:
             _mat.seed(seed)
 
@@ -116,26 +176,91 @@ class Renderer:
     # Integrators
     # ------------------------------------------------------------------ #
     def ray_color(self, ray: Ray, depth: int) -> Vec3:
-        """Recursive path-tracer integrator (mode == 'path')."""
+        """Recursive path-tracer integrator (mode == 'path').
+
+        Supports Russian-roulette path termination (after ``rr_start_depth``
+        bounces) and Next Event Estimation when ``self.lights`` is non-empty.
+        """
+        self.stats.rays += 1
         # Base case: recursion budget exhausted.
         if depth <= 0:
             return Vec3.zero()
         hit = self.world.hit(ray, ray.tmin, ray.tmax)
         if hit is None:
+            self.stats.misses += 1
             return self.background(ray)
+        self.stats.hits += 1
+        self.stats.bounces += 1
         result = hit.material.scatter(ray, hit)
         emitted = hit.material.emit(hit.u, hit.v, hit.point)
+
+        # Next Event Estimation: explicit light sampling for diffuse surfaces.
+        # Only applies when the hit material is not itself emissive and we have
+        # a light list to sample from.  We compute the direct lighting
+        # contribution and add it to the emitted term.
+        direct_light = Vec3.zero()
+        if self.lights and not isinstance(hit.material, Emissive):
+            direct_light = self._sample_lights(hit)
+
         if result is None:
             # Absorbing material (e.g. metal below surface) — only emit.
-            return emitted
+            return emitted + direct_light
         attenuation, scattered = result
-        return emitted + attenuation * self.ray_color(scattered, depth - 1)
+
+        # Russian roulette: after rr_start_depth bounces, terminate the path
+        # with probability (1 - p) and scale survivors by 1/p so the estimate
+        # stays unbiased.  p is tied to the luminance of the attenuation.
+        if self.rr_start_depth > 0 and depth < (self.max_depth - self.rr_start_depth):
+            lum = 0.2126 * attenuation.x + 0.7152 * attenuation.y + 0.0722 * attenuation.z
+            p = max(0.05, min(0.95, lum))
+            if _mat._drand48() > p:
+                return emitted + direct_light
+            scale = 1.0 / p
+            return (emitted + direct_light
+                    + attenuation * self.ray_color(scattered, depth - 1) * scale)
+        return emitted + direct_light + attenuation * self.ray_color(scattered, depth - 1)
+
+    def _sample_lights(self, hit) -> Vec3:
+        """Sample one random light from ``self.lights`` for NEE.
+
+        Returns the direct radiance contribution from that light toward the
+        hit point.  Uses a simple uniform pick + cosine term.  Shadow rays are
+        cast to test visibility.
+        """
+        if not self.lights:
+            return Vec3.zero()
+        import random as _r
+        light = self.lights[_r.Random().randrange(len(self.lights))]
+        # Sample a point on the light's bounding box (approximation; for area
+        # lights this is conservative).
+        aabb = light.bbox()
+        c = aabb.center()
+        direction = c - hit.point
+        dist = direction.length()
+        if dist < 1e-9:
+            return Vec3.zero()
+        direction = direction / dist
+        # Shadow ray.
+        shadow_ray = Ray(hit.point + hit.normal * 1e-4, direction, tmax=dist - 1e-4)
+        if self.world.hit(shadow_ray, 1e-4, dist - 1e-4) is not None:
+            return Vec3.zero()  # occluded
+        # Material emissive contribution.
+        # Find a hit on the light to read its emission.
+        light_hit = light.hit(shadow_ray, 1e-4, dist)
+        if light_hit is None:
+            return Vec3.zero()
+        emit = light_hit.material.emit(light_hit.u, light_hit.v, light_hit.point)
+        cos_theta = max(0.0, direction.dot(hit.normal))
+        return emit * cos_theta
 
     def _ao_color(self, ray: Ray, n_samples: int) -> Vec3:
         """Ambient-occlusion integrator: white where the hemisphere is open."""
+        self.stats.rays += 1
         hit = self.world.hit(ray, ray.tmin, ray.tmax)
         if hit is None:
+            self.stats.misses += 1
             return self.background(ray)
+        self.stats.hits += 1
         occluded = 0
         for _ in range(n_samples):
             # Cosine-weighted hemisphere sample around the surface normal.
@@ -143,6 +268,7 @@ class Renderer:
             if s.dot(hit.normal) < 0.0:
                 s = -s
             ao_ray = Ray(hit.point + hit.normal * 1e-4, s, tmax=self.ao_distance)
+            self.stats.rays += 1
             if self.world.hit(ao_ray, 1e-4, self.ao_distance) is not None:
                 occluded += 1
         vis = 1.0 - occluded / float(n_samples)
@@ -150,11 +276,30 @@ class Renderer:
 
     def _normal_color(self, ray: Ray) -> Vec3:
         """Debug integrator: encode the surface normal as a color."""
+        self.stats.rays += 1
         hit = self.world.hit(ray, ray.tmin, ray.tmax)
         if hit is None:
+            self.stats.misses += 1
             return self.background(ray)
+        self.stats.hits += 1
         n = hit.normal
         return Vec3(0.5 * n.x + 0.5, 0.5 * n.y + 0.5, 0.5 * n.z + 0.5)
+
+    def _depth_color(self, ray: Ray) -> Vec3:
+        """Debug integrator: encode the hit distance as a grayscale value.
+
+        Distances are normalized by ``self.ao_distance`` when it is finite,
+        otherwise by 20.0 (a reasonable default for indoor scenes).
+        """
+        self.stats.rays += 1
+        hit = self.world.hit(ray, ray.tmin, ray.tmax)
+        if hit is None:
+            self.stats.misses += 1
+            return self.background(ray)
+        self.stats.hits += 1
+        max_dist = self.ao_distance if self.ao_distance < 1e8 else 20.0
+        t = max(0.0, min(1.0, hit.t / max_dist))
+        return Vec3(t, t, t)
 
     def _shade_primary(self, ray: Ray) -> Vec3:
         """Dispatch the configured integrator on a single primary ray."""
@@ -164,6 +309,8 @@ class Renderer:
             return self._ao_color(ray, self.samples)
         if self.mode == "normal":
             return self._normal_color(ray)
+        if self.mode == "depth":
+            return self._depth_color(ray)
         # Unreachable — validated in __init__.
         raise AssertionError(f"bad mode {self.mode!r}")
 
@@ -221,9 +368,21 @@ class Renderer:
         """
         if width < 1 or height < 1:
             raise ValueError("width and height must be >= 1")
+        self.stats = RenderStats()
+        self.stats.width = width
+        self.stats.height = height
+        t0 = time.time()
         if num_threads > 1:
-            return self._render_parallel(camera, width, height, progress, num_threads)
-        return self._render_serial(camera, width, height, progress)
+            rows = self._render_parallel(camera, width, height, progress, num_threads)
+        else:
+            rows = self._render_serial(camera, width, height, progress)
+        self.stats.elapsed = time.time() - t0
+        logger.debug(
+            "render done: %dx%d, %d rays, %.2fs (%.0f r/s)",
+            width, height, self.stats.rays, self.stats.elapsed,
+            self.stats.rays_per_second(),
+        )
+        return rows
 
     def _render_serial(
         self, camera, width: int, height: int, progress

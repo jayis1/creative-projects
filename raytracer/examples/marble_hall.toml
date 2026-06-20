@@ -1,0 +1,104 @@
+# Marble hall scene — TOML format
+# Demonstrates Perlin marble textures on cylinders
+
+[background]
+type = "constant"
+color = [0.02, 0.02, 0.03]
+
+[camera]
+look_from = [0, 1.5, 3]
+look_at = [0, 1.2, -3]
+up = [0, 1, 0]
+vfov_deg = 50
+aperture = 0.03
+focus_dist = 5.0
+
+[[objects]]
+type = "plane"
+point = [0, 0, 0]
+normal = [0, 1, 0]
+
+[objects.material]
+type = "checker"
+scale = 1.0
+a = {type = "matte", albedo = [0.9, 0.9, 0.9]}
+b = {type = "matte", albedo = [0.1, 0.1, 0.1]}
+
+[[objects]]
+type = "cylinder"
+center = [-2.5, 0, -4]
+radius = 0.25
+y0 = 0.0
+y1 = 3.0
+
+[objects.material]
+type = "matte"
+albedo = {type = "marble", scale = 3.0, seed = 7}
+
+[[objects]]
+type = "cylinder"
+center = [0, 0, -4]
+radius = 0.25
+y0 = 0.0
+y1 = 3.0
+
+[objects.material]
+type = "matte"
+albedo = {type = "marble", scale = 3.0, seed = 7}
+
+[[objects]]
+type = "cylinder"
+center = [2.5, 0, -4]
+radius = 0.25
+y0 = 0.0
+y1 = 3.0
+
+[objects.material]
+type = "matte"
+albedo = {type = "marble", scale = 3.0, seed = 7}
+
+[[objects]]
+type = "cylinder"
+center = [-2.5, 0, -2]
+radius = 0.25
+y0 = 0.0
+y1 = 3.0
+
+[objects.material]
+type = "matte"
+albedo = {type = "marble", scale = 3.0, seed = 7}
+
+[[objects]]
+type = "cylinder"
+center = [0, 0, -2]
+radius = 0.25
+y0 = 0.0
+y1 = 3.0
+
+[objects.material]
+type = "matte"
+albedo = {type = "marble", scale = 3.0, seed = 7}
+
+[[objects]]
+type = "cylinder"
+center = [2.5, 0, -2]
+radius = 0.25
+y0 = 0.0
+y1 = 3.0
+
+[objects.material]
+type = "matte"
+albedo = {type = "marble", scale = 3.0, seed = 7}
+
+[[objects]]
+type = "xzrect"
+x0 = -3
+x1 = 3
+z0 = -5
+z1 = -1
+y = 2.999
+
+[objects.material]
+type = "emissive"
+color = [1, 0.98, 0.92]
+intensity = 5.0

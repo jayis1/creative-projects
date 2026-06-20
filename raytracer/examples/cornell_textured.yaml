@@ -1,0 +1,88 @@
+# Cornell box scene with textured walls — YAML format
+background: black
+
+camera:
+  look_from: [0, 2.5, 6.0]
+  look_at: [0, 2.0, -2]
+  up: [0, 1, 0]
+  vfov_deg: 40
+  aperture: 0.0
+  focus_dist: 8.0
+
+objects:
+  # Floor
+  - type: plane
+    point: [0, 0, 0]
+    normal: [0, 1, 0]
+    material:
+      type: matte
+      albedo:
+        type: checker
+        scale: 1.0
+        even:
+          type: solid
+          color: [0.73, 0.73, 0.73]
+        odd:
+          type: solid
+          color: [0.1, 0.1, 0.1]
+
+  # Ceiling
+  - type: plane
+    point: [0, 5, 0]
+    normal: [0, -1, 0]
+    material:
+      type: matte
+      albedo: [0.73, 0.73, 0.73]
+
+  # Back wall
+  - type: plane
+    point: [0, 0, -5]
+    normal: [0, 0, 1]
+    material:
+      type: matte
+      albedo: [0.73, 0.73, 0.73]
+
+  # Left wall — green
+  - type: plane
+    point: [-5, 0, 0]
+    normal: [1, 0, 0]
+    material:
+      type: matte
+      albedo: [0.12, 0.45, 0.15]
+
+  # Right wall — red
+  - type: plane
+    point: [5, 0, 0]
+    normal: [-1, 0, 0]
+    material:
+      type: matte
+      albedo: [0.65, 0.05, 0.05]
+
+  # Ceiling light
+  - type: xyrect
+    x0: -1.5
+    x1: 1.5
+    y0: 2.5
+    y1: 4.5
+    z: 4.999
+    material:
+      type: emissive
+      color: [1, 1, 1]
+      intensity: 8.0
+
+  # Glass sphere
+  - type: sphere
+    center: [-1.2, 1.0, -2.5]
+    radius: 1.0
+    material:
+      type: dielectric
+      ior: 1.5
+
+  # Metal sphere
+  - type: sphere
+    center: [1.5, 0.7, -1.5]
+    radius: 0.7
+    material:
+      type: metal
+      albedo: [0.85, 0.85, 0.9]
+      fuzz: 0.0
