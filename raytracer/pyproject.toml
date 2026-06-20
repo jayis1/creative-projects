@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "raytracer"
+version = "1.0.0"
+description = "A from-scratch recursive ray tracer in pure Python (BVH, materials, DoF)."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.20; python_version < '3.13'",
+    "Pillow>=9.0",
+]
+
+[project.scripts]
+raytracer = "raytracer.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["raytracer*"]
