@@ -17,7 +17,7 @@ from .material import (
 from .primitive import Sphere, Plane, Triangle, XYRect
 from .bvh import BVHNode, HittableList, _Hittable
 from .camera import Camera
-from .renderer import Renderer, sky_gradient
+from .renderer import Renderer, sky_gradient, constant_background
 
 __all__ = ["Scene", "build_three_balls", "build_cornell_box", "build_random_spheres"]
 
@@ -97,7 +97,7 @@ def build_cornell_box(aspect: float = 1.0) -> "Scene":
         focus_dist=8.0,
     )
     # Black background for a closed room.
-    return Scene(world, cam, background=lambda r: Vec3(0, 0, 0))
+    return Scene(world, cam, background=constant_background(Vec3(0, 0, 0)))
 
 
 def build_random_spheres(n: int = 64, aspect: float = 16.0 / 9.0) -> "Scene":

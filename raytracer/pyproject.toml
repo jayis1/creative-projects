@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "raytracer"
-version = "1.0.0"
+version = "1.1.0"
 description = "A from-scratch recursive ray tracer in pure Python (BVH, materials, DoF)."
 readme = "README.md"
 requires-python = ">=3.10"

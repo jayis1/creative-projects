@@ -17,7 +17,7 @@ Public API
 from .vec import Vec3
 from .ray import Ray
 from .camera import Camera
-from .renderer import Renderer, sky_gradient, constant_background
+from .renderer import Renderer, sky_gradient, constant_background, MODES
 from .scene import Scene, build_three_balls, build_cornell_box, build_random_spheres
 from .material import (
     Material,
@@ -31,6 +31,8 @@ from .material import (
 from .primitive import Primitive, Sphere, Plane, Triangle, XYRect
 from .bvh import BVHNode, HittableList, AABB
 from . import imageio
+from . import serialize
+from .serialize import load_scene, load_scene_file, dump_scene, build_material, build_object
 
 __all__ = [
     "Vec3",
@@ -39,6 +41,7 @@ __all__ = [
     "Renderer",
     "sky_gradient",
     "constant_background",
+    "MODES",
     "Scene",
     "build_three_balls",
     "build_cornell_box",
@@ -59,6 +62,12 @@ __all__ = [
     "HittableList",
     "AABB",
     "imageio",
+    "serialize",
+    "load_scene",
+    "load_scene_file",
+    "dump_scene",
+    "build_material",
+    "build_object",
 ]
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"

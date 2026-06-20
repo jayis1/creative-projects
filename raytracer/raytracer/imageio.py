@@ -20,7 +20,7 @@ def write_ppm(path: str, pixels: "list[list[Vec3]]", gamma: float = 2.0) -> None
         f.write(header)
         for row in pixels:
             for px in row:
-                r, g, b = Renderer.to_rgb(px, gamma)
+                r, g, b = Renderer.encode(px, gamma)
                 f.write(bytes((r, g, b)))
 
 
@@ -35,7 +35,7 @@ def write_png(path: str, pixels: "list[list[Vec3]]", gamma: float = 2.0) -> None
     buf = bytearray()
     for row in pixels:
         for px in row:
-            r, g, b = Renderer.to_rgb(px, gamma)
+            r, g, b = Renderer.encode(px, gamma)
             buf += bytes((r, g, b))
     img = Image.frombytes("RGB", (width, height), bytes(buf))
     img.save(path)
@@ -80,6 +80,6 @@ def write_array(pixels: "list[list[Vec3]]", gamma: float = 2.0):
     buf = bytearray()
     for row in pixels:
         for px in row:
-            r, g, b = Renderer.to_rgb(px, gamma)
+            r, g, b = Renderer.encode(px, gamma)
             buf += bytes((r, g, b))
     return bytes(buf)

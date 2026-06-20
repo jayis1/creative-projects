@@ -326,9 +326,9 @@ class TestRenderer:
         assert any_nonzero
 
     def test_gamma_clamp(self):
-        assert Renderer.to_rgb(Vec3(0, 0, 0)) == (0, 0, 0)
-        assert Renderer.to_rgb(Vec3(1, 1, 1)) == (255, 255, 255)
-        assert Renderer.to_rgb(Vec3(2, 2, 2)) == (255, 255, 255)
+        assert Renderer.encode(Vec3(0, 0, 0)) == (0, 0, 0)
+        assert Renderer.encode(Vec3(1, 1, 1)) == (255, 255, 255)
+        assert Renderer.encode(Vec3(2, 2, 2)) == (255, 255, 255)
 
 
 # --------------------------------------------------------------------------- #
