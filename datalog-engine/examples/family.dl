@@ -1,0 +1,37 @@
+% family.dl — a classic Datalog family database example
+%
+% Load with:  python -m datalog.cli examples/family.dl --query "parent(X, Y)"
+
+% --- Facts ---
+
+parent(tom, bob).
+parent(tom, liz).
+parent(bob, ann).
+parent(bob, pat).
+parent(pat, jim).
+
+male(tom).
+male(bob).
+male(jim).
+female(liz).
+female(ann).
+female(pat).
+
+% --- Rules ---
+
+% X is an ancestor of Y if X is a parent of Y
+ancestor(X, Y) :- parent(X, Y).
+% X is an ancestor of Y if X is a parent of Z and Z is an ancestor of Y
+ancestor(X, Y) :- parent(X, Z), ancestor(Z, Y).
+
+% X and Y are siblings if they share a parent and are not the same person
+sibling(X, Y) :- parent(Z, X), parent(Z, Y), X != Y.
+
+% X is a child of Y
+child(X, Y) :- parent(Y, X).
+
+% X is a grandparent of Y
+grandparent(X, Y) :- parent(X, Z), parent(Z, Y).
+
+% X is an aunt/uncle of Y if X is a sibling of Y's parent
+aunt_uncle(X, Y) :- sibling(X, Z), parent(Z, Y).

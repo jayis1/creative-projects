@@ -1,0 +1,25 @@
+% graph.dl — graph algorithms in Datalog
+
+% --- Graph edges (EDB) ---
+edge(a, b). edge(b, c). edge(c, d). edge(d, e).
+edge(a, c). edge(b, d). edge(c, e).
+
+% --- Transitive closure: path/2 ---
+path(X, Y) :- edge(X, Y).
+path(X, Y) :- edge(X, Z), path(Z, Y).
+
+% --- Connected components: two nodes are connected if there's a path
+% --- in either direction ---
+connected(X, Y) :- path(X, Y).
+connected(X, Y) :- path(Y, X).
+
+% --- Nodes with no incoming edges (sources) ---
+has_incoming(X) :- edge(Y, X).
+source(X) :- edge(X, Y), not has_incoming(X).
+
+% --- Nodes with no outgoing edges (sinks) ---
+has_outgoing(X) :- edge(X, Y).
+sink(X) :- edge(Y, X), not has_outgoing(X).
+
+% --- Cycle detection: a node is on a cycle if it can reach itself ---
+on_cycle(X) :- edge(X, Y), path(Y, X).
