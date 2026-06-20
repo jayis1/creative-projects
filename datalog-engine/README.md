@@ -213,6 +213,24 @@ Arithmetic predicates (`add`, `sub`, `mul`, `div`, `idiv`, `mod`) take three arg
 | `examples/graph.dl` | Graph algorithms: transitive closure, cycle detection, source/sink, connected components |
 | `examples/company.dl` | Company database with arithmetic (salary doubling), negation (worker vs. manager), management hierarchy |
 
+## Known Issues (Resolved)
+
+The following bugs were found during the Phase 3 bug hunt and have been fixed:
+
+1. **EDB + IDB same predicate lost base facts** — When a predicate had both base facts (EDB) and rules (IDB), querying it only returned the derived (IDB) tuples, silently dropping the base facts. **Fix:** The evaluation now seeds IDB relations with a copy of EDB facts before rule evaluation, so the final relation is the union of base + derived. The delta relations are also initialized with EDB facts so semi-naive iteration propagates them through rules. *(Tests 41, 27)*
+
+2. **Safety check treated built-in comparison variables as bound** — A rule like `foo(X) :- X > 5.` was incorrectly accepted as safe because `is_safe()` counted variables in built-in predicates (like `>`) as "bound" by positive literals. Built-in comparisons only *check* values, they don't *bind* them. **Fix:** `is_safe()` now accepts a set of builtin predicate names and excludes them from the binding set. `foo(X) :- X > 5.` is correctly rejected as unsafe. *(Test 42)*
+
+3. **Arithmetic builtin output variables incorrectly rejected as unsafe** — After fixing bug #2, rules like `foo(X, Y) :- num(X), add(X, 5, Y)` were rejected because `Y` only appeared in the arithmetic builtin `add`. But arithmetic builtins *do* bind their output (3rd) argument. **Fix:** `is_safe()` now iteratively adds variables bound by arithmetic builtins (whose inputs are already bound) to the safe variable set. *(Test 43)*
+
+4. **`from_json` gave unclear errors on malformed input** — Invalid JSON or missing keys raised `JSONDecodeError` or `KeyError` instead of a clear `DatalogError`. **Fix:** `from_json()` now wraps JSON parsing errors and validates the structure, raising `DatalogError` with descriptive messages. *(Test 44)*
+
+5. **Ground atom evaluation silently dropped non-Constant terms** — `_eval_positive` filtered terms with `isinstance(t, Constant)`, which could silently produce a wrong-length tuple if a non-Constant term appeared. **Fix:** Since `is_ground()` already confirms all terms are Constants, the tuple is now built directly from `atom.terms`.
+
+6. **`_load_program` fact loading used filtering instead of validation** — Similar to bug #5, fact loading filtered for Constants instead of validating, potentially accepting partial facts. **Fix:** Now validates that all terms are Constants and raises `DatalogError` if not.
+
+7. **JSON export sorting used Constant objects instead of values** — `to_json` sorted tuples by `str(x)` where `x` was a `Constant` object, which could produce inconsistent ordering. **Fix:** Now sorts by `str(c.value)` for deterministic, type-safe ordering.
+
 ## Project Structure
 
 ```

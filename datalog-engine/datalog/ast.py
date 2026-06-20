@@ -195,15 +195,60 @@ class Rule:
             out.extend(lit.atom.variables())
         return out
 
-    def is_safe(self) -> bool:
-        """Check the Datalog safety condition: every variable in the
-        head must appear in a positive body literal, and every variable
-        in a negative literal must appear in a positive literal too."""
+    def is_safe(self, builtins: Optional[set] = None,
+                arith_builtins: Optional[set] = None) -> bool:
+        """Check the Datalog safety condition.
+
+        Rules:
+        1. Every variable in the head must appear in a positive
+           non-builtin body literal, OR be the output (3rd arg) of an
+           arithmetic builtin whose inputs are all bound.
+        2. Every variable in a negative literal must appear in a
+           positive non-builtin literal.
+        3. For arithmetic builtins, all input (first two) arguments
+           must be bound by positive non-builtin literals.
+
+        Built-in comparisons (``>``, ``<`` etc.) do not bind variables.
+        Arithmetic builtins (``add``, ``mul`` etc.) bind their 3rd
+        argument but require their first two to be bound."""
+        if builtins is None:
+            builtins = set()
+        if arith_builtins is None:
+            arith_builtins = set()
+
+        # Variables bound by positive non-builtin literals
         pos_vars = set()
         for lit in self.body:
-            if lit.positive:
+            if lit.positive and lit.atom.predicate not in builtins:
                 for v in lit.atom.variables():
                     pos_vars.add(v.name)
+
+        # Iteratively add variables bound by arithmetic builtins whose
+        # inputs are already in pos_vars. This handles chains like:
+        #   foo(X, Y) :- num(X), add(X, 5, Y).
+        # where Y is bound by add (with X already bound by num).
+        changed = True
+        while changed:
+            changed = False
+            for lit in self.body:
+                if lit.positive and lit.atom.predicate in arith_builtins:
+                    terms = lit.atom.terms
+                    if len(terms) != 3:
+                        continue
+                    # Check inputs (first 2 args) are bound
+                    inputs_bound = True
+                    for t in terms[:2]:
+                        if isinstance(t, Variable) and t.name not in pos_vars:
+                            inputs_bound = False
+                            break
+                        elif isinstance(t, Variable):
+                            pass
+                    if inputs_bound:
+                        out = terms[2]
+                        if isinstance(out, Variable) and out.name not in pos_vars:
+                            pos_vars.add(out.name)
+                            changed = True
+
         # head vars must be in pos_vars
         for v in self.head.variables():
             if v.name not in pos_vars:

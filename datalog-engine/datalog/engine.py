@@ -19,7 +19,7 @@ from collections import defaultdict
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 from .ast import Atom, Constant, Fact, Literal, Query, Rule, Term, Variable
-from .parser import parse
+from .parser import parse, ParseError, LexError
 
 
 # A binding is a mapping from variable name → Constant value.
@@ -306,7 +306,8 @@ class Engine:
         self._dirty = True
 
     def add_rule(self, rule: Rule) -> None:
-        if not rule.is_safe():
+        all_builtins = _BUILTIN_BINARY.keys() | _BUILTIN_ARITH.keys() | _BUILTIN_AGGREG
+        if not rule.is_safe(all_builtins, set(_BUILTIN_ARITH.keys())):
             raise SafetyError(f"unsafe rule: {rule}")
         self._rules.append(rule)
         self._derived.add(rule.head.predicate)
@@ -460,9 +461,11 @@ class Engine:
         import json
         data: dict = {"facts": {}, "rules": []}
         for pred, rel in sorted(self._edb.items()):
+            # Sort tuples for deterministic output. Sort by the string
+            # representation of each value for a stable, type-safe order.
             data["facts"][pred] = {
                 "arity": rel.arity,
-                "tuples": [[c.value for c in tup] for tup in sorted(rel.tuples, key=lambda t: [str(x) for x in t])],
+                "tuples": [[c.value for c in tup] for tup in sorted(rel.tuples, key=lambda t: tuple(str(c.value) for c in t))],
             }
         for r in self._rules:
             data["rules"].append(str(r))
@@ -472,13 +475,22 @@ class Engine:
         """Import facts and rules from a JSON string (as produced by
         :meth:`to_json`). Existing facts/rules are preserved."""
         import json
-        data = json.loads(json_str)
+        try:
+            data = json.loads(json_str)
+        except json.JSONDecodeError as e:
+            raise DatalogError(f"invalid JSON: {e}") from e
+        if not isinstance(data, dict):
+            raise DatalogError("JSON root must be an object")
         for pred, info in data.get("facts", {}).items():
-            arity = info["arity"]
+            if not isinstance(info, dict) or "tuples" not in info:
+                raise DatalogError(f"invalid fact entry for predicate {pred!r}")
             for tup in info["tuples"]:
                 self.add_fact(pred, *tup)
         for rule_str in data.get("rules", []):
-            prog = parse(rule_str)
+            try:
+                prog = parse(rule_str)
+            except (ParseError, LexError) as e:
+                raise DatalogError(f"failed to parse rule from JSON: {rule_str!r}: {e}") from e
             for rule in prog.rules:
                 self.add_rule(rule)
 
@@ -486,12 +498,15 @@ class Engine:
 
     def _load_program(self, prog) -> None:
         for fact in prog.facts:
-            consts = tuple(t for t in fact.atom.terms if isinstance(t, Constant))
-            if len(consts) != fact.atom.arity:
+            # Facts must be ground (parser already checks this, but
+            # double-check here for programmatic additions).
+            consts = tuple(fact.atom.terms)
+            if not all(isinstance(t, Constant) for t in consts):
                 raise DatalogError(f"fact {fact.atom} has non-constant terms")
             self._get_relation(fact.atom.predicate, fact.atom.arity, edb=True).add(consts)
         for rule in prog.rules:
-            if not rule.is_safe():
+            all_builtins = _BUILTIN_BINARY.keys() | _BUILTIN_ARITH.keys() | _BUILTIN_AGGREG
+            if not rule.is_safe(all_builtins, set(_BUILTIN_ARITH.keys())):
                 raise SafetyError(f"unsafe rule: {rule}")
             self._rules.append(rule)
             self._derived.add(rule.head.predicate)
@@ -623,20 +638,26 @@ class Engine:
         # Predicates defined in this stratum
         stratum_preds = {r.head.predicate for r in rules}
 
-        # Initialize IDB relations for stratum preds as empty
-        for pred in stratum_preds:
-            if pred not in self._idb:
-                self._idb[pred] = Relation_(self._pred_arity[pred])
-            else:
-                # clear
-                self._idb[pred] = Relation_(self._pred_arity[pred])
-
-        # Delta relations: pred → Relation_ of tuples added in last iteration
+        # Initialize IDB relations for stratum preds.
+        # If a predicate also has EDB facts, seed the IDB relation with
+        # a copy of those facts so that rules can build on them and the
+        # final relation is the union of EDB + derived.
         deltas: Dict[str, Relation_] = {
             pred: Relation_(self._pred_arity[pred]) for pred in stratum_preds
         }
+        for pred in stratum_preds:
+            rel = Relation_(self._pred_arity[pred])
+            self._idb[pred] = rel
+            edb_rel = self._edb.get(pred)
+            if edb_rel is not None:
+                # Seed with EDB facts
+                for tup in edb_rel.tuples:
+                    rel.add(tup)
+                    deltas[pred].add(tup)
 
-        # First pass: naive evaluation to bootstrap
+        # First pass: naive evaluation to bootstrap.
+        # If EDB facts were seeded into deltas, we need at least one
+        # semi-naive iteration to propagate them through rules.
         changed = False
         for pred in stratum_preds:
             new_tuples = self._eval_rules_for_pred(pred, rules, {})
@@ -646,7 +667,10 @@ class Engine:
                     deltas[pred].add(tup)
                     changed = True
 
-        if not changed:
+        # If EDB facts were seeded (deltas non-empty), force at least one
+        # semi-naive iteration even if the first pass produced nothing new.
+        has_seeded_deltas = any(len(d) > 0 for d in deltas.values())
+        if not changed and not has_seeded_deltas:
             return
 
         # Semi-naive: iterate until no new tuples
@@ -811,7 +835,8 @@ class Engine:
         extended bindings. Uses index joins when possible."""
         # If the atom is ground, just check membership.
         if atom.is_ground():
-            tup = tuple(t for t in atom.terms if isinstance(t, Constant))
+            # All terms are constants — build the tuple directly.
+            tup = tuple(atom.terms)  # type: ignore
             if tup in rel:
                 return [binding]
             return []
