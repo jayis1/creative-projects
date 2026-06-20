@@ -1,0 +1,7 @@
+{
+    "files": ["examples/company.dl"],
+    "queries": ["well_paid(X)", "worker(X)"],
+    "log_level": "WARNING",
+    "output_format": "table",
+    "max_iterations": 10000
+}

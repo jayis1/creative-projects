@@ -1,0 +1,30 @@
+% aggregation.dl — aggregation builtins (count, sum, min, max, avg)
+%
+% Demonstrates Datalog with aggregation: grouping by department and
+% computing statistics over each group.
+%
+% Run: python -m datalog.cli examples/aggregation.dl --show dept_count
+% Run: python -m datalog.cli examples/aggregation.dl -q "dept_count(D, N)"
+
+% --- Employees: name, department, salary ---
+employee(alice, engineering, 90000).
+employee(bob, engineering, 75000).
+employee(carol, engineering, 85000).
+employee(dave, sales, 65000).
+employee(eve, sales, 70000).
+employee(frank, sales, 55000).
+
+% --- Count employees per department ---
+dept_count(Dept, N) :- employee(Name, Dept, Sal), count(Name, N).
+
+% --- Sum salaries per department ---
+dept_total(Dept, Total) :- employee(Name, Dept, Sal), sum(Sal, Total).
+
+% --- Min salary per department ---
+dept_min(Dept, MinSal) :- employee(Name, Dept, Sal), min(Sal, MinSal).
+
+% --- Max salary per department ---
+dept_max(Dept, MaxSal) :- employee(Name, Dept, Sal), max(Sal, MaxSal).
+
+% --- Average salary per department ---
+dept_avg(Dept, AvgSal) :- employee(Name, Dept, Sal), avg(Sal, AvgSal).

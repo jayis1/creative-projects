@@ -1,0 +1,30 @@
+% strings.dl — string and type-check built-ins
+%
+% Demonstrates string manipulation (concat, substr, strlen) and
+% type-checking predicates (is_int, is_str, is_float, is_bool).
+
+% --- Some values of different types ---
+val(42).
+val(3.14).
+val(hello).
+val(true).
+val(world).
+
+% --- String concatenation ---
+name(hello).
+name(world).
+greeting(X, Y) :- name(X), concat(X, "!", Y).
+full_greeting(X, Y) :- name(X), concat("Hi, ", X, Y).
+
+% --- String length ---
+word_len(X, N) :- name(X), strlen(X, 0, N).
+
+% --- Type checks ---
+intval(X) :- val(X), is_int(X).
+fltval(X) :- val(X), is_float(X).
+strval(X) :- val(X), is_str(X).
+boolval(X) :- val(X), is_bool(X).
+
+% --- Combine arithmetic with type checking ---
+% Only double the integer values
+doubled_int(X, Y) :- val(X), is_int(X), mul(X, 2, Y).
