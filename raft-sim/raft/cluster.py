@@ -221,6 +221,40 @@ class Cluster:
         """Submit a command to a specific node (even if not leader)."""
         return self.nodes[node_id].submit_command(list(command))
 
+    def submit_batch(self, commands: list[list[Any]]) -> int:
+        """Submit multiple commands to the leader in one go.
+
+        Returns the number of commands successfully accepted.
+        """
+        leader = self.get_leader()
+        if leader is None:
+            return 0
+        node = self.nodes[leader]
+        count = 0
+        for cmd in commands:
+            if node.submit_command(cmd):
+                count += 1
+        # Trigger one round of replication.
+        if count > 0:
+            node._send_heartbeats()
+        return count
+
+    def submit_and_wait(
+        self, *command: Any, timeout: float = 50.0
+    ) -> bool:
+        """Submit a command and run until it's committed on a quorum.
+
+        Returns ``True`` if committed within *timeout*, ``False`` otherwise.
+        """
+        leader = self.get_leader()
+        if leader is None:
+            return False
+        node = self.nodes[leader]
+        target_index = node.last_log_index + 1
+        if not node.submit_command(list(command)):
+            return False
+        return self.run_until_committed(target_index, timeout=timeout)
+
     # ------------------------------------------------------------------
     # Network failure injection
     # ------------------------------------------------------------------

@@ -12,6 +12,7 @@ Raft is a consensus algorithm designed for understandability. It solves the prob
 
 ## Features
 
+### Core (v1.0)
 - **Leader Election** with randomized election timeouts, RequestVote RPCs, and term-based voting
 - **Log Replication** via AppendEntries RPCs with the conflict-optimization (fast log backtracking via `conflict_index`/`conflict_term`)
 - **Snapshotting** — Log compaction via `InstallSnapshot` RPC when the log exceeds a configurable threshold
@@ -22,20 +23,32 @@ Raft is a consensus algorithm designed for understandability. It solves the prob
 - **CLI** — Three subcommands (`run`, `partition`, `election`) for running simulations from the command line
 - **Statistics** — Per-node and cluster-wide stats: elections, votes, messages, leader changes, snapshots
 
+### Enhancements (v1.1)
+- **Persistence & Serialization** — Save/restore entire cluster state to JSON, including log entries, snapshots, state machine, and node roles
+- **ASCII Visualization** — Cluster state diagrams, connectivity/partition matrices, side-by-side log comparison, and event timelines
+- **Failure Scenarios** — 5 pre-defined scenarios: leader partition, split-brain, rolling failures, flaky network, and cascading failure
+- **Safety Invariant Checker** — Verifies 5 Raft safety properties: Election Safety, Log Matching, Leader Completeness, State Machine Safety, Commit Safety
+- **Batch Submission** — `submit_batch()` for multiple commands and `submit_and_wait()` for synchronous commit confirmation
+- **Extended CLI** — 3 new subcommands (`scenario`, `visualize`, `invariants`) for a total of 6
+
 ## Architecture
 
 ```
 raft-sim/
 ├── raft/
-│   ├── __init__.py     # Package exports
-│   ├── types.py        # Data types: NodeRole, LogEntry, RPC messages, NodeState
-│   ├── snapshot.py     # Snapshot + SnapshotStore (log compaction)
-│   ├── network.py      # Simulated network: latency, loss, partition, reorder
-│   ├── node.py         # RaftNode: the core consensus state machine
-│   ├── cluster.py      # Cluster driver: orchestrates nodes + network
-│   └── cli.py          # Command-line interface
-├── tests/              # pytest test suite
-├── examples/           # Example scripts
+│   ├── __init__.py      # Package exports
+│   ├── types.py         # Data types: NodeRole, LogEntry, RPC messages, NodeState
+│   ├── snapshot.py      # Snapshot + SnapshotStore (log compaction)
+│   ├── network.py       # Simulated network: latency, loss, partition, reorder
+│   ├── node.py          # RaftNode: the core consensus state machine
+│   ├── cluster.py       # Cluster driver: orchestrates nodes + network
+│   ├── persistence.py   # JSON serialization for cluster save/restore
+│   ├── visualizer.py    # ASCII cluster diagrams, partition matrix, log diff
+│   ├── scenarios.py     # Pre-defined network failure scenarios
+│   ├── invariants.py    # Raft safety property checker
+│   └── cli.py           # Command-line interface (6 subcommands)
+├── tests/               # pytest test suite (33 tests)
+├── examples/            # Example scripts
 ├── pyproject.toml
 └── README.md
 ```
@@ -80,12 +93,34 @@ The `Network` class simulates an asynchronous network with:
 - **Partitions** — `partition(a, b)` or `partition_groups(group_a, group_b)` split nodes bidirectionally
 - **Healing** — `heal_all()` or per-pair healing
 
+### Safety Invariants
+
+The invariant checker (`raft.invariants`) verifies five Raft safety properties:
+
+| Invariant | Description |
+|-----------|-------------|
+| Election Safety | At most one leader per term |
+| Log Matching | If two logs contain an entry with the same index and term, they are identical up to that index |
+| Leader Completeness | Committed entries are present in the leader's log |
+| State Machine Safety | No two nodes apply different commands at the same index |
+| Commit Safety | No node has commit_index > last_log_index |
+
+### Failure Scenarios
+
+| Scenario | Description |
+|----------|-------------|
+| `leader` | Isolate the current leader, then heal — tests re-election and catch-up |
+| `split` | Split cluster into two equal groups — tests split-brain prevention |
+| `rolling` | Sequentially isolate and heal each node — tests rolling upgrades |
+| `flaky` | High packet loss then recovery — tests unreliable networks |
+| `cascading` | Isolate nodes one by one until quorum lost, then heal — tests extreme failures |
+
 ## Usage
 
 ### As a Library
 
 ```python
-from raft import Cluster, NetworkConfig
+from raft import Cluster, NetworkConfig, check_all, render_cluster_ascii
 
 # Create a 5-node cluster with deterministic seed
 cluster = Cluster(size=5, seed=42, network_config=NetworkConfig(seed=42))
@@ -94,15 +129,20 @@ cluster = Cluster(size=5, seed=42, network_config=NetworkConfig(seed=42))
 leader = cluster.run_until_leader(timeout=100)
 print(f"Leader: node {leader}")
 
-# Submit commands
-cluster.submit("set", "key1", "value1")
-cluster.submit("set", "key2", 42)
-cluster.run_for(30)  # let replication complete
+# Submit commands (batch + synchronous wait)
+cluster.submit_batch([["set", "k1", "v1"], ["set", "k2", "v2"]])
+cluster.run_for(20)
+assert cluster.all_agree("k1") == "v1"
 
-# Check consistency
-assert cluster.all_agree("key1") == "value1"
-assert cluster.all_agree("key2") == 42
-assert cluster.log_consistent()
+# Submit and wait for commit
+assert cluster.submit_and_wait("set", "k3", 42, timeout=30)
+
+# Check safety invariants
+report = check_all(cluster)
+assert report.passed
+
+# Visualize
+print(render_cluster_ascii(cluster))
 
 # Simulate a partition
 cluster.partition_node(leader)
@@ -113,6 +153,42 @@ print(f"New leader: {cluster.get_leader()}")
 cluster.heal_all()
 cluster.run_for(30)
 assert cluster.log_consistent()
+assert check_all(cluster).passed
+```
+
+### Persistence
+
+```python
+from raft import Cluster, save_cluster, load_cluster
+from raft.network import Network, NetworkConfig
+
+cluster = Cluster(size=5, seed=42)
+cluster.run_until_leader(timeout=100)
+cluster.submit("set", "x", 42)
+cluster.run_for(20)
+
+# Save to JSON
+save_cluster(cluster, "cluster_state.json")
+
+# Restore
+net = Network(NetworkConfig(seed=42))
+cluster2 = load_cluster("cluster_state.json", net)
+assert cluster2.all_agree("x") == 42
+```
+
+### Failure Scenarios
+
+```python
+from raft import Cluster, NetworkConfig, leader_partition_scenario, run_scenario
+
+cluster = Cluster(size=5, seed=100, network_config=NetworkConfig(seed=100))
+cluster.run_until_leader(timeout=100)
+cluster.submit("set", "x", 1)
+cluster.run_for(15)
+
+steps = leader_partition_scenario()
+results = run_scenario(cluster, steps, verbose=True)
+assert results["log_consistent"]
 ```
 
 ### CLI
@@ -126,6 +202,16 @@ python3 -m raft.cli partition --size 5 --commands-count 10 --partition-duration 
 
 # Repeated elections
 python3 -m raft.cli election --size 7 --rounds 10
+
+# Run a pre-defined failure scenario
+python3 -m raft.cli scenario leader --size 5 --seed 100 --visualize
+python3 -m raft.cli scenario flaky --size 5 --drop-rate 0.3
+
+# Visualize cluster state
+python3 -m raft.cli visualize --size 5 --commands 10
+
+# Check safety invariants
+python3 -m raft.cli invariants --size 5 --partition --verbose
 ```
 
 ### Custom State Machine
@@ -152,10 +238,9 @@ cluster = Cluster(size=5, state_machine_factory=CounterSM)
 ## Examples
 
 See the `examples/` directory for:
-- Basic leader election and command replication
-- Network partition recovery
-- Snapshotting with log compaction
-- Membership changes (add/remove nodes)
+- `01_basic_election.py` — Basic leader election and command replication
+- `02_partition_recovery.py` — Network partition and recovery
+- `03_snapshotting.py` — Snapshotting and log compaction
 
 ## Testing
 
@@ -164,6 +249,8 @@ cd raft-sim
 pip install -e .
 pytest tests/ -v
 ```
+
+33 tests covering network, snapshots, leader election, log replication, partition recovery, persistence, visualization, scenarios, invariants, and batch submission.
 
 ## References
 

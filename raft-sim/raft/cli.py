@@ -162,6 +162,156 @@ def cmd_election(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_scenario(args: argparse.Namespace) -> int:
+    """Run a pre-defined failure scenario."""
+    from raft.scenarios import (
+        leader_partition_scenario,
+        split_brain_scenario,
+        rolling_partition_scenario,
+        flaky_network_scenario,
+        cascading_failure_scenario,
+        run_scenario,
+    )
+
+    scenario_map = {
+        "leader": leader_partition_scenario,
+        "split": split_brain_scenario,
+        "rolling": rolling_partition_scenario,
+        "flaky": lambda: flaky_network_scenario(args.drop_rate),
+        "cascading": cascading_failure_scenario,
+    }
+
+    if args.scenario not in scenario_map:
+        print(f"Unknown scenario: {args.scenario}")
+        print(f"Available: {', '.join(scenario_map.keys())}")
+        return 1
+
+    net_cfg = NetworkConfig(
+        base_latency=args.latency,
+        jitter=args.jitter,
+        seed=args.seed,
+    )
+    cluster = Cluster(
+        size=args.size,
+        network_config=net_cfg,
+        seed=args.seed,
+    )
+
+    leader = cluster.run_until_leader(timeout=args.timeout)
+    if leader is None:
+        print("No leader elected.")
+        return 1
+    print(f"Initial leader: node {leader}")
+
+    # Submit some commands first.
+    for i in range(args.commands):
+        cluster.submit("set", f"k{i}", i)
+    cluster.run_for(15)
+    print(f"Committed {args.commands} commands.")
+
+    steps = scenario_map[args.scenario]()
+    print(f"\nRunning scenario: {args.scenario} ({len(steps)} steps)\n")
+    results = run_scenario(cluster, steps, verbose=True)
+
+    print(f"\nFinal leader: {results['final_leader']}")
+    print(f"Log consistent: {results['log_consistent']}")
+    print(f"Leader changes: {results['leader_changes']}")
+
+    # Check invariants.
+    from raft.invariants import check_all
+    report = check_all(cluster)
+    print(f"\n{report.summary()}")
+
+    # Visualize.
+    if args.visualize:
+        from raft.visualizer import render_cluster_ascii
+        print()
+        print(render_cluster_ascii(cluster))
+
+    return 0 if results["log_consistent"] else 1
+
+
+def cmd_visualize(args: argparse.Namespace) -> int:
+    """Run a simulation and render ASCII visualization."""
+    from raft.visualizer import (
+        render_cluster_ascii,
+        render_partition_matrix,
+        render_log_diff,
+        render_timeline,
+    )
+
+    net_cfg = NetworkConfig(
+        base_latency=args.latency,
+        jitter=args.jitter,
+        seed=args.seed,
+    )
+    cluster = Cluster(
+        size=args.size,
+        network_config=net_cfg,
+        snapshot_threshold=args.snapshot_threshold,
+        seed=args.seed,
+    )
+
+    leader = cluster.run_until_leader(timeout=args.timeout)
+    if leader is None:
+        print("No leader elected.")
+        return 1
+
+    # Submit commands.
+    for i in range(args.commands):
+        cluster.submit("set", f"k{i}", i)
+    cluster.run_for(args.duration)
+
+    print(render_cluster_ascii(cluster))
+    print()
+    print(render_partition_matrix(cluster))
+    print()
+    print(render_log_diff(cluster))
+    print()
+    print(render_timeline(cluster.event_log()))
+    return 0
+
+
+def cmd_invariants(args: argparse.Namespace) -> int:
+    """Run a simulation and check all Raft safety invariants."""
+    from raft.invariants import check_all
+
+    net_cfg = NetworkConfig(
+        base_latency=args.latency,
+        jitter=args.jitter,
+        seed=args.seed,
+    )
+    cluster = Cluster(
+        size=args.size,
+        network_config=net_cfg,
+        seed=args.seed,
+    )
+
+    leader = cluster.run_until_leader(timeout=args.timeout)
+    if leader is None:
+        print("No leader elected.")
+        return 1
+
+    # Submit commands and run.
+    for i in range(args.commands):
+        cluster.submit("set", f"k{i}", i)
+    cluster.run_for(args.duration)
+
+    # Optionally partition and heal.
+    if args.partition:
+        cluster.partition_node(leader)
+        cluster.run_for(30)
+        cluster.heal_all()
+        cluster.run_for(30)
+
+    report = check_all(cluster)
+    print(report.summary())
+    if args.verbose:
+        print()
+        print(cluster.summary())
+    return 0 if report.passed else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="raft-sim",
@@ -207,6 +357,44 @@ def main(argv: list[str] | None = None) -> int:
     p_elec.add_argument("--jitter", type=float, default=0.5)
     p_elec.add_argument("--seed", type=int, default=None)
     p_elec.set_defaults(func=cmd_election)
+
+    # scenario
+    p_scen = sub.add_parser("scenario", help="Run a pre-defined failure scenario")
+    p_scen.add_argument("scenario", choices=["leader", "split", "rolling", "flaky", "cascading"])
+    p_scen.add_argument("--size", type=int, default=5)
+    p_scen.add_argument("--timeout", type=float, default=100)
+    p_scen.add_argument("--latency", type=float, default=1.0)
+    p_scen.add_argument("--jitter", type=float, default=0.5)
+    p_scen.add_argument("--drop-rate", type=float, default=0.3)
+    p_scen.add_argument("--commands", type=int, default=5)
+    p_scen.add_argument("--seed", type=int, default=None)
+    p_scen.add_argument("--visualize", action="store_true")
+    p_scen.set_defaults(func=cmd_scenario)
+
+    # visualize
+    p_vis = sub.add_parser("visualize", help="Run simulation and render ASCII diagrams")
+    p_vis.add_argument("--size", type=int, default=5)
+    p_vis.add_argument("--timeout", type=float, default=100)
+    p_vis.add_argument("--latency", type=float, default=1.0)
+    p_vis.add_argument("--jitter", type=float, default=0.5)
+    p_vis.add_argument("--duration", type=float, default=30)
+    p_vis.add_argument("--commands", type=int, default=10)
+    p_vis.add_argument("--snapshot-threshold", type=int, default=50)
+    p_vis.add_argument("--seed", type=int, default=None)
+    p_vis.set_defaults(func=cmd_visualize)
+
+    # invariants
+    p_inv = sub.add_parser("invariants", help="Check Raft safety invariants")
+    p_inv.add_argument("--size", type=int, default=5)
+    p_inv.add_argument("--timeout", type=float, default=100)
+    p_inv.add_argument("--latency", type=float, default=1.0)
+    p_inv.add_argument("--jitter", type=float, default=0.5)
+    p_inv.add_argument("--duration", type=float, default=30)
+    p_inv.add_argument("--commands", type=int, default=10)
+    p_inv.add_argument("--partition", action="store_true", help="Also test partition recovery")
+    p_inv.add_argument("--verbose", action="store_true")
+    p_inv.add_argument("--seed", type=int, default=None)
+    p_inv.set_defaults(func=cmd_invariants)
 
     args = parser.parse_args(argv)
     return args.func(args)
