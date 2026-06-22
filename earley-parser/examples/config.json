@@ -1,0 +1,10 @@
+{
+    "grammar_file": "examples/expr.bnf",
+    "parser": {
+        "max_trees": 50,
+        "algorithm": "earley"
+    },
+    "logging": {
+        "level": "INFO"
+    }
+}

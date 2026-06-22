@@ -1,4 +1,6 @@
 # Balanced parentheses with empty string
+# S -> (S) | SS | ε
+# This grammar is ambiguous: ()() can be parsed as S(S) or SS
 start ::= <S>
 
 <S> ::= "(" <S> ")"

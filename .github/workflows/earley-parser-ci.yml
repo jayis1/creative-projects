@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    paths:
+      - 'earley-parser/**'
+  pull_request:
+    paths:
+      - 'earley-parser/**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        working-directory: earley-parser
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run tests
+        working-directory: earley-parser
+        run: |
+          pytest tests/ -v --tb=short --cov=earley_parser
+
+      - name: Test CLI
+        working-directory: earley-parser
+        run: |
+          earley demo
+          earley check examples/expr.bnf
+          earley recognize --grammar examples/expr.bnf id + id
+          earley tree --grammar examples/expr.bnf --max 2 id + id '*' id
+          earley forest --grammar examples/expr.bnf --format json id
+          earley analyze examples/expr.bnf
+          earley ll1 examples/expr.bnf || true

@@ -1,0 +1,21 @@
+# Simple JSON-like grammar
+# Demonstrates nested structures and multiple value types
+start ::= <Value>
+
+<Value> ::= "{" "}"
+          | "{" <Members> "}"
+          | "[" "]"
+          | "[" <Elements> "]"
+          | "string"
+          | "number"
+          | "true"
+          | "false"
+          | "null"
+
+<Members> ::= <Pair>
+            | <Members> "," <Pair>
+
+<Pair> ::= "string" ":" <Value>
+
+<Elements> ::= <Value>
+             | <Elements> "," <Value>

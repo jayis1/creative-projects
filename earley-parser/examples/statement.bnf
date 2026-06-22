@@ -1,0 +1,31 @@
+# Simple statement grammar (Python-like)
+# Demonstrates a small language with if/while/assign
+start ::= <Stmt>
+
+<Stmt> ::= <SimpleStmt>
+         | <IfStmt>
+         | <WhileStmt>
+         | <Block>
+
+<SimpleStmt> ::= "id" "=" <Expr>
+               | "id" "(" ")"
+               | "pass"
+               | "break"
+               | "continue"
+
+<IfStmt> ::= "if" <Expr> ":" <Stmt>
+           | "if" <Expr> ":" <Stmt> "else" ":" <Stmt>
+
+<WhileStmt> ::= "while" <Expr> ":" <Stmt>
+
+<Block> ::= "{" <StmtList> "}"
+
+<StmtList> ::= <Stmt>
+             | <StmtList> ";" <Stmt>
+
+<Expr> ::= "id"
+         | "number"
+         | <Expr> "+" <Expr>
+         | <Expr> "<" <Expr>
+         | <Expr> "==" <Expr>
+         | "(" <Expr> ")"

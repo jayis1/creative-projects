@@ -1,4 +1,5 @@
-# Classic ambiguous expression grammar
+# Expression grammar (ambiguous)
+# Demonstrates classic ambiguity: id + id * id has two parse trees
 start ::= <E>
 
 <E> ::= <E> "+" <E>

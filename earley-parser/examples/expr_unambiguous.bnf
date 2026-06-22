@@ -1,0 +1,11 @@
+# Unambiguous expression grammar with precedence
+# E -> E+T | T  T -> T*F | F  F -> (E) | id
+# This grammar is NOT ambiguous and enforces * over + precedence
+start ::= <E>
+
+<E> ::= <E> "+" <T>
+      | <T>
+<T> ::= <T> "*" <F>
+      | <F>
+<F> ::= "(" <E> ")"
+      | "id"
