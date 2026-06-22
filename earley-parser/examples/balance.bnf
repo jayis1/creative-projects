@@ -1,0 +1,6 @@
+# Balanced parentheses with empty string
+start ::= <S>
+
+<S> ::= "(" <S> ")"
+      | <S> <S>
+      |

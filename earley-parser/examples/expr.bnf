@@ -1,0 +1,7 @@
+# Classic ambiguous expression grammar
+start ::= <E>
+
+<E> ::= <E> "+" <E>
+      | <E> "*" <E>
+      | "(" <E> ")"
+      | "id"
