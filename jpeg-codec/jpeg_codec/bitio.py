@@ -52,6 +52,16 @@ class BitWriter:
     def get_bytes(self) -> bytes:
         return bytes(self._data)
 
+    def reset(self) -> None:
+        """Reset the writer to a fresh state (after flush + get_bytes).
+
+        This allows the encoder to insert raw marker bytes between
+        restart intervals by extracting each segment separately.
+        """
+        self._data = bytearray()
+        self._cur = 0
+        self._nbits = 0
+
 
 class BitReader:
     """Read bits MSB-first from a bytes buffer, undoing JPEG byte-stuffing.

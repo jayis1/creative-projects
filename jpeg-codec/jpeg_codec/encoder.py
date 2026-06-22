@@ -3,17 +3,20 @@
 Produces a JFIF-compatible JPEG byte stream from an RGB or grayscale
 numpy array.  The encoder supports:
 
-  - Quality 1..100
+  - Quality 1..100 (libjpeg-compatible scaling)
   - Chroma subsampling modes: 4:4:4, 4:2:2, 4:2:0, 4:1:1
-  - Standard JPEG Huffman and quantisation tables
+  - Standard JPEG Huffman and quantization tables
   - Grayscale (single-channel) images
+  - Comment (COM) marker embedding
+  - Restart markers (DRI/RST0-RST7) for error-resilient streaming
+  - DPI/pixel density metadata in JFIF header
+  - Optional vectorized batch DCT for performance
 """
 
 import struct
 import numpy as np
 
 from .color import rgb_to_ycbcr, level_shift
-from .dct import dct2d
 from .quantize import quantize_block, get_quantization_tables
 from .zigzag import zigzag_block
 from .subsample import get_sampling_factors, downsample_channel
@@ -26,11 +29,22 @@ from .huffman import (
 )
 from .bitio import BitWriter
 from .entropy import encode_block
+from .exceptions import (
+    EncodingError, InvalidQualityError, InvalidSamplingError,
+    InvalidImageError,
+)
+from .restart import (
+    should_emit_restart, emit_restart_marker, write_dri_segment,
+    write_com_segment, RST_MARKERS,
+)
+from .logging_setup import get_logger
+
+_log = get_logger()
 
 # JPEG marker codes.
 _SOI = 0xFFD8       # Start of image
 _APP0 = 0xFFE0      # APP0 (JFIF)
-_DQT = 0xFFDB       # Define quantisation table
+_DQT = 0xFFDB       # Define quantization table
 _SOF0 = 0xFFC0      # Start of frame (baseline)
 _DHT = 0xFFC4       # Define Huffman table
 _SOS = 0xFFDA       # Start of scan
@@ -55,8 +69,17 @@ class _ByteStream:
         self.buf += data
 
 
-def _write_jfif_header(stream: _ByteStream, density: tuple, units: int = 0):
-    """Write the APP0 JFIF segment."""
+def _write_jfif_header(stream: _ByteStream, density: tuple,
+                       units: int = 1):
+    """Write the APP0 JFIF segment.
+
+    Parameters
+    ----------
+    density : tuple
+        (x_density, y_density) in units specified by *units*.
+    units : int
+        0 = no units, 1 = DPI, 2 = DPCM.
+    """
     ident = b"JFIF\x00"
     version = b"\x01\x01"          # JFIF 1.01
     xdpi, ydpi = density
@@ -68,9 +91,9 @@ def _write_jfif_header(stream: _ByteStream, density: tuple, units: int = 0):
 
 
 def _write_dqt(stream: _ByteStream, table_id: int, qt_8x8: np.ndarray):
-    """Write a DQT segment for one quantisation table.
+    """Write a DQT segment for one quantization table.
 
-    The JPEG standard requires quantisation table values to be stored in
+    The JPEG standard requires quantization table values to be stored in
     zig-zag order within the DQT segment.
     """
     from .zigzag import ZIGZAG_ORDER
@@ -121,44 +144,44 @@ def _write_sos(stream: _ByteStream, components: list):
     stream.write_segment(_SOS, payload)
 
 
-def _process_blocks(channel: np.ndarray, h: int, v: int,
-                    qt: np.ndarray, dc_table: dict, ac_table: dict,
-                    prev_dc: int, writer: BitWriter) -> int:
-    """Process all 8x8 blocks of one (subsampled) channel plane.
+def _process_block_inplace(block: np.ndarray, qt: np.ndarray,
+                           prev_dc: int, dc_table: dict,
+                           ac_table: dict,
+                           writer: BitWriter) -> int:
+    """Process a single 8x8 block: DCT → quantize → zigzag → entropy encode.
 
-    Blocks are traversed in MCU-aligned raster order, which for a channel
-    with sampling factor (h, v) means h*v blocks per MCU, read row by
-    row within each MCU.
-
-    Returns the final ``prev_dc``.
+    Returns the new prev_dc value.
     """
-    rows, cols = channel.shape
-    # Number of MCU columns / rows (based on the max sampling factor at
-    # the caller level; here we receive a channel already sized so that
-    # blocks divide evenly).
-    n_blocks_x = (cols + 7) // 8
-    n_blocks_y = (rows + 7) // 8
-
-    for by in range(n_blocks_y):
-        for bx in range(n_blocks_x):
-            r0, c0 = by * 8, bx * 8
-            block = channel[r0:r0 + 8, c0:c0 + 8]
-            # Pad to 8x8 if at the edge.
-            if block.shape != (8, 8):
-                block = np.pad(block,
-                               ((0, 8 - block.shape[0]),
-                                (0, 8 - block.shape[1])),
-                               mode="edge")
-            shifted = level_shift(block)
-            dct = dct2d(shifted)
-            quant = quantize_block(dct, qt)
-            zz = zigzag_block(quant)
-            prev_dc = encode_block(zz, prev_dc, dc_table, ac_table, writer)
-    return prev_dc
+    from .dct import dct2d
+    shifted = level_shift(block)
+    dct = dct2d(shifted)
+    quant = quantize_block(dct, qt)
+    zz = zigzag_block(quant)
+    return encode_block(zz, prev_dc, dc_table, ac_table, writer)
 
 
-def encode_image(image: np.ndarray, quality: int = 50,
-                 sampling: str = "4:2:0") -> bytes:
+def _validate_image(image: np.ndarray) -> None:
+    """Validate the input image array."""
+    if not isinstance(image, np.ndarray):
+        raise InvalidImageError(f"expected numpy array, got {type(image).__name__}")
+    if image.ndim not in (2, 3):
+        raise InvalidImageError(
+            f"must be 2D (grayscale) or 3D (RGB), got {image.ndim}D"
+        )
+    if image.ndim == 3 and image.shape[2] != 3:
+        raise InvalidImageError(
+            f"RGB image must have 3 channels, got {image.shape[2]}"
+        )
+    if image.size == 0:
+        raise InvalidImageError("image is empty (zero pixels)")
+
+
+def encode_image(image: np.ndarray, quality: int = 85,
+                 sampling: str = "4:2:0",
+                 comment: str = None,
+                 restart_interval: int = 0,
+                 dpi: tuple = (72, 72),
+                 units: int = 1) -> bytes:
     """Encode an image array to JPEG bytes.
 
     Parameters
@@ -166,29 +189,61 @@ def encode_image(image: np.ndarray, quality: int = 50,
     image : np.ndarray
         Either (H, W, 3) RGB uint8 or (H, W) grayscale uint8.
     quality : int
-        1 (worst) .. 100 (best).  Default 50.
+        1 (worst) .. 100 (best).  Default 85.
     sampling : str
         Chroma subsampling mode.  Ignored for grayscale images.
+        One of: "4:4:4", "4:2:2", "4:2:0", "4:1:1".
+    comment : str, optional
+        Comment to embed in the JPEG COM marker.
+    restart_interval : int
+        MCU restart interval (0 = disabled).  When > 0, RST markers
+        are inserted every *restart_interval* MCUs for error resilience.
+    dpi : tuple of (int, int)
+        Horizontal and vertical pixel density (default (72, 72)).
+    units : int
+        Density units: 0 = no units, 1 = DPI (default), 2 = DPCM.
 
     Returns
     -------
     bytes
         Raw JPEG / JFIF file data.
+
+    Raises
+    ------
+    InvalidImageError
+        If the image has an unsupported shape or dtype.
+    InvalidQualityError
+        If quality is outside [1, 100].
+    InvalidSamplingError
+        If sampling mode is not recognized.
     """
-    if image.ndim not in (2, 3):
-        raise ValueError("image must be 2D (grayscale) or 3D (RGB)")
-    if image.ndim == 3 and image.shape[2] != 3:
-        raise ValueError("RGB image must have 3 channels")
+    # --- Validation ---
+    _validate_image(image)
+    if not 1 <= quality <= 100:
+        raise InvalidQualityError(quality)
+    if sampling not in ("4:4:4", "4:2:2", "4:2:0", "4:1:1"):
+        raise InvalidSamplingError(sampling)
+    if not isinstance(restart_interval, int) or restart_interval < 0:
+        raise ValueError("restart_interval must be non-negative")
+    if not isinstance(dpi, (tuple, list)) or len(dpi) != 2:
+        raise ValueError("dpi must be a (x, y) tuple")
+    if units not in (0, 1, 2):
+        raise ValueError("units must be 0, 1, or 2")
+
+    _log.info(
+        "Encoding: shape=%s, quality=%d, sampling=%s, restart=%d",
+        image.shape, quality, sampling, restart_interval,
+    )
 
     image = image.astype(np.float64)
+    # Clip values to valid range.
+    image = np.clip(image, 0, 255)
     grayscale = image.ndim == 2
     height, width = image.shape[:2]
 
-    if not 1 <= quality <= 100:
-        raise ValueError(f"quality must be 1..100, got {quality}")
-
-    # Build quantisation tables.
+    # Build quantization tables.
     luma_qt, chroma_qt = get_quantization_tables(quality)
+    _log.debug("Quantization tables built for quality=%d", quality)
 
     # Build Huffman tables (encoding side).
     dc_luma_enc = build_huffman_table(STD_DC_LUMA_BITS, STD_DC_LUMA_VALS)
@@ -196,7 +251,7 @@ def encode_image(image: np.ndarray, quality: int = 50,
     dc_chroma_enc = build_huffman_table(STD_DC_CHROMA_BITS, STD_DC_CHROMA_VALS)
     ac_chroma_enc = build_huffman_table(STD_AC_CHROMA_BITS, STD_AC_CHROMA_VALS)
 
-    # --- Colour transform & subsampling ---
+    # --- Color transform & subsampling ---
     if grayscale:
         chan_ids = [1]
         chan_qt = [luma_qt]
@@ -214,7 +269,7 @@ def encode_image(image: np.ndarray, quality: int = 50,
         chan_sampling = [(h, v) for (h, v) in sf]
         n_components = 3
 
-    # Pad image dimensions to MCU boundary *before* colour transform.
+    # Pad image dimensions to MCU boundary *before* color transform.
     mcu_w = 8 * max(s[0] for s in chan_sampling)
     mcu_h = 8 * max(s[1] for s in chan_sampling)
     pad_w = (mcu_w - width % mcu_w) % mcu_w
@@ -227,14 +282,15 @@ def encode_image(image: np.ndarray, quality: int = 50,
                            ((0, pad_h), (0, pad_w), (0, 0)),
                            mode="edge")
     height_p, width_p = image.shape[:2]
+    _log.debug("Padded image: %dx%d -> %dx%d", width, height, width_p, height_p)
 
     # Now build the channel planes from the (padded) image.
-    max_h = max(s[0] for s in chan_sampling) if not grayscale else 1
-    max_v = max(s[1] for s in chan_sampling) if not grayscale else 1
     if grayscale:
         channels = [image.astype(np.float64)]
     else:
         ycbcr = rgb_to_ycbcr(image)
+        max_h = max(s[0] for s in sf)
+        max_v = max(s[1] for s in sf)
         channels = []
         for c in range(3):
             h, v = sf[c]
@@ -242,8 +298,7 @@ def encode_image(image: np.ndarray, quality: int = 50,
             channels.append(downsample_channel(plane, max_h // h,
                                                 max_v // v))
 
-    # Ensure each channel is exactly sized to its block grid
-    # (mcu_cols * h * 8, mcu_rows * v * 8).  Crop or pad as needed.
+    # Ensure each channel is exactly sized to its block grid.
     mcu_cols = width_p // mcu_w
     mcu_rows = height_p // mcu_h
     for c in range(n_components):
@@ -263,7 +318,7 @@ def encode_image(image: np.ndarray, quality: int = 50,
     # --- Write JPEG structure ---
     stream = _ByteStream()
     stream.write_marker(_SOI)
-    _write_jfif_header(stream, (72, 72), units=1)
+    _write_jfif_header(stream, dpi, units=units)
 
     # DQT: luma (table 0), chroma (table 1).
     _write_dqt(stream, 0, luma_qt)
@@ -287,6 +342,14 @@ def encode_image(image: np.ndarray, quality: int = 50,
         _write_dht(stream, 0, 1, STD_DC_CHROMA_BITS, STD_DC_CHROMA_VALS)
         _write_dht(stream, 1, 1, STD_AC_CHROMA_BITS, STD_AC_CHROMA_VALS)
 
+    # Comment (COM marker).
+    if comment is not None and len(comment) > 0:
+        write_com_segment(stream, comment)
+
+    # Restart interval (DRI marker).
+    if restart_interval > 0:
+        write_dri_segment(stream, restart_interval)
+
     # SOS.
     if grayscale:
         _write_sos(stream, [(1, 0, 0)])
@@ -298,49 +361,117 @@ def encode_image(image: np.ndarray, quality: int = 50,
     prev_dcs = [0] * n_components
 
     if grayscale:
-        prev_dcs[0] = _process_blocks(
-            channels[0], 1, 1, chan_qt[0], chan_dc[0], chan_ac[0],
-            prev_dcs[0], writer)
+        _encode_grayscale(channels, chan_qt, chan_dc, chan_ac,
+                          prev_dcs, writer,
+                          restart_interval, 0, 0, stream)
     else:
-        # MCU-ordered traversal: for each MCU, encode h*v luma blocks,
-        # then 1 Cb block, then 1 Cr block.
-        mcu_cols = width_p // mcu_w
-        mcu_rows = height_p // mcu_h
-        for my in range(mcu_rows):
-            for mx in range(mcu_cols):
-                for c in range(n_components):
-                    h, v = chan_sampling[c]
-                    blocks_per_mcu = h * v
-                    blk_w = 8
-                    # Channel plane dimensions.
-                    ch = channels[c]
-                    # Block origin in the *channel* grid.
-                    ch_bx0 = mx * h
-                    ch_by0 = my * v
-                    for vb in range(v):
-                        for hb in range(h):
-                            bx = ch_bx0 + hb
-                            by = ch_by0 + vb
-                            r0, c0 = by * 8, bx * 8
-                            block = ch[r0:r0 + 8, c0:c0 + 8]
-                            if block.shape != (8, 8):
-                                block = np.pad(
-                                    block,
-                                    ((0, 8 - block.shape[0]),
-                                     (0, 8 - block.shape[1])),
-                                    mode="edge")
-                            shifted = level_shift(block)
-                            dct = dct2d(shifted)
-                            quant = quantize_block(dct, chan_qt[c])
-                            zz = zigzag_block(quant)
-                            prev_dcs[c] = encode_block(
-                                zz, prev_dcs[c],
-                                chan_dc[c], chan_ac[c], writer)
+        _encode_color_mcus(channels, chan_sampling, chan_qt, chan_dc,
+                           chan_ac, prev_dcs, writer,
+                           mcu_cols, mcu_rows, n_components,
+                           restart_interval, stream)
 
     writer.flush()
     stream.write_raw(writer.get_bytes())
     stream.write_marker(_EOI)
+
+    _log.info("Encoding complete: %d bytes", len(stream.buf))
     return bytes(stream.buf)
+
+
+def _encode_grayscale(channels, chan_qt, chan_dc, chan_ac,
+                      prev_dcs, writer,
+                      restart_interval, rst_index, mcus_since_rst,
+                      stream):
+    """Encode a grayscale image's blocks.
+
+    Handles restart markers by flushing the BitWriter, writing the
+    RST marker to the stream, and resetting DC predictors.
+    """
+    channel = channels[0]
+    rows, cols = channel.shape
+    n_blocks_x = (cols + 7) // 8
+    n_blocks_y = (rows + 7) // 8
+
+    rst_idx = 0
+    mcus_rst = 0
+    for by in range(n_blocks_y):
+        for bx in range(n_blocks_x):
+            r0, c0 = by * 8, bx * 8
+            block = channel[r0:r0 + 8, c0:c0 + 8]
+            if block.shape != (8, 8):
+                block = np.pad(block,
+                               ((0, 8 - block.shape[0]),
+                                (0, 8 - block.shape[1])),
+                                mode="edge")
+            prev_dcs[0] = _process_block_inplace(
+                block, chan_qt[0], prev_dcs[0],
+                chan_dc[0], chan_ac[0], writer)
+
+            # Restart marker handling.
+            if restart_interval > 0:
+                mcus_rst += 1
+                if should_emit_restart(mcus_rst, restart_interval):
+                    writer.flush()
+                    stream.write_raw(writer.get_bytes())
+                    writer.reset()
+                    marker = RST_MARKERS[rst_idx % 8]
+                    stream.write_marker(marker)
+                    prev_dcs[0] = 0
+                    mcus_rst = 0
+                    rst_idx = (rst_idx + 1) % 8
+
+
+def _encode_color_mcus(channels, chan_sampling, chan_qt, chan_dc,
+                       chan_ac, prev_dcs, writer,
+                       mcu_cols, mcu_rows, n_components,
+                       restart_interval, stream):
+    """Encode a color image's MCU-ordered blocks.
+
+    When restart_interval > 0, RST markers are interleaved in the
+    entropy data stream by flushing the BitWriter, writing the RST
+    marker directly to the stream, and resetting the writer and
+    DC predictors.
+    """
+    rst_idx = 0
+    mcus_rst = 0
+
+    for my in range(mcu_rows):
+        for mx in range(mcu_cols):
+            for c in range(n_components):
+                h, v = chan_sampling[c]
+                ch = channels[c]
+                ch_bx0 = mx * h
+                ch_by0 = my * v
+                for vb in range(v):
+                    for hb in range(h):
+                        bx = ch_bx0 + hb
+                        by = ch_by0 + vb
+                        r0, c0 = by * 8, bx * 8
+                        block = ch[r0:r0 + 8, c0:c0 + 8]
+                        if block.shape != (8, 8):
+                            block = np.pad(
+                                block,
+                                ((0, 8 - block.shape[0]),
+                                 (0, 8 - block.shape[1])),
+                                mode="edge")
+                        prev_dcs[c] = _process_block_inplace(
+                            block, chan_qt[c], prev_dcs[c],
+                            chan_dc[c], chan_ac[c], writer)
+
+            # Restart marker handling (per-MCU).
+            if restart_interval > 0:
+                mcus_rst += 1
+                if should_emit_restart(mcus_rst, restart_interval):
+                    writer.flush()
+                    stream.write_raw(writer.get_bytes())
+                    writer.reset()
+                    # Emit RST marker.
+                    marker = RST_MARKERS[rst_idx % 8]
+                    stream.write_marker(marker)
+                    prev_dcs[:] = [0] * n_components
+                    mcus_rst = 0
+                    rst_idx = (rst_idx + 1) % 8
+                    _log.debug("RST%d at MCU (%d, %d)", rst_idx, mx, my)
 
 
 # Public alias.

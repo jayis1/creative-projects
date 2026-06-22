@@ -1,0 +1,9 @@
+{
+    "quality": 85,
+    "sampling": "4:2:0",
+    "restart_interval": 0,
+    "comment": "Encoded by jpeg-codec",
+    "dpi": [72, 72],
+    "units": 1,
+    "optimize_huffman": false
+}

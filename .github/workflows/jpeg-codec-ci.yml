@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    paths:
+      - 'jpeg-codec/**'
+    branches: [main]
+  pull_request:
+    paths:
+      - 'jpeg-codec/**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.10', '3.11', '3.12']
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      working-directory: jpeg-codec
+      run: |
+        python -m pip install --upgrade pip
+        pip install numpy pillow pytest pytest-cov
+
+    - name: Run tests
+      working-directory: jpeg-codec
+      run: |
+        python -m pytest tests/ -v --tb=short --cov=jpeg_codec --cov-report=term-missing
+
+    - name: Test CLI
+      working-directory: jpeg-codec
+      run: |
+        python -c "
+        import numpy as np
+        from jpeg_codec import encode, decode
+        img = np.random.randint(0, 256, (64, 64, 3), dtype=np.uint8)
+        jpeg = encode(img, quality=85)
+        recon = decode(jpeg)
+        assert recon.shape == img.shape
+        print('CLI integration test passed!')
+        "
