@@ -2,26 +2,72 @@
 
 This package implements a computational graph of scalar ``Value`` nodes that
 support backpropagation, plus a small multi-layer perceptron (``MLP``) built
-on top of it.  The design is inspired by Andrej Karpathy's ``micrograd``.
+on top of it, a set of optimizers (SGD, Adam), loss functions (MSE, BCE,
+cross-entropy, hinge), and training utilities.
 
 Example
 -------
 >>> from autograd_engine import Value, MLP
->>> xs = [[2.0, 3.0, -1.0]]
->>> ys = [1.0]
->>> model = MLP(3, [4, 4, 1])
->>> for k in range(50):
-...     ypred = [model(x) for x in xs]
-...     loss = sum((yp - yt) ** 2 for yp, yt in zip(ypred, ys)) / len(xs)
-...     model.zero_grad()
-...     loss.backward()
-...     for p in model.parameters():
-...         p.data -= 0.05 * p.grad
->>> assert loss.data < 0.1
+>>> from autograd_engine.train import train
+>>> xs = [[0, 0], [0, 1], [1, 0], [1, 1]]
+>>> ys = [0, 1, 1, 0]
+>>> model = MLP(2, [4, 4, 1], activation="tanh")
+>>> history = train(model, xs, ys, epochs=500, lr=0.1)
+>>> assert history[-1] < 0.05
 """
 
 from .engine import Value
-from .nn import Neuron, Layer, MLP
+from .nn import Neuron, Layer, MLP, Module
+from .ops import (
+    sum_values,
+    mean,
+    max_value,
+    softmax,
+    log_softmax,
+    cross_entropy,
+    dot,
+    matvec,
+)
+from .train import (
+    SGD,
+    Adam,
+    Optimizer,
+    mean_squared_error,
+    binary_cross_entropy_with_logits,
+    cross_entropy_loss,
+    hinge_loss,
+    train,
+    accuracy,
+    numerical_grad_check,
+)
 
-__all__ = ["Value", "Neuron", "Layer", "MLP"]
-__version__ = "0.1.0"
+__all__ = [
+    # core
+    "Value",
+    # nn
+    "Neuron",
+    "Layer",
+    "MLP",
+    "Module",
+    # ops
+    "sum_values",
+    "mean",
+    "max_value",
+    "softmax",
+    "log_softmax",
+    "cross_entropy",
+    "dot",
+    "matvec",
+    # train
+    "SGD",
+    "Adam",
+    "Optimizer",
+    "mean_squared_error",
+    "binary_cross_entropy_with_logits",
+    "cross_entropy_loss",
+    "hinge_loss",
+    "train",
+    "accuracy",
+    "numerical_grad_check",
+]
+__version__ = "1.0.0"
