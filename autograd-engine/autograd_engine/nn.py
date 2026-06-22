@@ -19,24 +19,22 @@ from typing import Iterable, List, Optional, Sequence, Tuple
 
 from .engine import Value
 from .ops import dot
+from .activations import ACTIVATION_REGISTRY, get_activation
 
 
 # --------------------------------------------------------------------------- #
 # activation registry
 # --------------------------------------------------------------------------- #
 def _apply_activation(v: Value, name: str) -> Value:
-    if name == "linear" or name == "none":
-        return v
-    if name == "tanh":
-        return v.tanh()
-    if name == "relu":
-        return v.relu()
-    if name == "sigmoid":
-        return v.sigmoid()
-    raise ValueError(f"unknown activation '{name}'")
+    """Apply a named activation function to a ``Value``.
+
+    Uses the centralized activation registry so all activations (built-in
+    and extended) are available to the neural-network modules.
+    """
+    return get_activation(name)(v)
 
 
-_ACTIVATIONS = {"tanh", "relu", "sigmoid", "linear", "none"}
+_ACTIVATIONS = set(ACTIVATION_REGISTRY.keys())
 
 
 # --------------------------------------------------------------------------- #

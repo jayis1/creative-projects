@@ -17,6 +17,7 @@ from typing import Callable, List, Optional, Sequence, Tuple
 from .engine import Value
 from .nn import MLP, Module
 from .ops import sum_values, cross_entropy, log_softmax, softmax
+from .schedulers import LRScheduler
 
 
 # --------------------------------------------------------------------------- #
@@ -275,10 +276,12 @@ def train(
     batch_size: Optional[int] = None,
     optimizer: Optional[Optimizer] = None,
     loss_fn: Optional[Callable[[Sequence[Value], Sequence[float]], Value]] = None,
+    lr_scheduler: Optional[LRScheduler] = None,
     seed: int = 42,
     verbose: bool = False,
+    classification: bool = False,
 ) -> List[float]:
-    """Train a regression MLP and return the per-epoch loss history.
+    """Train an MLP and return the per-epoch loss history.
 
     Parameters
     ----------
@@ -286,20 +289,39 @@ def train(
         The model to train.
     xs, ys : training inputs and targets.
     epochs : int
+        Number of training epochs.
     lr : float
-        Learning rate (used only if ``optimizer`` is None).
+        Learning rate (used only if ``optimizer`` is None and
+        ``lr_scheduler`` is also None).
     batch_size : int or None
         If set, use mini-batches of this size (last batch may be smaller).
     optimizer : Optimizer or None
         If None, a plain SGD is created.  Otherwise the provided optimizer is
         used (its ``params`` must match ``model.parameters()``).
     loss_fn : callable or None
-        Loss function ``(ypred, ytrue) -> Value``.  Defaults to MSE.
+        Loss function ``(ypred, ytrue) -> Value``.  Defaults to MSE for
+        regression, or BCE-with-logits for classification.
+    lr_scheduler : LRScheduler or None
+        If provided, the learning rate is updated each epoch via
+        ``lr_scheduler.get_lr(epoch)``.  The scheduler's LR is applied
+        directly to ``optimizer.lr``.
     seed : int
+        Random seed for reproducibility.
     verbose : bool
+        If True, print loss every ``epochs // 10`` epochs.
+    classification : bool
+        If True and ``loss_fn`` is None, use BCE-with-logits as the
+        default loss instead of MSE.
+
+    Returns
+    -------
+    list[float]
+        Per-epoch average loss history.
     """
     if loss_fn is None:
-        loss_fn = mean_squared_error
+        loss_fn = (
+            binary_cross_entropy_with_logits if classification else mean_squared_error
+        )
     random.seed(seed)
     model.train()
 
@@ -308,6 +330,10 @@ def train(
     history: List[float] = []
     n = len(xs)
     for epoch in range(epochs):
+        # Apply LR scheduler
+        if lr_scheduler is not None:
+            optimizer.lr = lr_scheduler.get_lr(epoch)
+
         # shuffle indices for mini-batching
         indices = list(range(n))
         random.shuffle(indices)
@@ -332,7 +358,8 @@ def train(
         avg_loss = epoch_loss / n_batches
         history.append(avg_loss)
         if verbose and (epoch % max(1, epochs // 10) == 0 or epoch == epochs - 1):
-            print(f"epoch {epoch:4d}  loss={avg_loss:.6f}")
+            lr_str = f"  lr={optimizer.lr:.6f}" if lr_scheduler else ""
+            print(f"epoch {epoch:4d}  loss={avg_loss:.6f}{lr_str}")
     return history
 
 
@@ -348,3 +375,44 @@ def accuracy(model: MLP, xs: Sequence[Sequence[float]], ys: Sequence[int]) -> fl
             correct += 1
     model.train()
     return correct / len(xs) if xs else 0.0
+
+
+class EarlyStopping:
+    """Stop training when a monitored metric stops improving.
+
+    Parameters
+    ----------
+    patience : int
+        Number of epochs to wait after last improvement.
+    min_delta : float
+        Minimum change to qualify as improvement.
+    mode : str
+        ``'min'`` for losses (lower is better), ``'max'`` for metrics.
+    """
+
+    def __init__(self, patience: int = 10, min_delta: float = 0.0,
+                 mode: str = "min") -> None:
+        if mode not in ("min", "max"):
+            raise ValueError("mode must be 'min' or 'max'")
+        self.patience = patience
+        self.min_delta = min_delta
+        self.mode = mode
+        self._best: Optional[float] = None
+        self._wait = 0
+        self.stopped_epoch = -1
+
+    def step(self, metric: float) -> bool:
+        """Return True if training should stop."""
+        improved = (
+            self._best is None
+            or (self.mode == "min" and metric < self._best - self.min_delta)
+            or (self.mode == "max" and metric > self._best + self.min_delta)
+        )
+        if improved:
+            self._best = metric
+            self._wait = 0
+        else:
+            self._wait += 1
+            if self._wait >= self.patience:
+                return True
+        return False
