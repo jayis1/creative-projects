@@ -164,13 +164,6 @@ class Grammar:
         for nt, rhss in self.productions.items():
             if not rhss:
                 problems.append(f"Non-terminal '{nt}' has empty RHS list.")
-            for rhs in rhss:
-                for sym in rhs:
-                    if sym == EMPTY:
-                        continue
-                    if sym not in self.productions and sym not in self.terminals:
-                        # This is fine — it's just a terminal. No issue.
-                        pass
         # Detect terminals that also appear as non-terminals (conflict).
         for t in self.terminals:
             if t in self.productions:
@@ -178,8 +171,7 @@ class Grammar:
                     f"Symbol '{t}' listed as terminal but has productions."
                 )
         # Check start is reachable and productive (generates some string)
-        nullable = self.nullable()
-        # Productive non-terminals
+        # Productive non-terminals: those that can derive a terminal string.
         productive: Set[str] = set()
         changed = True
         while changed:
@@ -456,6 +448,14 @@ class EarleyParser:
         """
         return self.trees_v2(tokens, max_trees)
 
+    @staticmethod
+    def _copy_tree(node: ParseNode) -> ParseNode:
+        """Deep-copy a ParseNode tree (recursively copying all children)."""
+        return ParseNode(
+            node.symbol, node.start, node.end,
+            [EarleyParser._copy_tree(c) for c in node.children],
+        )
+
     def _build_trees(
         self,
         item: Item,
@@ -495,8 +495,11 @@ class EarleyParser:
                 return
             if pos == len(rhs):
                 if start == end:
+                    # Deep-copy all children so that each tree in nodes_list
+                    # has its own independent set of ParseNode objects.
                     nodes_list.append(
-                        ParseNode(item.lhs, item.origin, end, list(acc))
+                        ParseNode(item.lhs, item.origin, end,
+                                  [self._copy_tree(c) for c in acc])
                     )
                 return
             sym = rhs[pos]
@@ -522,7 +525,10 @@ class EarleyParser:
 
         split(0, item.origin, [])
         path.discard(key)
-        memo[key] = nodes_list
+        # Only cache if we weren't truncated by max_trees; a truncated
+        # result would cause later calls with larger max_trees to miss trees.
+        if len(nodes_list) < max_trees:
+            memo[key] = nodes_list
         return nodes_list
 
     def trees_v2(self, tokens: List[str], max_trees: int = 50) -> List[ParseNode]:
@@ -634,6 +640,10 @@ class Tokenizer:
             for spec, regex in self._compiled:
                 m = regex.match(text, i)
                 if m:
+                    # Guard against zero-length matches that would cause
+                    # an infinite loop (e.g. regex like [0-9]* matching "").
+                    if m.end() == i:
+                        continue
                     if not spec.skip:
                         result.append((spec.name, m.group()))
                     i = m.end()
@@ -727,15 +737,12 @@ class GrammarLoader:
             else:
                 raise ValueError(f"Unparseable grammar line: {raw_line!r}")
 
+        if not rules:
+            raise ValueError("Grammar file contains no production rules.")
         start = explicit_start or (rules[0][0] if rules else "")
-        terminals = set()
-        for _, rhs in rules:
-            for sym in rhs:
-                if sym != EMPTY and not cls.NONTERM_RE.fullmatch(f"<{sym}>"):
-                    # It's a terminal (was quoted). But we store unquoted.
-                    pass
         # Collect terminals: symbols that are not non-terminal names.
         nts = {lhs for lhs, _ in rules}
+        terminals: Set[str] = set()
         for _, rhs in rules:
             for sym in rhs:
                 if sym != EMPTY and sym not in nts:

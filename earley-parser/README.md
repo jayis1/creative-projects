@@ -182,6 +182,17 @@ python3 earley.py check examples/expr.bnf
 python3 earley.py demo
 ```
 
+## Known Issues (Resolved)
+
+| # | Bug | Fix |
+|---|-----|-----|
+| 1 | **Memo caches truncated tree lists** — when `max_trees` was hit during tree extraction, the memo cached the incomplete result. Subsequent calls with a larger `max_trees` would receive the stale truncated list, missing valid parse trees. | Only cache results in the memo when `len(nodes_list) < max_trees` (i.e., the enumeration was not truncated). |
+| 2 | **Tokenizer infinite loop on zero-length regex matches** — a token spec like `[0-9]*` could match the empty string at a non-digit character, causing `i` to never advance and the tokenizer to hang forever. | Detect zero-length matches (`m.end() == i`) and skip to the next token spec, falling through to the error/whitespace handler if no spec matches non-empty. |
+| 3 | **Empty grammar file causes IndexError** — `GrammarLoader.load("")` would access `rules[0]` on an empty list, raising an unhelpful `IndexError`. | Added an explicit check: `if not rules: raise ValueError("Grammar file contains no production rules.")`. |
+| 4 | **Parse tree node sharing across trees** — the memo cache returned the same `ParseNode` objects for common sub-trees, so modifying one parse tree would corrupt sibling trees that shared those nodes. | Deep-copy all children when assembling a completed tree in `split()`, ensuring each tree in the result has its own independent set of `ParseNode` objects. |
+| 5 | **Dead code in `validate()`** — a loop over RHS symbols that did nothing (`pass` statement) and an unused `nullable` variable. | Removed the dead loop and unused variable. |
+| 6 | **Dead code in `GrammarLoader.load()`** — a terminal-collecting loop that assigned to a local `terminals` variable but never used it (the real collection happened in a second loop). | Removed the redundant first loop. |
+
 ## Grammar format
 
 ### Programmatic (`Grammar.from_rules`)
