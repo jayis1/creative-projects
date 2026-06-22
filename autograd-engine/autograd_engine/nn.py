@@ -111,14 +111,18 @@ class Neuron(Module):
         nonlin: bool = True,
         activation: str = "tanh",
         init: str = "xavier",
+        nout: Optional[int] = None,
     ) -> None:
         if nin <= 0:
             raise ValueError(f"nin must be positive, got {nin}")
         if init == "he":
             self.w: List[Value] = [Value(_he(nin)) for _ in range(nin)]
         else:
-            # default: xavier — need nout for proper scale, approximate with nin
-            self.w = [Value(_xavier(nin, nin)) for _ in range(nin)]
+            # Xavier/Glorot uniform uses (fan_in + fan_out) for the scale.
+            # When nout is not provided (e.g. standalone Neuron), default
+            # fan_out to nin so the init is still reasonable.
+            fan_out = nout if nout is not None else nin
+            self.w = [Value(_xavier(nin, fan_out)) for _ in range(nin)]
         self.b = Value(0.0)
         self.nonlin = nonlin
         self.activation = activation if nonlin else "linear"
@@ -156,7 +160,7 @@ class Layer(Module):
         dropout: float = 0.0,
     ) -> None:
         self.neurons: List[Neuron] = [
-            Neuron(nin, nonlin=nonlin, activation=activation, init=init)
+            Neuron(nin, nonlin=nonlin, activation=activation, init=init, nout=nout)
             for _ in range(nout)
         ]
         self.dropout = dropout

@@ -107,10 +107,31 @@ class Value:
         # constant exponent
         if not isinstance(other, (int, float)):
             raise TypeError("Value**exponent requires a numeric or Value exponent")
+        # Guard: negative base with non-integer exponent yields a complex
+        # number in Python, which is not representable as a float Value.
+        if self.data < 0 and not float(other).is_integer():
+            raise ValueError(
+                f"negative base ({self.data}) raised to a non-integer "
+                f"exponent ({other}) would produce a complex result; "
+                f"only integer exponents are supported for negative bases"
+            )
         out = Value(self.data ** other, (self,), f"**{other}")
 
         def _backward() -> None:
-            self.grad += (other * self.data ** (other - 1)) * out.grad
+            # Guard: d/dx(x^n) = n * x^(n-1).  When x == 0 and n == 0 this
+            # formula gives 0 * 0^(-1), which evaluates 0^(-1) first and
+            # raises ZeroDivisionError.  Since 0^0 = 1 is constant wrt x,
+            # the derivative is simply 0 in that case.
+            if self.data == 0:
+                if other == 0:
+                    # x^0 = 1 everywhere, derivative is 0
+                    pass  # no gradient contribution
+                elif other > 0:
+                    # n * 0^(n-1) = n * 0 = 0 for n >= 1
+                    pass  # no gradient contribution
+                # other < 0 with self.data == 0 would have raised at forward
+            else:
+                self.grad += (other * self.data ** (other - 1)) * out.grad
 
         out._backward = _backward
         return out
@@ -245,11 +266,15 @@ class Value:
         return self.data
 
     def __eq__(self, other: object) -> bool:  # type: ignore[override]
-        if isinstance(other, Value):
-            return self.data == other.data
-        if isinstance(other, (int, float)):
-            return self.data == other
-        return NotImplemented
+        """Identity-based equality.
+
+        ``Value`` objects are mutable graph nodes and must use identity
+        comparison (default object behaviour).  Defining ``__eq__`` by
+        ``.data`` would violate the Python contract that equal objects must
+        have equal hashes, since two different Value objects with the same
+        data would compare equal but hash differently (by id).
+        """
+        return self is other
 
     def __hash__(self) -> int:
         return id(self)

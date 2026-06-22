@@ -164,6 +164,50 @@ python3 test_enhanced.py
 | `a.exp()` | `exp(a.data)` | `exp(a.data)` |
 | `a.log()` | `log(a.data)` | `1 / a.data` |
 
+## Known Issues (Resolved)
+
+The following bugs were identified during the Phase 3 bug hunt and have been fixed:
+
+### Bug 1: `Value(0.0) ** 0` crashes on `backward()` with `ZeroDivisionError`
+
+**Root cause:** The gradient formula for `x ** n` is `n * x ** (n-1)`. When `x == 0` and `n == 0`, Python evaluates `0.0 ** (-1)` *before* multiplying by `0`, raising `ZeroDivisionError`.
+
+**Fix:** Guard the backward closure to skip the gradient computation when `self.data == 0` (the derivative is `0` for `n >= 0` at `x = 0`). Added explicit handling for the `0 ** 0` edge case.
+
+### Bug 2: `Value(-2.0) ** 0.5` raises confusing `TypeError`
+
+**Root cause:** Python's `float.__pow__` returns a `complex` number for negative bases with fractional exponents. `Value.__init__` then raises an opaque `TypeError: Value data must be a number, got complex` with no indication of the actual problem.
+
+**Fix:** Added a guard in `__pow__` that detects negative base with non-integer exponent and raises a clear `ValueError` explaining that only integer exponents are supported for negative bases.
+
+### Bug 3: Xavier weight initialization uses wrong fan-out dimension
+
+**Root cause:** `Neuron.__init__` called `_xavier(nin, nin)` — using `nin` (fan-in) as both arguments to the Xavier formula. The correct Xavier/Glorot uniform initialization requires `sqrt(6 / (fan_in + fan_out))`, but the code was computing `sqrt(6 / (fan_in + fan_in))`. This made weight initialization scale incorrect for layers where `fan_out != fan_in` (the common case).
+
+**Fix:** Added an optional `nout` parameter to `Neuron.__init__` and pass it from `Layer` (which knows the actual output size). The Xavier formula now uses the correct `(fan_in + fan_out)` denominator.
+
+### Bug 4: `__eq__`/`__hash__` contract violation
+
+**Root cause:** `__eq__` was defined to compare `Value` objects by their `.data` attribute (`a == b` when `a.data == b.data`), but `__hash__` returned `id(self)`. This violated Python's requirement that equal objects must have equal hashes, causing subtle bugs when `Value` objects are used in sets or dictionaries (two equal-by-data objects would hash to different buckets).
+
+**Fix:** Changed `__eq__` to use identity comparison (`self is other`), which is the correct semantics for mutable graph nodes and is consistent with `id`-based `__hash__`. Two `Value` objects are now equal only if they are the same object in memory.
+
+### Additional edge case tests verified
+
+- `relu(0)` backward returns 0 (valid subgradient)
+- Division by zero (both `Value` and plain `0`) raises clear `ZeroDivisionError`
+- `log()` of non-positive values raises clear `ValueError`
+- Gradient accumulation works correctly for reused nodes (`x + x` gives `grad=2`)
+- `backward()` correctly zeros stale gradients from previous calls
+- Numerical gradient check passes on complex compositions of all ops
+- Negative integer exponents work correctly (`Value(4)**-1`)
+- Fractional exponents work for positive bases
+- MLP validates input length and raises clear `ValueError`
+- Softmax outputs sum to exactly 1.0
+- Cross-entropy gradient matches softmax − one-hot
+- BCE-with-logits gradient matches sigmoid(x) − target
+- Both Adam and SGD+momentum converge on XOR
+
 ## License
 
 MIT — part of the `creative-projects` collection.
