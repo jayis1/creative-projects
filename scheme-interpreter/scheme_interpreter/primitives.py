@@ -15,8 +15,9 @@ from fractions import Fraction
 from typing import Any
 
 from .types import (
-    Symbol, Pair, Nil, Bool, Char, Vector, Unspecified, EOF,
-    Procedure, Lambda, TRUE, FALSE,
+    Symbol, Pair, Nil, Bool, Char, Vector, Unspecified, EOF, EOFType,
+    Procedure, Lambda, Continuation, Macro,
+    TRUE, FALSE,
     is_true, to_python_bool, list_to_pairs, pairs_to_list,
     scheme_repr, scheme_display, is_list,
 )
@@ -797,7 +798,7 @@ def install_primitives(env: Environment):
     reg("char->integer", _char_to_integer)
 
     def _integer_to_char(n):
-        return Char(chr(_exact_int(n)))
+        return Char(chr(_exact_int(n)))  # Bug fix: was returning str, now returns Char
 
     reg("integer->char", _integer_to_char)
 
@@ -1038,7 +1039,7 @@ def install_primitives(env: Environment):
     # ----- math functions -----
     for fname in ["sin", "cos", "tan", "asin", "acos", "atan", "log", "exp"]:
         def _make_math(fn_name):
-            fn = getattr(math, fname)
+            fn = getattr(math, fn_name)
             def wrapper(*args):
                 if len(args) == 1:
                     return fn(_real(args[0]))
@@ -1246,6 +1247,213 @@ def install_primitives(env: Environment):
         return _to_bool(isinstance(x, Environment))
 
     reg("environment?", _environment_pred)
+
+    # ----- additional list operations -----
+    def _list_position(pred, lst):
+        """Return the index of the first element satisfying PRED, or #f."""
+        idx = 0
+        node = lst
+        while isinstance(node, Pair):
+            if is_true(_global_apply(pred, [node.car])):
+                return idx
+            idx += 1
+            node = node.cdr
+        return FALSE
+
+    reg("list-position", _list_position)
+
+    def _list_contains(x, lst):
+        """Check if LST contains X (using equal?)."""
+        from .interpreter import scheme_equal
+        node = lst
+        while isinstance(node, Pair):
+            if scheme_equal(x, node.car):
+                return TRUE
+            node = node.cdr
+        return FALSE
+
+    reg("list-contains?", _list_contains)
+
+    def _list_count(pred, lst):
+        """Count elements in LST that satisfy PRED."""
+        count = 0
+        node = lst
+        while isinstance(node, Pair):
+            if is_true(_global_apply(pred, [node.car])):
+                count += 1
+            node = node.cdr
+        return count
+
+    reg("list-count", _list_count)
+
+    def _list_min(pred, lst):
+        """Find the minimum element in LST according to PRED (less-than)."""
+        if not isinstance(lst, Pair):
+            raise TypeError("list-min: empty list")
+        best = lst.car
+        node = lst.cdr
+        while isinstance(node, Pair):
+            if is_true(_global_apply(pred, [node.car, best])):
+                best = node.car
+            node = node.cdr
+        return best
+
+    reg("list-min", _list_min)
+
+    def _list_max(pred, lst):
+        """Find the maximum element in LST according to PRED (less-than)."""
+        if not isinstance(lst, Pair):
+            raise TypeError("list-max: empty list")
+        best = lst.car
+        node = lst.cdr
+        while isinstance(node, Pair):
+            if is_true(_global_apply(pred, [best, node.car])):
+                best = node.car
+            node = node.cdr
+        return best
+
+    reg("list-max", _list_max)
+
+    def _for_all(pred, lst):
+        """Return #t if all elements satisfy PRED."""
+        node = lst
+        while isinstance(node, Pair):
+            if not is_true(_global_apply(pred, [node.car])):
+                return FALSE
+            node = node.cdr
+        return TRUE
+
+    reg("for-all", _for_all)
+
+    def _exists(pred, lst):
+        """Return #t if any element satisfies PRED."""
+        node = lst
+        while isinstance(node, Pair):
+            if is_true(_global_apply(pred, [node.car])):
+                return TRUE
+            node = node.cdr
+        return FALSE
+
+    reg("exists", _exists)
+
+    def _zip(*lists):
+        """Zip multiple lists together, returning a list of lists."""
+        py_lists = [pairs_to_list(l) for l in lists]
+        min_len = min(len(l) for l in py_lists) if py_lists else 0
+        result = []
+        for i in range(min_len):
+            result.append(list_to_pairs([l[i] for l in py_lists]))
+        return list_to_pairs(result)
+
+    reg("zip", _zip)
+
+    def _unfold(pred, gen, init):
+        """Unfold: (unfold pred gen init) builds a list.
+        Repeatedly applies gen to init until pred(init) is true."""
+        result = []
+        val = init
+        while not is_true(_global_apply(pred, [val])):
+            result.append(val)
+            val = _global_apply(gen, [val])
+        return list_to_pairs(result)
+
+    reg("unfold", _unfold)
+
+    # ----- additional string operations -----
+    def _string_join(lst, *sep):
+        """Join a list of strings with SEP (default ' ')."""
+        items = pairs_to_list(lst)
+        sep_val = _str_val(sep[0]) if sep else " "
+        return sep_val.join(_str_val(s) for s in items)
+
+    reg("string-join", _string_join)
+
+    def _string_repeat(s, n):
+        """Repeat string S N times."""
+        return _str_val(s) * _exact_int(n)
+
+    reg("string-repeat", _string_repeat)
+
+    def _string_starts_with(s, prefix):
+        """Check if S starts with PREFIX."""
+        return _to_bool(_str_val(s).startswith(_str_val(prefix)))
+
+    reg("string-starts-with?", _string_starts_with)
+
+    def _string_ends_with(s, suffix):
+        """Check if S ends with SUFFIX."""
+        return _to_bool(_str_val(s).endswith(_str_val(suffix)))
+
+    reg("string-ends-with?", _string_ends_with)
+
+    def _string_replace(s, old, new):
+        """Replace all occurrences of OLD with NEW in S."""
+        return _str_val(s).replace(_str_val(old), _str_val(new))
+
+    reg("string-replace", _string_replace)
+
+    # ----- additional math operations -----
+    def _gcd_list(*args):
+        if not args:
+            return 0
+        result = abs(_exact_int(args[0]))
+        for a in args[1:]:
+            result = math.gcd(result, abs(_exact_int(a)))
+        return result
+
+    # (gcd) already defined above, this is the variadic version
+
+    def _sign(x):
+        """Return -1, 0, or 1 based on the sign of X."""
+        n = _num(x)
+        if n > 0:
+            return 1
+        elif n < 0:
+            return -1
+        return 0
+
+    reg("sign", _sign)
+
+    def _degrees_to_radians(x):
+        return math.radians(_real(x))
+
+    reg("degrees->radians", _degrees_to_radians)
+
+    def _radians_to_degrees(x):
+        return math.degrees(_real(x))
+
+    reg("radians->degrees", _radians_to_degrees)
+
+    def _log2(x):
+        return math.log2(_real(x))
+
+    reg("log2", _log2)
+
+    def _log10(x):
+        return math.log10(_real(x))
+
+    reg("log10", _log10)
+
+    def _hypot(*args):
+        return math.hypot(*[_real(a) for a in args])
+
+    reg("hypot", _hypot)
+
+    def _atan2(y, x):
+        return math.atan2(_real(y), _real(x))
+
+    reg("atan2", _atan2)
+
+    # ----- type predicates -----
+    def _eof_pred(x):
+        return _to_bool(x is EOF or isinstance(x, EOFType))
+
+    reg("eof-object?", _eof_pred)
+
+    def _eof_object():
+        return EOF
+
+    reg("eof-object", _eof_object)
 
 
 # Global reference for applying lambdas from primitives

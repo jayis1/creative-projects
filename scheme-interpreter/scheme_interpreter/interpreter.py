@@ -11,10 +11,21 @@ would require CPS conversion of the entire evaluator) are beyond the
 scope of this implementation; however the escape-continuation semantics
 cover the vast majority of real-world ``call/cc`` usage, including all
 generator and early-return patterns.
+
+Enhanced in v2.0:
+- Logging support (configurable via environment variable SCHEME_LOG_LEVEL)
+- Standard library auto-loading (stdlib.scm)
+- New special forms: rec, let-values, define-values
+- New builtins: load, trace/untrace, time, assert
+- Improved error messages with context
 """
 
 from __future__ import annotations
 
+import logging
+import os
+import sys
+import time as _time_module
 from typing import Any, List
 
 from .types import (
@@ -29,6 +40,15 @@ from .lexer import tokenize
 from .parser import Parser, parse
 from .primitives import install_primitives
 from .macro_expander import expand_macros, is_macro
+
+logger = logging.getLogger("scheme_interpreter")
+
+
+def _str_val(x) -> str:
+    """Extract a Python string from a Scheme string value."""
+    if isinstance(x, str):
+        return x
+    raise TypeError(f"not a string: {scheme_repr(x)}")
 
 
 class TailCall:
@@ -69,26 +89,47 @@ class SchemeError(Exception):
 # helpers
 
 def is_self_evaluating(expr) -> bool:
-    if isinstance(expr, (int, float, str, bool, Char, Vector, Nil, Bool)):
+    """Check if *expr* is self-evaluating (needs no lookup or application)."""
+    if isinstance(expr, (int, float, str, Char, Vector, Bool)):
         return True
-    if isinstance(expr, (UnspecifiedType if False else type(None), )):
+    if expr is None or expr is Nil or expr is Unspecified:
         return True
     return False
 
-# Properly check
+
 def _is_self_evaluating(expr) -> bool:
-    return isinstance(expr, (int, float, bool, str, Char, Vector)) or expr is None or expr is Nil or isinstance(expr, Bool)
+    """Alias for is_self_evaluating (internal use)."""
+    return is_self_evaluating(expr)
 
 
 class Interpreter:
-    """The Scheme interpreter / evaluator."""
+    """The Scheme interpreter / evaluator.
 
-    def __init__(self):
+    Args:
+        load_stdlib: If True (default), auto-load the standard library
+            (stdlib.scm) into the global environment on initialization.
+        log_level: Optional logging level (e.g. logging.DEBUG). If None,
+            the SCHEME_LOG_LEVEL environment variable is consulted.
+    """
+
+    def __init__(self, load_stdlib: bool = True, log_level=None):
+        # --- logging setup ---
+        if log_level is None:
+            env_level = os.environ.get("SCHEME_LOG_LEVEL", "").upper()
+            log_level = getattr(logging, env_level, logging.WARNING)
+        logging.basicConfig(
+            level=log_level,
+            format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        )
+        self.logger = logging.getLogger("scheme_interpreter.interpreter")
+        self.logger.debug("Interpreter initializing")
+
         self.global_env = Environment()
         install_primitives(self.global_env)
         self._call_depth = 0
         self._max_depth = 10_000
         self._counter = 0  # unique tag generator
+        self._traced_procs: dict[str, tuple] = {}  # name -> (original, wrapper)
         # Install core special forms
         self.global_env.define("call/cc", self._make_call_cc())
         self.global_env.define("call-with-current-continuation", self.global_env.lookup("call/cc"))
@@ -99,6 +140,15 @@ class Interpreter:
         self.global_env.define("values", self._make_values())
         self.global_env.define("call-with-values", self._make_call_with_values())
         self.global_env.define("exit", self._make_exit())
+        self.global_env.define("load", self._make_load())
+        self.global_env.define("trace", self._make_trace())
+        self.global_env.define("untrace", self._make_untrace())
+        self.global_env.define("time", self._make_time())
+        self.global_env.define("assert", self._make_assert())
+
+        # Auto-load standard library
+        if load_stdlib:
+            self._load_stdlib()
 
     # ------------------------------------------------------------------
     # special form handlers
@@ -132,7 +182,17 @@ class Interpreter:
             if not args:
                 arg_list = []
             else:
-                arg_list = pairs_to_list(args[-1]) if isinstance(args[-1], Pair) else list(args[-1])
+                # Last argument must be a list; convert to Python list
+                last = args[-1]
+                if isinstance(last, Pair) or last is Nil:
+                    arg_list = pairs_to_list(last)
+                elif isinstance(last, list):
+                    arg_list = list(last)
+                elif isinstance(last, Vector):
+                    arg_list = list(last.items)
+                else:
+                    # Single non-list argument — treat as sole extra arg
+                    arg_list = list(args)
                 arg_list = list(args[:-1]) + arg_list
             return self._apply(proc, arg_list)
         return Procedure("apply", apply_proc)
@@ -188,6 +248,136 @@ class Interpreter:
             raise SchemeExit(code)
         return Procedure("exit", exit_proc)
 
+    def _make_load(self):
+        """Create the ``load`` builtin — loads and evaluates a Scheme file."""
+        interp = self
+        def load_proc(path):
+            path_str = _str_val(path) if not isinstance(path, str) else path
+            interp.logger.debug("Loading file: %s", path_str)
+            try:
+                with open(path_str, "r") as f:
+                    source = f.read()
+                interp.run(source)
+            except OSError as e:
+                raise SchemeError(f"load: cannot open file: {path_str}: {e}")
+            return Unspecified
+        return Procedure("load", load_proc)
+
+    def _make_trace(self):
+        """Create the ``trace`` builtin — enables procedure call tracing."""
+        interp = self
+        def trace_proc(name_or_proc, *more):
+            # trace can take a symbol or a procedure
+            if isinstance(name_or_proc, Symbol):
+                name = name_or_proc.name
+                try:
+                    proc = interp.global_env.lookup(name)
+                except NameError:
+                    raise SchemeError(f"trace: unbound variable: {name}")
+            elif isinstance(name_or_proc, (Procedure, Lambda)):
+                proc = name_or_proc
+                name = getattr(proc, "name", "anonymous")
+            else:
+                raise SchemeError("trace: expected a symbol or procedure")
+
+            # Don't double-trace
+            if name in interp._traced_procs:
+                return proc
+
+            if isinstance(proc, Procedure):
+                original_fn = proc.fn
+                def traced_fn(*args, _name=name, _fn=original_fn):
+                    arg_strs = " ".join(scheme_repr(a) for a in args)
+                    sys.stderr.write(f"TRACE: ({_name} {arg_strs})\n")
+                    result = _fn(*args)
+                    sys.stderr.write(f"TRACE: {_name} => {scheme_repr(result)}\n")
+                    return result
+                proc.fn = traced_fn
+                interp._traced_procs[name] = (original_fn, proc)
+            elif isinstance(proc, Lambda):
+                # For Lambda, we wrap by creating a Procedure that delegates
+                original_lambda = proc
+                def traced_lambda(*args, _lam=original_lambda, _name=name):
+                    arg_strs = " ".join(scheme_repr(a) for a in args)
+                    sys.stderr.write(f"TRACE: ({_name} {arg_strs})\n")
+                    result = interp._apply(_lam, list(args))
+                    sys.stderr.write(f"TRACE: {_name} => {scheme_repr(result)}\n")
+                    return result
+                wrapper = Procedure(name, traced_lambda)
+                interp.global_env.define(name, wrapper)
+                interp._traced_procs[name] = (original_lambda, wrapper)
+            return proc
+        return Procedure("trace", trace_proc)
+
+    def _make_untrace(self):
+        """Create the ``untrace`` builtin — removes tracing from a procedure."""
+        interp = self
+        def untrace_proc(name_or_proc):
+            if isinstance(name_or_proc, Symbol):
+                name = name_or_proc.name
+            elif isinstance(name_or_proc, (Procedure, Lambda)):
+                name = getattr(name_or_proc, "name", "anonymous")
+            else:
+                raise SchemeError("untrace: expected a symbol or procedure")
+            if name not in interp._traced_procs:
+                raise SchemeError(f"untrace: {name} is not traced")
+            original, wrapper = interp._traced_procs.pop(name)
+            if isinstance(original, Procedure):
+                wrapper.fn = original  # restore original fn
+            else:
+                interp.global_env.define(name, original)  # restore original lambda
+            return Unspecified
+        return Procedure("untrace", untrace_proc)
+
+    def _make_time(self):
+        """Create the ``time`` builtin — measures execution time of an expression."""
+        interp = self
+        def time_proc(expr_form, *env_args):
+            """Evaluate *expr_form* and return (values result elapsed-seconds)."""
+            # This is a primitive, so expr_form must be a quoted form
+            # Usage: (time '(+ 1 2))  or  (time (quote (+ 1 2)))
+            if isinstance(expr_form, Pair) and isinstance(expr_form.car, Symbol) and expr_form.car.name == "quote":
+                expr = expr_form.cdr.car
+            else:
+                # Direct evaluation — treat as a form to evaluate
+                expr = expr_form
+            start = _time_module.perf_counter()
+            result = interp.seval(expr, interp.global_env)
+            elapsed = _time_module.perf_counter() - start
+            sys.stderr.write(f"time: {elapsed:.6f} seconds\n")
+            return result
+        return Procedure("time", time_proc)
+
+    def _make_assert(self):
+        """Create the ``assert`` builtin — assertion checking."""
+        def assert_proc(condition, *message):
+            if not is_true(condition):
+                if message:
+                    msg = scheme_display(message[0]) if not isinstance(message[0], str) else message[0]
+                    raise SchemeError(f"assertion failed: {msg}")
+                raise SchemeError("assertion failed")
+            return Unspecified
+        return Procedure("assert", assert_proc)
+
+    def _load_stdlib(self):
+        """Load the standard library (stdlib.scm) into the global environment."""
+        import importlib.resources as ir
+        stdlib_path = os.path.join(os.path.dirname(__file__), "stdlib.scm")
+        if os.path.exists(stdlib_path):
+            self.logger.debug("Loading stdlib from %s", stdlib_path)
+            try:
+                with open(stdlib_path, "r") as f:
+                    source = f.read()
+                # Evaluate stdlib forms directly (they go into global env)
+                forms = parse(source)
+                for form in forms:
+                    form = expand_macros(form, self.global_env, self)
+                    self.seval(form, self.global_env)
+            except Exception as e:
+                self.logger.warning("Failed to load stdlib: %s", e)
+        else:
+            self.logger.debug("stdlib.scm not found at %s", stdlib_path)
+
     # ------------------------------------------------------------------
     # core eval
 
@@ -213,11 +403,11 @@ class Interpreter:
         """Single evaluation step. Returns either a value or a TailCall."""
 
         # Self-evaluating
-        if isinstance(expr, (int, float, str, bool, Char, Vector)):
+        if isinstance(expr, (int, float, str, Char, Vector)):
             return expr
         if expr is None:
             return Unspecified
-        if expr is Nil or isinstance(expr, NilType if False else type(Nil)):
+        if expr is Nil or isinstance(expr, NilType):
             return Nil
         if isinstance(expr, Bool):
             return expr
@@ -258,7 +448,7 @@ class Interpreter:
         while isinstance(node, Pair):
             args.append(self.seval(node.car, env))
             node = node.cdr
-        if node is not Nil and not isinstance(node, NilType if False else type(Nil)):
+        if node is not Nil and not isinstance(node, NilType):
             raise SchemeError("improper argument list")
 
         # Tail position: return a TailCall if proc is a Lambda
@@ -392,7 +582,8 @@ def _sf_quote(interp, expr, env):
 
 
 def _sf_if(interp, expr, env):
-    test = interp._eval_step(expr.cdr.car, env)
+    # Evaluate test using seval (full trampoline) to handle TailCall properly
+    test = interp.seval(expr.cdr.car, env)
     if is_true(test):
         return TailCall(expr.cdr.cdr.car, env)
     else:
@@ -556,7 +747,8 @@ def _sf_cond(interp, expr, env):
                 interp.seval(body.car, env)
                 body = body.cdr
             return TailCall(body.car, env)
-        test_val = interp._eval_step(test, env)
+        # Evaluate test using seval (not _eval_step) to handle TailCall properly
+        test_val = interp.seval(test, env)
         if is_true(test_val):
             body = clause.cdr
             if body is Nil or isinstance(body, NilType):
@@ -714,16 +906,99 @@ def _sf_let_syntax(interp, expr, env):
     return TailCall(body[-1], new_env)
 
 
+def _sf_rec(interp, expr, env):
+    """``rec`` — recursive named expression.
+
+    ``(rec name expr)`` evaluates *expr* in an environment where *name*
+    is bound to the result of evaluating *expr*.  This allows creating
+    self-referential (recursive) procedures without explicit ``letrec``.
+
+    Examples::
+
+        (rec fact (lambda (n) (if (= n 0) 1 (* n (fact (- n 1))))))
+    """
+    name = expr.cdr.car
+    if not isinstance(name, Symbol):
+        raise SchemeError("rec: name must be a symbol")
+    new_env = Environment(parent=env)
+    new_env.define(name.name, Unspecified)
+    val = interp.seval(expr.cdr.cdr.car, new_env)
+    new_env.define(name.name, val)
+    return val
+
+
+def _sf_let_values(interp, expr, env):
+    """``let-values`` — destructuring let with multiple values.
+
+    ``(let-values (((v1 v2 ...) producer) ...) body ...)``
+
+    Binds multiple variables from a producer that returns ``values``.
+    """
+    bindings = pairs_to_list(expr.cdr.car)
+    new_env = Environment(parent=env)
+    for b in bindings:
+        vars_form = b.car  # (v1 v2 ...)
+        producer_form = b.cdr.car
+        result = interp.seval(producer_form, env)
+        var_names = pairs_to_list(vars_form)
+        if isinstance(result, MultipleValues):
+            vals = result.values
+        else:
+            vals = [result]
+        if len(var_names) != len(vals):
+            raise SchemeError(
+                f"let-values: expected {len(var_names)} values, got {len(vals)}")
+        for var, val in zip(var_names, vals):
+            new_env.define(var.name, val)
+    body = pairs_to_list(expr.cdr.cdr)
+    if not body:
+        return Unspecified
+    for form in body[:-1]:
+        interp.seval(form, new_env)
+    return TailCall(body[-1], new_env)
+
+
+def _sf_define_values(interp, expr, env):
+    """``define-values`` — define multiple variables from a values producer.
+
+    ``(define-values (v1 v2 ...) producer)``
+    """
+    vars_form = expr.cdr.car
+    producer_form = expr.cdr.cdr.car
+    result = interp.seval(producer_form, env)
+    var_names = pairs_to_list(vars_form)
+    if isinstance(result, MultipleValues):
+        vals = result.values
+    else:
+        vals = [result]
+    if len(var_names) != len(vals):
+        raise SchemeError(
+            f"define-values: expected {len(var_names)} values, got {len(vals)}")
+    for var, val in zip(var_names, vals):
+        env.define(var.name, val)
+    return Unspecified
+
+
 # ---------------------------------------------------------------------------
 # eqv? / eq? / equal? implementations (used by case)
 
 def scheme_eqv(a, b) -> bool:
+    """eqv? — identity/equality for atoms.
+
+    Two numbers are eqv? if they have the same type and value.
+    Two symbols are eqv? if they are the same interned object.
+    Two chars are eqv? if they have the same character value.
+    Two booleans are eqv? if they have the same truth value.
+    """
     if a is b:
         return True
     if isinstance(a, Bool) and isinstance(b, Bool):
         return a.value == b.value
     if isinstance(a, Char) and isinstance(b, Char):
         return a.value == b.value
+    # Numbers: must be same type and value (int != float even if same value)
+    if isinstance(a, bool) or isinstance(b, bool):
+        return False  # Python bools are not Scheme numbers
     if isinstance(a, (int, float)) and isinstance(b, (int, float)):
         return type(a) == type(b) and a == b
     from fractions import Fraction
@@ -741,6 +1016,13 @@ def scheme_eq(a, b) -> bool:
 
 
 def scheme_equal(a, b) -> bool:
+    """equal? — deep structural equality.
+
+    Recursively compares pairs, vectors, strings, and numbers.
+    For numbers, equal? is less strict than eqv?: it compares values
+    across types (e.g. ``(equal? 1 1.0)`` may be #t or #f depending on
+    implementation; here we require same-type for numbers, matching eqv?).
+    """
     if scheme_eqv(a, b):
         return True
     if isinstance(a, str) and isinstance(b, str):
@@ -757,6 +1039,12 @@ def scheme_equal(a, b) -> bool:
         return all(scheme_equal(x, y) for x, y in zip(a, b))
     if a is Nil and b is Nil:
         return True
+    # Cross-type numeric comparison (int vs Fraction)
+    from fractions import Fraction
+    if isinstance(a, (int, float, Fraction)) and isinstance(b, (int, float, Fraction)):
+        if isinstance(a, bool) or isinstance(b, bool):
+            return False
+        return a == b
     return False
 
 
@@ -784,4 +1072,7 @@ Interpreter.SPECIAL_FORMS = {
     "define-syntax": _sf_define_syntax,
     "let-syntax": _sf_let_syntax,
     "letrec-syntax": _sf_let_syntax,
+    "rec": _sf_rec,
+    "let-values": _sf_let_values,
+    "define-values": _sf_define_values,
 }

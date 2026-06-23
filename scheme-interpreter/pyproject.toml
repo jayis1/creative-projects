@@ -4,13 +4,38 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "scheme-interpreter"
-version = "1.0.0"
-description = "A from-scratch Scheme interpreter with TCO, call/cc, and syntax-rules macros"
+version = "2.0.0"
+description = "A from-scratch Scheme interpreter with TCO, call/cc, syntax-rules macros, and 150+ builtins"
 requires-python = ">=3.9"
 license = {text = "MIT"}
+authors = [{name = "Creative Coder Pipeline"}]
+keywords = ["scheme", "lisp", "interpreter", "functional", "r5rs"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Education",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Interpreters",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "pytest-cov"]
 
 [project.scripts]
 scheme = "scheme_interpreter.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["scheme_interpreter*"]
+
+[tool.setuptools.package-data]
+scheme_interpreter = ["stdlib.scm"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v"
