@@ -460,12 +460,17 @@ def barycentric(px: float, py: float,
 
     Returns (u, v, w) where u + v + w = 1 and the point = u*A + v*B + w*C.
     Returns (0, 0, 0) for degenerate triangles.
+
+    Uses the signed-area (cross-product) approach:
+        u = Area(PBC) / Area(ABC)   (weight for vertex A)
+        v = Area(APC) / Area(ABC)   (weight for vertex B)
+        w = 1 - u - v               (weight for vertex C)
     """
-    denom = (by - cy) * (ax - cx) + (cy - ay) * (bx - cx)
+    denom = (bx - ax) * (cy - ay) - (cx - ax) * (by - ay)
     if abs(denom) < 1e-12:
         return (0.0, 0.0, 0.0)
     inv_denom = 1.0 / denom
-    u = ((by - cy) * (px - cx) + (cy - ay) * (py - cy)) * inv_denom
-    v = ((cy - ay) * (px - cx) + (ay - by) * (py - cy)) * inv_denom
+    u = ((bx - px) * (cy - py) - (cx - px) * (by - py)) * inv_denom
+    v = ((cx - px) * (ay - py) - (ax - px) * (cy - py)) * inv_denom
     w = 1.0 - u - v
     return (u, v, w)

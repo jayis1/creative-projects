@@ -1,0 +1,23 @@
+# Virtual environments
+.venv/
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.egg-info/
+
+# Generated output
+*.ppm
+*.bmp
+*.gif
+animation_frames/
+frames/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*~

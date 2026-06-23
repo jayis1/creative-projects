@@ -16,6 +16,7 @@ multiplying back after.
 
 from __future__ import annotations
 
+import logging
 import math
 from typing import Protocol
 
@@ -24,7 +25,14 @@ from .mesh import Mesh, Triangle, Vertex
 from .texture import Texture
 
 __all__ = ["Framebuffer", "Renderer", "VertexData", "FragmentData",
-           "Shader"]
+           "Shader", "DISCARD"]
+
+logger = logging.getLogger(__name__)
+
+# Sentinel returned by a fragment shader to indicate the fragment should
+# be discarded (not written to the framebuffer).  The renderer checks for
+# this *before* clamping, so it is never mistaken for a colour value.
+DISCARD = object()
 
 
 class Framebuffer:
@@ -81,16 +89,70 @@ class Framebuffer:
                 y0 += sy
 
     def to_ppm(self, filepath: str):
-        """Write the framebuffer to a PPM (P6 binary) file."""
+        """Write the framebuffer to a PPM (P6 binary) file.
+
+        Uses ``round()`` to convert [0,1] floats to 0-255 integers,
+        avoiding the slight darkening that ``int()`` truncation causes
+        for bright pixels (e.g. 0.999 → 254 instead of 255).
+        """
         with open(filepath, "wb") as f:
             header = f"P6\n{self.width} {self.height}\n255\n"
             f.write(header.encode("ascii"))
             data = bytearray()
             for c in self.color:
-                data.append(max(0, min(255, int(c.x * 255))))
-                data.append(max(0, min(255, int(c.y * 255))))
-                data.append(max(0, min(255, int(c.z * 255))))
+                # Use round() not int() — int() truncates, darkening bright pixels
+                data.append(max(0, min(255, round(c.x * 255))))
+                data.append(max(0, min(255, round(c.y * 255))))
+                data.append(max(0, min(255, round(c.z * 255))))
             f.write(bytes(data))
+
+    def to_bmp(self, filepath: str):
+        """Write the framebuffer to a BMP (24-bit, BGR) file.
+
+        BMP is more widely supported than PPM and can be opened by
+        virtually any image viewer or browser without conversion.
+        """
+        w, h = self.width, self.height
+        row_size = (w * 3 + 3) & ~3  # rows padded to 4-byte boundary
+        pixel_data_size = row_size * h
+        file_size = 54 + pixel_data_size
+
+        with open(filepath, "wb") as f:
+            # BMP file header (14 bytes)
+            f.write(b"BM")                          # signature
+            f.write(file_size.to_bytes(4, "little"))  # file size
+            f.write((0).to_bytes(2, "little"))       # reserved
+            f.write((0).to_bytes(2, "little"))       # reserved
+            f.write((54).to_bytes(4, "little"))      # pixel data offset
+
+            # DIB header (BITMAPINFOHEADER, 40 bytes)
+            f.write((40).to_bytes(4, "little"))       # header size
+            f.write(w.to_bytes(4, "little", signed=True))   # width
+            f.write(h.to_bytes(4, "little", signed=True))   # height (positive = bottom-up)
+            f.write((1).to_bytes(2, "little"))        # planes
+            f.write((24).to_bytes(2, "little"))       # bits per pixel
+            f.write((0).to_bytes(4, "little"))        # compression (none)
+            f.write(pixel_data_size.to_bytes(4, "little"))  # image size
+            f.write((2835).to_bytes(4, "little"))     # x pixels per meter
+            f.write((2835).to_bytes(4, "little"))     # y pixels per meter
+            f.write((0).to_bytes(4, "little"))        # colours in table
+            f.write((0).to_bytes(4, "little"))        # important colours
+
+            # Pixel data — BMP is bottom-up, BGR order
+            for row in range(h - 1, -1, -1):
+                row_data = bytearray()
+                for col in range(w):
+                    c = self.color[row * w + col]
+                    r = max(0, min(255, round(c.x * 255)))
+                    g = max(0, min(255, round(c.y * 255)))
+                    b = max(0, min(255, round(c.z * 255)))
+                    row_data.append(b)
+                    row_data.append(g)
+                    row_data.append(r)
+                # Pad row to 4-byte boundary
+                while len(row_data) < row_size:
+                    row_data.append(0)
+                f.write(bytes(row_data))
 
     def to_ascii(self, width: int = 80) -> str:
         """Return an ASCII-art representation of the framebuffer."""
@@ -256,6 +318,60 @@ def _persp_correct_attr(a, b, c, wa, wb, wc, u, v, w):
 
 
 # ---------------------------------------------------------------------------
+# Post-processing effects
+# ---------------------------------------------------------------------------
+
+def post_grayscale(fb: Framebuffer) -> None:
+    """Convert the framebuffer to grayscale (in-place)."""
+    for i in range(len(fb.color)):
+        c = fb.color[i]
+        g = 0.299 * c.x + 0.587 * c.y + 0.114 * c.z
+        fb.color[i] = Vec3(g, g, g)
+
+
+def post_edge_detect(fb: Framebuffer, threshold: float = 0.2) -> None:
+    """Simple Sobel edge detection (in-place).
+
+    Highlights edges where the brightness gradient exceeds ``threshold``.
+    """
+    w, h = fb.width, fb.height
+    new_color = [Vec3(0, 0, 0)] * (w * h)
+    for y in range(1, h - 1):
+        for x in range(1, w - 1):
+            idx = y * w + x
+            # Brightness of 3x3 neighbourhood
+            def brightness(px, py):
+                c = fb.color[py * w + px]
+                return (c.x + c.y + c.z) / 3.0
+            gx = (brightness(x+1, y-1) + 2*brightness(x+1, y) + brightness(x+1, y+1)) - \
+                 (brightness(x-1, y-1) + 2*brightness(x-1, y) + brightness(x-1, y+1))
+            gy = (brightness(x-1, y-1) + 2*brightness(x, y-1) + brightness(x+1, y-1)) - \
+                 (brightness(x-1, y+1) + 2*brightness(x, y+1) + brightness(x+1, y+1))
+            mag = math.sqrt(gx*gx + gy*gy)
+            if mag > threshold:
+                new_color[idx] = Vec3(1, 1, 1)
+            else:
+                new_color[idx] = fb.color[idx] * 0.5
+    fb.color = new_color
+
+
+def post_vignette(fb: Framebuffer, strength: float = 0.5,
+                  falloff: float = 0.8) -> None:
+    """Apply a vignette effect — darkening at the edges (in-place)."""
+    w, h = fb.width, fb.height
+    cx, cy = w / 2.0, h / 2.0
+    max_dist = math.sqrt(cx*cx + cy*cy)
+    for y in range(h):
+        for x in range(w):
+            dx = x - cx
+            dy = y - cy
+            dist = math.sqrt(dx*dx + dy*dy) / max_dist
+            factor = max(0.0, 1.0 - strength * (dist / falloff) ** 2)
+            idx = y * w + x
+            fb.color[idx] = fb.color[idx] * factor
+
+
+# ---------------------------------------------------------------------------
 # The Renderer
 # ---------------------------------------------------------------------------
 
@@ -286,6 +402,7 @@ class Renderer:
             "triangles_rasterized": 0,
             "fragments_processed": 0,
             "fragments_depth_failed": 0,
+            "fragments_discarded": 0,
             "objects_total": 0,
             "objects_frustum_culled": 0,
         }
@@ -328,9 +445,12 @@ class Renderer:
         ndc_x = clip_center.x * inv_w
         ndc_y = clip_center.y * inv_w
         ndc_z = clip_center.z * inv_w
-        # Approximate radius in NDC (conservative — use the largest axis)
-        ndc_radius_x = radius * inv_w * mvp[0]  # rough scale factor
-        ndc_radius = max(abs(ndc_radius_x), radius * inv_w)
+        # Approximate radius in NDC using inv_w as a uniform scale factor.
+        # This is conservative — it overestimates the radius slightly,
+        # which is safe (false-positives keep visible objects; false-negatives
+        # drop them).  The previous code used mvp[0] which mixed the projection
+        # scale into the radius calculation, producing incorrect results.
+        ndc_radius = radius * inv_w
         # Test against the 6 frustum planes (NDC cube [-1, 1]³)
         if ndc_x + ndc_radius < -1 or ndc_x - ndc_radius > 1:
             return False
@@ -346,11 +466,18 @@ class Renderer:
         for k in self.stats:
             self.stats[k] = 0
 
-        self.clear()
+        # Use scene's gradient background if available, otherwise simple clear
+        if hasattr(scene, "clear_background"):
+            scene.clear_background(self.framebuffer)
+        else:
+            self.clear()
         view = camera.view_matrix()
         proj = camera.projection_matrix(self.width / self.height)
         lights = scene.lights if hasattr(scene, "lights") else []
         self.stats["objects_total"] = len(scene.objects)
+
+        logger.debug("Rendering %d objects, %d lights",
+                      len(scene.objects), len(lights))
 
         for obj in scene.objects:
             mesh = obj.mesh if hasattr(obj, "mesh") else obj
@@ -362,7 +489,9 @@ class Renderer:
                                     lights, camera)
             else:
                 self.stats["objects_frustum_culled"] += 1
+                logger.debug("Frustum-culled object: %s", getattr(mesh, "name", "?"))
 
+        logger.debug("Render complete: %s", self.stats)
         return self.framebuffer
 
     def _render_object(self, obj, mesh, model, view, proj, lights, camera):
@@ -566,6 +695,12 @@ class Renderer:
 
                 # Run fragment shader
                 color = shader.fragment(frag, texture, lights, camera_pos)
+
+                # Check for discard sentinel (used by WireframeShader, etc.)
+                if color is DISCARD:
+                    self.stats["fragments_discarded"] += 1
+                    continue
+
                 color = color.clamp(0.0, 1.0)
 
                 # Write to framebuffer
@@ -575,6 +710,27 @@ class Renderer:
     def save_ppm(self, filepath: str):
         """Save the current framebuffer as a PPM image."""
         self.framebuffer.to_ppm(filepath)
+        logger.info("Saved PPM: %s (%dx%d)", filepath, self.width, self.height)
+
+    def save_bmp(self, filepath: str):
+        """Save the current framebuffer as a BMP image."""
+        self.framebuffer.to_bmp(filepath)
+        logger.info("Saved BMP: %s (%dx%d)", filepath, self.width, self.height)
+
+    def save(self, filepath: str):
+        """Save the framebuffer, auto-detecting format from the extension.
+
+        Supported formats: ``.ppm`` (PPM P6), ``.bmp`` (24-bit BMP).
+        """
+        ext = filepath.rsplit(".", 1)[-1].lower() if "." in filepath else ""
+        if ext == "bmp":
+            self.save_bmp(filepath)
+        elif ext == "ppm":
+            self.save_ppm(filepath)
+        else:
+            # Default to PPM
+            self.save_ppm(filepath)
+            logger.warning("Unknown extension '%s', saved as PPM", ext)
 
     def to_ascii(self, width: int = 80) -> str:
         """Return an ASCII representation of the current framebuffer."""

@@ -1,4 +1,4 @@
-"""Shading models: Flat, Gouraud, Phong, wireframe, normal, and depth shaders.
+"""Shading models: Flat, Gouraud, Phong, wireframe, normal, depth, toon, fog.
 
 All shaders implement the :class:`~soft_rasterizer.rasterizer.Shader`
 protocol with ``vertex()`` and ``fragment()`` methods.
@@ -10,12 +10,13 @@ import math
 
 from .math3d import Vec2, Vec3, Vec4, Mat4
 from .mesh import Vertex
-from .rasterizer import VertexData, FragmentData
+from .rasterizer import VertexData, FragmentData, DISCARD
 from .texture import Texture
 
 __all__ = ["FlatShader", "GouraudShader", "PhongShader", "PhongMaterial",
            "WireframeShader", "NormalShader", "DepthShader",
-           "ToonShader", "FogShader"]
+           "ToonShader", "FogShader", "CrosshatchShader",
+           "MatcapShader"]
 
 
 class PhongMaterial:
@@ -80,9 +81,10 @@ def _compute_lighting(world_pos: Vec3, normal: Vec3, view_dir: Vec3,
 
         result = result + diffuse_term + specular_term
 
-    # Ambient
-    ambient_term = material.ambient.component_mul(
-        lights[0].color if lights else Vec3(1, 1, 1)) if lights else material.ambient
+    # Ambient — use material.ambient directly (neutral white base).
+    # The previous code tinted ambient by lights[0].color, which incorrectly
+    # coloured all ambient light with the first light's hue.
+    ambient_term = material.ambient
     result = result + ambient_term + material.emissive
     return result
 
@@ -252,7 +254,9 @@ class WireframeShader:
     """Wireframe shader: renders only triangle edges.
 
     Uses barycentric coordinates to detect pixels near an edge and
-    colours them.  All other pixels are discarded (alpha = 0).
+    colours them.  All other pixels are discarded via the ``DISCARD``
+    sentinel, which the renderer recognises and skips (does not write
+    to the framebuffer).
     """
 
     def __init__(self, line_color: Vec3 | None = None,
@@ -280,10 +284,9 @@ class WireframeShader:
         min_bary = min(b0, b1, b2)
         if min_bary < self.line_width:
             return self.line_color
-        # Discard by returning a sentinel — but our pipeline doesn't
-        # support discard.  Instead, we return the background colour.
-        # A better approach is to use the renderer's wireframe mode.
-        return Vec3(-1, -1, -1)  # sentinel for "discard"
+        # Discard this fragment — the renderer recognises the DISCARD
+        # sentinel and skips writing it to the framebuffer.
+        return DISCARD
 
 
 class NormalShader:
@@ -320,6 +323,10 @@ class DepthShader:
     far = black.
     """
 
+    def __init__(self, near_dist: float = 1.0, far_dist: float = 20.0):
+        self.near_dist = float(near_dist)
+        self.far_dist = float(far_dist)
+
     def vertex(self, vertex: Vertex, model: Mat4, view: Mat4,
                projection: Mat4, normal_mat: Mat4) -> VertexData:
         world_pos = model.transform_point(vertex.pos)
@@ -335,11 +342,11 @@ class DepthShader:
 
     def fragment(self, frag: FragmentData, texture: Texture | None,
                  lights, camera_pos: Vec3) -> Vec3:
-        # We don't have direct access to the NDC z here, but we can
-        # approximate depth from the view-space distance to camera
+        # Compute distance from camera to fragment
         dist = (frag.world_pos - camera_pos).length()
-        # Normalise to [0, 1] — assumes a reasonable depth range
-        depth = max(0.0, min(1.0, 1.0 - dist / 20.0))
+        # Normalise to [0, 1] using configurable near/far range
+        depth = max(0.0, min(1.0, 1.0 - (dist - self.near_dist) /
+                              max(1e-6, self.far_dist - self.near_dist)))
         g = depth
         return Vec3(g, g, g)
 
@@ -437,6 +444,10 @@ class FogShader:
         # Compute the base colour from the inner shader
         color = self.inner.fragment(frag, texture, lights, camera_pos)
 
+        # Pass-through DISCARD sentinel
+        if color is DISCARD:
+            return DISCARD
+
         # Compute fog factor
         dist = (frag.world_pos - camera_pos).length()
         if dist <= self.fog_near:
@@ -448,3 +459,109 @@ class FogShader:
 
         result = self.fog_color.lerp(color, fog_factor)
         return result.clamp(0.0, 1.0)
+
+
+class CrosshatchShader:
+    """Crosshatch (non-photorealistic) shader.
+
+    Produces a pen-and-ink illustration look by mapping brightness
+    levels to hatching patterns based on UV coordinates and screen-space
+    position.
+    """
+
+    def __init__(self, material: PhongMaterial | None = None,
+                 ink_color: Vec3 | None = None,
+                 paper_color: Vec3 | None = None):
+        self.material = material or PhongMaterial()
+        self.ink_color = ink_color or Vec3(0.1, 0.1, 0.15)
+        self.paper_color = paper_color or Vec3(0.95, 0.93, 0.85)
+
+    def vertex(self, vertex: Vertex, model: Mat4, view: Mat4,
+               projection: Mat4, normal_mat: Mat4) -> VertexData:
+        world_pos = model.transform_point(vertex.pos)
+        world_normal = normal_mat.transform_direction(vertex.normal).normalized()
+        clip_pos = projection.transform(view.transform(
+            Vec4(world_pos.x, world_pos.y, world_pos.z, 1.0)))
+        return VertexData(
+            clip_pos=clip_pos,
+            world_pos=world_pos,
+            normal=world_normal,
+            uv=vertex.uv,
+            color=vertex.color,
+        )
+
+    def fragment(self, frag: FragmentData, texture: Texture | None,
+                 lights, camera_pos: Vec3) -> Vec3:
+        n = frag.normal.normalized()
+        # Compute simple diffuse intensity
+        total_diff = 0.0
+        for light in lights:
+            if hasattr(light, "direction") and light.direction is not None:
+                light_dir = (-light.direction).normalized()
+            else:
+                light_dir = (light.position - frag.world_pos).normalized()
+            total_diff += max(0.0, n.dot(light_dir)) * getattr(light, "intensity", 1.0)
+        brightness = min(1.0, total_diff + 0.15)  # small ambient
+
+        u, v = frag.uv.x, frag.uv.y
+        # Hatching: density increases as brightness decreases
+        if brightness > 0.75:
+            return self.paper_color
+        elif brightness > 0.5:
+            # Light hatching — sparse diagonal lines
+            if abs((u * 40) % 1.0) < 0.06 or abs((v * 40) % 1.0) < 0.06:
+                return self.ink_color
+            return self.paper_color
+        elif brightness > 0.25:
+            # Medium hatching — crosshatch
+            if (abs((u * 30) % 1.0) < 0.08 or abs((v * 30) % 1.0) < 0.08
+                    or abs(((u + v) * 30) % 1.0) < 0.08):
+                return self.ink_color
+            return self.paper_color
+        else:
+            # Dark hatching — dense crosshatch
+            if (abs((u * 20) % 1.0) < 0.12 or abs((v * 20) % 1.0) < 0.12
+                    or abs(((u + v) * 20) % 1.0) < 0.12
+                    or abs(((u - v) * 20) % 1.0) < 0.12):
+                return self.ink_color
+            return self.paper_color * 0.7
+
+
+class MatcapShader:
+    """Material Capture (Matcap) shader.
+
+    Uses the normal direction to look up into a spherical matcap texture,
+    producing a pre-baked material appearance (common in sculpting tools
+    like ZBrush).  The matcap texture maps the normal hemisphere to a
+    sphere image.
+    """
+
+    def __init__(self, matcap_texture: Texture | None = None,
+                 material: PhongMaterial | None = None):
+        self.material = material or PhongMaterial()
+        self.matcap = matcap_texture
+
+    def vertex(self, vertex: Vertex, model: Mat4, view: Mat4,
+               projection: Mat4, normal_mat: Mat4) -> VertexData:
+        world_pos = model.transform_point(vertex.pos)
+        world_normal = normal_mat.transform_direction(vertex.normal).normalized()
+        clip_pos = projection.transform(view.transform(
+            Vec4(world_pos.x, world_pos.y, world_pos.z, 1.0)))
+        return VertexData(
+            clip_pos=clip_pos,
+            world_pos=world_pos,
+            normal=world_normal,
+            uv=vertex.uv,
+            color=vertex.color,
+        )
+
+    def fragment(self, frag: FragmentData, texture: Texture | None,
+                 lights, camera_pos: Vec3) -> Vec3:
+        n = frag.normal.normalized()
+        if self.matcap is not None:
+            # Map normal to UV: x → u, y → v (hemisphere → sphere texture)
+            u = (n.x + 1.0) * 0.5
+            v = (1.0 - (n.y + 1.0) * 0.5)
+            return self.matcap.sample(u, v, bilinear=True)
+        # Fallback: normal shader mapping
+        return Vec3((n.x + 1) * 0.5, (n.y + 1) * 0.5, (n.z + 1) * 0.5)

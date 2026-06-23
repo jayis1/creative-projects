@@ -116,16 +116,30 @@ class Object3D:
         s = Mat4.scaling(self.scale, self.scale, self.scale)
         return t @ (ry @ (rx @ rz)) @ s
 
+    def rotate_y(self, angle: float):
+        """Incrementally rotate the object around Y by ``angle`` radians."""
+        self.rotation = Vec3(self.rotation.x, self.rotation.y + angle,
+                             self.rotation.z)
+
 
 class Scene:
-    """A scene containing objects, lights, and background."""
+    """A scene containing objects, lights, and background.
+
+    Supports both a solid background colour and a vertical gradient
+    between two colours for a more visually appealing backdrop.
+    """
 
     def __init__(self, objects: list[Object3D] | None = None,
                  lights: list[Light] | None = None,
-                 background: Vec3 | None = None):
+                 background: Vec3 | None = None,
+                 background_top: Vec3 | None = None):
         self.objects: list[Object3D] = list(objects) if objects else []
         self.lights: list[Light] = list(lights) if lights else []
         self.background = background or Vec3(0.05, 0.05, 0.08)
+        # Optional gradient background: if background_top is set, the
+        # framebuffer clear will produce a vertical gradient from
+        # background_top (top of screen) to background (bottom).
+        self.background_top = background_top
 
     def add(self, obj):
         """Add an object or light to the scene."""
@@ -144,3 +158,17 @@ class Scene:
             self.objects.remove(obj)
         elif isinstance(obj, Light) and obj in self.lights:
             self.lights.remove(obj)
+
+    def clear_background(self, framebuffer) -> None:
+        """Fill the framebuffer with the background colour or gradient."""
+        if self.background_top is not None:
+            # Vertical gradient: top → background_top, bottom → background
+            h = framebuffer.height
+            for y in range(h):
+                t = y / max(1, h - 1)
+                c = self.background_top.lerp(self.background, t)
+                for x in range(framebuffer.width):
+                    framebuffer.color[y * framebuffer.width + x] = Vec3(c.x, c.y, c.z)
+            framebuffer.zbuffer = [float("inf")] * (framebuffer.width * framebuffer.height)
+        else:
+            framebuffer.clear(self.background)

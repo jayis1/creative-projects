@@ -1,0 +1,39 @@
+{
+  "camera": {
+    "position": [3, 2, 4],
+    "target": [0, 0, 0],
+    "fov": 60,
+    "near": 0.1,
+    "far": 100
+  },
+  "lights": [
+    {"type": "directional",
+     "direction": [-0.5, -1, -0.3],
+     "color": [1, 1, 0.9],
+     "intensity": 0.8},
+    {"type": "point",
+     "position": [5, 5, 5],
+     "color": [0.4, 0.4, 0.6],
+     "intensity": 0.5}
+  ],
+  "background": [0.05, 0.05, 0.08],
+  "objects": [
+    {
+      "primitive": "cube",
+      "size": 2.0,
+      "shader": {
+        "name": "phong",
+        "material": {
+          "diffuse": [0.9, 0.7, 0.5],
+          "specular": [0.9, 0.9, 0.9],
+          "shininess": 64,
+          "ambient": [0.2, 0.2, 0.2]
+        }
+      },
+      "texture": {"type": "checker", "squares": 4},
+      "position": [0, 0, 0],
+      "rotation": [0.3, 0.8, 0],
+      "scale": 1.0
+    }
+  ]
+}

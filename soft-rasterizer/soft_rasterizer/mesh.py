@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import logging
+
 from .math3d import Vec3, Vec2
 
 __all__ = ["Vertex", "Triangle", "Mesh", "OBJLoader"]
+
+logger = logging.getLogger(__name__)
 
 
 class Vertex:
@@ -111,6 +115,14 @@ class Mesh:
         for v in self.vertices:
             v.pos = v.pos * factor
 
+    def merge(self, other: "Mesh") -> None:
+        """Merge another mesh's geometry into this one (offsetting indices)."""
+        base = len(self.vertices)
+        self.vertices.extend(other.vertices)
+        for tri in other.triangles:
+            self.triangles.append(Triangle(
+                tri.a + base, tri.b + base, tri.c + base))
+
 
 class OBJLoader:
     """Minimal Wavefront OBJ loader.
@@ -126,7 +138,13 @@ class OBJLoader:
         positions: list[Vec3] = []
         texcoords: list[Vec2] = []
         normals: list[Vec3] = []
-        face_verts: list[tuple[int, int, int]] = []  # (pos_idx, uv_idx, norm_idx)
+        # Each face-triangle vertex is a (pos_idx, uv_idx, norm_idx) tuple.
+        # We collect them in order and build the final vertex/triangle lists
+        # directly, de-duplicating by the (pos, uv, norm) key.
+        vert_map: dict[tuple[int, int, int], int] = {}
+        vertices: list[Vertex] = []
+        triangles: list[Triangle] = []
+        had_normals = False
 
         with open(filepath, "r") as f:
             for line in f:
@@ -147,53 +165,42 @@ class OBJLoader:
                 elif tag == "vn":
                     normals.append(Vec3(
                         float(parts[1]), float(parts[2]), float(parts[3])))
+                    had_normals = True
 
                 elif tag == "f":
-                    face_indices = []
+                    face_indices: list[tuple[int, int, int]] = []
                     for token in parts[1:]:
                         comps = token.split("/")
                         vi = int(comps[0]) - 1
                         ti = int(comps[1]) - 1 if len(comps) > 1 and comps[1] else -1
                         ni = int(comps[2]) - 1 if len(comps) > 2 and comps[2] else -1
                         face_indices.append((vi, ti, ni))
-                    # Fan triangulation
+
+                    # Fan triangulation — directly build Triangle objects
                     for i in range(1, len(face_indices) - 1):
-                        face_verts.append(face_indices[0])
-                        face_verts.append(face_indices[i])
-                        face_verts.append(face_indices[i + 1])
-
-        # Build vertex list — de-duplicate by (pos, uv, normal) combination
-        vert_map: dict[tuple[int, int, int], int] = {}
-        vertices: list[Vertex] = []
-        triangles: list[Triangle] = []
-
-        for vi, ti, ni in face_verts:
-            key = (vi, ti, ni)
-            if key not in vert_map:
-                pos = positions[vi] if vi < len(positions) else Vec3(0, 0, 0)
-                uv = texcoords[ti] if ti >= 0 and ti < len(texcoords) else Vec2(0, 0)
-                normal = normals[ni] if ni >= 0 and ni < len(normals) else Vec3(0, 0, 1)
-                vert_map[key] = len(vertices)
-                vertices.append(Vertex(pos, normal, uv))
-            idx = vert_map[key]
-            triangles.append(Triangle(idx, -1, -1))  # placeholder, fix below
-
-        # Rebuild triangles with correct indices
-        final_triangles: list[Triangle] = []
-        for i in range(0, len(triangles), 3):
-            final_triangles.append(Triangle(
-                triangles[i].a,
-                triangles[i + 1].a,
-                triangles[i + 2].a,
-            ))
+                        tri_verts = [face_indices[0], face_indices[i],
+                                     face_indices[i + 1]]
+                        tri_idx = []
+                        for vi, ti, ni in tri_verts:
+                            key = (vi, ti, ni)
+                            if key not in vert_map:
+                                pos = positions[vi] if 0 <= vi < len(positions) else Vec3(0, 0, 0)
+                                uv = texcoords[ti] if 0 <= ti < len(texcoords) else Vec2(0, 0)
+                                normal = normals[ni] if 0 <= ni < len(normals) else Vec3(0, 0, 1)
+                                vert_map[key] = len(vertices)
+                                vertices.append(Vertex(pos, normal, uv))
+                            tri_idx.append(vert_map[key])
+                        triangles.append(Triangle(tri_idx[0], tri_idx[1], tri_idx[2]))
 
         mesh_name = filepath.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
-        mesh = Mesh(vertices, final_triangles, name=mesh_name)
+        mesh = Mesh(vertices, triangles, name=mesh_name)
 
         # If no normals were provided, compute them
-        if not normals:
+        if not had_normals:
             mesh.compute_face_normals()
 
+        logger.debug("Loaded OBJ '%s': %d verts, %d tris",
+                      mesh_name, len(vertices), len(triangles))
         return mesh
 
     @staticmethod

@@ -1,0 +1,52 @@
+{
+  "camera": {
+    "position": [0, 3, 6],
+    "target": [0, 0, 0],
+    "fov": 50
+  },
+  "lights": [
+    {"type": "directional",
+     "direction": [-0.3, -1, -0.5],
+     "color": [1, 0.95, 0.8],
+     "intensity": 0.9},
+    {"type": "point",
+     "position": [-3, 2, 3],
+     "color": [0.3, 0.5, 1.0],
+     "intensity": 0.6}
+  ],
+  "background": [0.02, 0.02, 0.05],
+  "background_top": [0.1, 0.08, 0.2],
+  "objects": [
+    {
+      "primitive": "sphere",
+      "size": 1.2,
+      "segments": 24,
+      "rings": 16,
+      "shader": {
+        "name": "toon",
+        "bands": 4,
+        "material": {
+          "diffuse": [0.8, 0.4, 0.3],
+          "ambient": [0.3, 0.2, 0.2]
+        }
+      },
+      "position": [-1.5, 0, 0],
+      "rotation": [0, 0.5, 0]
+    },
+    {
+      "primitive": "torus",
+      "size": 0.8,
+      "minor_radius": 0.25,
+      "shader": {
+        "name": "phong",
+        "material": {
+          "diffuse": [0.3, 0.6, 0.9],
+          "specular": [1.0, 1.0, 1.0],
+          "shininess": 128
+        }
+      },
+      "position": [1.5, 0, 0],
+      "rotation": [0.5, 0, 0]
+    }
+  ]
+}
