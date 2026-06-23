@@ -12,6 +12,7 @@ from .rasterizer import Renderer
 from .scene import Scene, Camera, Light, Object3D
 from .shaders import (FlatShader, GouraudShader, PhongShader,
                       WireframeShader, NormalShader, DepthShader,
+                      ToonShader, FogShader,
                       PhongMaterial)
 from .texture import CheckerTexture
 from .primitives import (make_cube, make_sphere, make_plane, make_cylinder,
@@ -25,6 +26,7 @@ SHADERS = {
     "normal": NormalShader,
     "depth": DepthShader,
     "wireframe": WireframeShader,
+    "toon": ToonShader,
 }
 
 PRIMITIVES = {
@@ -83,6 +85,12 @@ def build_scene(args) -> Scene:
 
     if shader_name == "wireframe":
         shader = WireframeShader()
+    elif shader_name == "toon":
+        material = PhongMaterial(
+            diffuse=Vec3(*args.color) if args.color else Vec3(0.8, 0.6, 0.4),
+            ambient=Vec3(0.3, 0.3, 0.3),
+        )
+        shader = ToonShader(material=material, bands=args.bands)
     elif shader_name in ("flat", "gouraud", "phong"):
         material = PhongMaterial(
             diffuse=Vec3(*args.color) if args.color else Vec3(0.8, 0.6, 0.4),
@@ -92,6 +100,11 @@ def build_scene(args) -> Scene:
         shader = SHADERS[shader_name](material=material)
     else:
         shader = SHADERS[shader_name]()
+
+    # Wrap in fog if requested
+    if args.fog:
+        shader = FogShader(shader, density=args.fog_density,
+                           fog_near=args.fog_near)
 
     # Texture
     texture = None
@@ -125,6 +138,15 @@ def cmd_render(args):
         renderer.save_ppm(ppm_path)
 
     print(f"Rendered {args.width}x{args.height} → {args.output}")
+
+    if args.stats:
+        s = renderer.stats
+        print(f"\nRender Statistics:")
+        print(f"  Objects: {s['objects_total']} total, {s['objects_frustum_culled']} frustum-culled")
+        print(f"  Triangles: {s['triangles_input']} input, {s['triangles_culled']} culled, "
+              f"{s['triangles_rasterized']} rasterized")
+        print(f"  Fragments: {s['fragments_processed']} shaded, "
+              f"{s['fragments_depth_failed']} depth-failed")
 
     if args.ascii:
         print(renderer.to_ascii(width=80))
@@ -189,6 +211,18 @@ def main(argv=None):
                                help="Disable backface culling")
     render_parser.add_argument("--ascii", action="store_true",
                                help="Print ASCII preview to stdout")
+    render_parser.add_argument("--fog", action="store_true",
+                               help="Enable distance-based fog effect")
+    render_parser.add_argument("--fog-density", type=float, default=0.05,
+                               dest="fog_density",
+                               help="Fog density (exponential)")
+    render_parser.add_argument("--fog-near", type=float, default=5.0,
+                               dest="fog_near",
+                               help="Distance at which fog begins")
+    render_parser.add_argument("--bands", type=int, default=3,
+                               help="Number of colour bands for toon shader")
+    render_parser.add_argument("--stats", action="store_true",
+                               help="Print render statistics")
     render_parser.set_defaults(func=cmd_render)
 
     # list

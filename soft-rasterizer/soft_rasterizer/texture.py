@@ -1,4 +1,4 @@
-"""Texture sampling utilities."""
+"""Texture sampling utilities with mipmapping support."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import math
 
 from .math3d import Vec3, Vec2
 
-__all__ = ["Texture", "CheckerTexture"]
+__all__ = ["Texture", "CheckerTexture", "MipTexture"]
 
 
 class Texture:
@@ -77,6 +77,73 @@ class Texture:
 
     def sample(self, u: float, v: float, bilinear: bool = True) -> Vec3:
         """Sample the texture at UV coordinates (u, v)."""
+        if bilinear:
+            return self.sample_bilinear(u, v)
+        return self.sample_nearest(u, v)
+
+    def downsample(self) -> "Texture":
+        """Create a half-resolution mipmap level (2×2 box filter)."""
+        nw = max(1, self.width // 2)
+        nh = max(1, self.height // 2)
+        pixels = []
+        for y in range(nh):
+            for x in range(nw):
+                sx = x * 2
+                sy = y * 2
+                c00 = self.pixels[min(sy, self.height - 1) * self.width + min(sx, self.width - 1)]
+                c10 = self.pixels[min(sy, self.height - 1) * self.width + min(sx + 1, self.width - 1)]
+                c01 = self.pixels[min(sy + 1, self.height - 1) * self.width + min(sx, self.width - 1)]
+                c11 = self.pixels[min(sy + 1, self.height - 1) * self.width + min(sx + 1, self.width - 1)]
+                r = (c00.x + c10.x + c01.x + c11.x) * 0.25
+                g = (c00.y + c10.y + c01.y + c11.y) * 0.25
+                b = (c00.z + c10.z + c01.z + c11.z) * 0.25
+                pixels.append(Vec3(r, g, b))
+        return Texture(nw, nh, pixels)
+
+
+class MipTexture(Texture):
+    """Texture with pre-computed mipmap levels for distance-based filtering.
+
+    Automatically generates a mipmap chain at construction time.  The
+    appropriate level is selected based on the pixel footprint (approximated
+    by the screen-space derivatives of the UV coordinates).
+    """
+
+    __slots__ = ("levels",)
+
+    def __init__(self, width: int, height: int, pixels: list[Vec3] | None = None):
+        super().__init__(width, height, pixels)
+        self.levels: list[Texture] = [self]
+        # Build mipmap chain
+        current = self
+        while current.width > 1 or current.height > 1:
+            current = current.downsample()
+            self.levels.append(current)
+
+    def sample_mipmap(self, u: float, v: float, lod: float) -> Vec3:
+        """Sample with mipmap selection based on LOD (level of detail).
+
+        ``lod`` is the log2 of the pixel-to-texel ratio.  A LOD of 0
+        means 1:1 mapping (use the full-resolution texture).  Higher
+        values use smaller mipmap levels.
+        """
+        lod = max(0.0, lod)
+        level_f = lod
+        level = int(level_f)
+        frac = level_f - level
+
+        if level >= len(self.levels) - 1:
+            return self.levels[-1].sample_bilinear(u, v)
+
+        c0 = self.levels[level].sample_bilinear(u, v)
+        c1 = self.levels[level + 1].sample_bilinear(u, v)
+        return c0.lerp(c1, frac)
+
+    def sample(self, u: float, v: float, bilinear: bool = True,
+               lod: float = 0.0) -> Vec3:
+        """Sample with optional mipmap filtering."""
+        if lod > 0.01:
+            return self.sample_mipmap(u, v, lod)
         if bilinear:
             return self.sample_bilinear(u, v)
         return self.sample_nearest(u, v)

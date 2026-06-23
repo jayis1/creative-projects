@@ -278,34 +278,112 @@ class Renderer:
         self.cull_backface = cull_backface
         self.bilinear = bilinear
         self.clear_color = Vec3(0.05, 0.05, 0.08)
+        # Render statistics (updated each render() call)
+        self.stats = {
+            "triangles_input": 0,
+            "triangles_culled": 0,
+            "triangles_clipped": 0,
+            "triangles_rasterized": 0,
+            "fragments_processed": 0,
+            "fragments_depth_failed": 0,
+            "objects_total": 0,
+            "objects_frustum_culled": 0,
+        }
 
     def clear(self, color: Vec3 | None = None):
         self.framebuffer.clear(color if color else self.clear_color)
 
+    def _frustum_cull(self, mesh, model: Mat4, view: Mat4,
+                      proj: Mat4) -> bool:
+        """Broad-phase frustum cull: test the mesh's bounding sphere
+        against the view frustum in clip space.
+
+        Returns ``True`` if the mesh is at least partially inside the
+        frustum (should be rendered), ``False`` if fully outside.
+        """
+        if not mesh.vertices:
+            return False
+        minp, maxp = mesh.bounds()
+        center = Vec3(
+            (minp.x + maxp.x) * 0.5,
+            (minp.y + maxp.y) * 0.5,
+            (minp.z + maxp.z) * 0.5,
+        )
+        # Bounding sphere radius
+        radius = 0.0
+        for v in mesh.vertices:
+            d = (v.pos - center).length()
+            if d > radius:
+                radius = d
+        # Transform center to clip space
+        mvp = proj @ (view @ model)
+        clip_center = mvp.transform(Vec4(center.x, center.y, center.z, 1.0))
+        if clip_center.w <= 0:
+            # Behind the camera — could still be partially visible if very large
+            if radius > abs(clip_center.w):
+                return True
+            return False
+        # Perspective divide
+        inv_w = 1.0 / clip_center.w
+        ndc_x = clip_center.x * inv_w
+        ndc_y = clip_center.y * inv_w
+        ndc_z = clip_center.z * inv_w
+        # Approximate radius in NDC (conservative — use the largest axis)
+        ndc_radius_x = radius * inv_w * mvp[0]  # rough scale factor
+        ndc_radius = max(abs(ndc_radius_x), radius * inv_w)
+        # Test against the 6 frustum planes (NDC cube [-1, 1]³)
+        if ndc_x + ndc_radius < -1 or ndc_x - ndc_radius > 1:
+            return False
+        if ndc_y + ndc_radius < -1 or ndc_y - ndc_radius > 1:
+            return False
+        if ndc_z + ndc_radius < -1 or ndc_z - ndc_radius > 1:
+            return False
+        return True
+
     def render(self, scene, camera) -> Framebuffer:
         """Render the scene and return the framebuffer."""
+        # Reset stats
+        for k in self.stats:
+            self.stats[k] = 0
+
         self.clear()
         view = camera.view_matrix()
         proj = camera.projection_matrix(self.width / self.height)
         lights = scene.lights if hasattr(scene, "lights") else []
+        self.stats["objects_total"] = len(scene.objects)
 
         for obj in scene.objects:
             mesh = obj.mesh if hasattr(obj, "mesh") else obj
             model = obj.model_matrix() if hasattr(obj, "model_matrix") else Mat4.identity()
-            shader = obj.shader if hasattr(obj, "shader") else mesh.shader if hasattr(mesh, "shader") else None
-            if shader is None:
-                from .shaders import GouraudShader
-                shader = GouraudShader()
-            # Inject lights and camera position for Gouraud per-vertex lighting
-            # GouraudShader uses _lights and _camera_pos if available
-            if "Gouraud" in type(shader).__name__:
-                shader._lights = lights  # type: ignore[attr-defined]
-                shader._camera_pos = camera.position  # type: ignore[attr-defined]
-            normal_mat = (model).normal_matrix()
-            texture = mesh.texture if hasattr(mesh, "texture") else None
-            self._render_mesh(mesh, model, view, proj, normal_mat,
-                              shader, texture, lights, camera.position)
+
+            # Frustum culling
+            if self._frustum_cull(mesh, model, view, proj):
+                self._render_object(obj, mesh, model, view, proj,
+                                    lights, camera)
+            else:
+                self.stats["objects_frustum_culled"] += 1
+
         return self.framebuffer
+
+    def _render_object(self, obj, mesh, model, view, proj, lights, camera):
+        """Render a single (non-culled) object."""
+        shader = obj.shader if hasattr(obj, "shader") else mesh.shader if hasattr(mesh, "shader") else None
+        if shader is None:
+            from .shaders import GouraudShader
+            shader = GouraudShader()
+        # Inject lights and camera position for Gouraud per-vertex lighting
+        # GouraudShader uses _lights and _camera_pos if available
+        if "Gouraud" in type(shader).__name__:
+            shader._lights = lights  # type: ignore[attr-defined]
+            shader._camera_pos = camera.position  # type: ignore[attr-defined]
+        # Also check for FogShader wrapping a GouraudShader
+        if hasattr(shader, "inner") and "Gouraud" in type(shader.inner).__name__:
+            shader.inner._lights = lights  # type: ignore[attr-defined]
+            shader.inner._camera_pos = camera.position  # type: ignore[attr-defined]
+        normal_mat = model.normal_matrix()
+        texture = mesh.texture if hasattr(mesh, "texture") else None
+        self._render_mesh(mesh, model, view, proj, normal_mat,
+                          shader, texture, lights, camera.position)
 
     def _render_mesh(self, mesh: Mesh, model: Mat4, view: Mat4,
                      proj: Mat4, normal_mat: Mat4,
@@ -320,6 +398,7 @@ class Renderer:
         mvp = proj @ (view @ model)
 
         for tri in mesh.triangles:
+            self.stats["triangles_input"] += 1
             self._render_triangle(
                 tri, vert_data, mesh, model, view, proj, normal_mat,
                 shader, texture, lights, camera_pos)
@@ -340,8 +419,10 @@ class Renderer:
         # Near-plane clipping
         clipped = clip_near_plane([v0, v1, v2], 0.0)
         if len(clipped) < 3:
+            self.stats["triangles_culled"] += 1
             return
 
+        self.stats["triangles_clipped"] += 1
         # Fan-triangulate the clipped polygon
         for i in range(1, len(clipped) - 1):
             self._rasterize_triangle(
@@ -382,12 +463,18 @@ class Renderer:
         sy2 = (1.0 - ndc2.y) * half_h
 
         # Screen-space signed area (used for both culling and barycentric)
+        # Note: screen Y is flipped ((1 - ndc.y) * half_h), which inverts
+        # the winding.  CCW in NDC becomes CW in screen space.
+        # So front-facing triangles have signed_area < 0 in screen space.
         signed_area = (sx1 - sx0) * (sy2 - sy0) - (sx2 - sx0) * (sy1 - sy0)
 
-        # Backface culling: check screen-space winding
+        # Backface culling: after the Y-flip, front-facing = CW = negative area
         if self.cull_backface:
-            if signed_area <= 0:
+            if signed_area >= 0:
+                self.stats["triangles_culled"] += 1
                 return
+
+        self.stats["triangles_rasterized"] += 1
 
         # Bounding box for the triangle, clamped to screen
         min_x = max(0, int(math.floor(min(sx0, sx1, sx2))))
@@ -412,25 +499,19 @@ class Renderer:
             for px in range(min_x, max_x + 1):
                 pcx = px + 0.5
 
-                # Barycentric coordinates
-                bu, bv, bw = barycentric(
-                    pcx, pcy, sx0, sy0, sx1, sy1, sx2, sy2)
-                # The barycentric function returns (u, v, w) where
-                # point = u*A + v*B + w*C, but our winding is CCW so
-                # inside means all >= 0.  However, barycentric() computes
-                # with a specific formula; we need to match it to our
-                # vertex ordering.
-                # Let's recompute using edge functions directly:
-                # edge(a,b,p) = (b.x-a.x)*(p.y-a.y) - (b.y-a.y)*(p.x-a.x)
+                # Edge functions: edge(a,b,p) = (b.x-a.x)*(p.y-a.y) - (b.y-a.y)*(p.x-a.x)
+                # With the Y-flip, front-facing triangles are CW in screen space,
+                # so a point is inside when all edge functions are <= 0.
                 e01 = (sx1 - sx0) * (pcy - sy0) - (sy1 - sy0) * (pcx - sx0)
                 e12 = (sx2 - sx1) * (pcy - sy1) - (sy2 - sy1) * (pcx - sx1)
                 e20 = (sx0 - sx2) * (pcy - sy2) - (sy0 - sy2) * (pcx - sx2)
 
-                # For CCW winding, inside if all edges >= 0
-                if e01 < 0 or e12 < 0 or e20 < 0:
+                # For CW winding (front-facing after Y-flip), inside if all edges <= 0
+                if e01 > 0 or e12 > 0 or e20 > 0:
                     continue
 
-                # Barycentric weights
+                # Barycentric weights — note: edges are negative, area is negative,
+                # so the ratios are positive.
                 b0 = e12 * inv_area  # weight for v0
                 b1 = e20 * inv_area  # weight for v1
                 b2 = e01 * inv_area  # weight for v2
@@ -441,7 +522,10 @@ class Renderer:
                 # Z-buffer test (lower z = closer, since near=-1, far=+1)
                 idx = py * self.width + px
                 if depth >= fb.zbuffer[idx]:
+                    self.stats["fragments_depth_failed"] += 1
                     continue
+
+                self.stats["fragments_processed"] += 1
 
                 # Perspective-correct interpolation of attributes
                 # 1/w interpolated

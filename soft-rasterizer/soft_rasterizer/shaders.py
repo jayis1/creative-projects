@@ -13,9 +13,9 @@ from .mesh import Vertex
 from .rasterizer import VertexData, FragmentData
 from .texture import Texture
 
-__all__ = ["FlatShader", "GouraudShader", "PhongShader",
+__all__ = ["FlatShader", "GouraudShader", "PhongShader", "PhongMaterial",
            "WireframeShader", "NormalShader", "DepthShader",
-           "PhongMaterial"]
+           "ToonShader", "FogShader"]
 
 
 class PhongMaterial:
@@ -342,3 +342,109 @@ class DepthShader:
         depth = max(0.0, min(1.0, 1.0 - dist / 20.0))
         g = depth
         return Vec3(g, g, g)
+
+
+class ToonShader:
+    """Cel-shading (toon) shader: quantised lighting with outline.
+
+    Produces a cartoon-like appearance by quantising the diffuse lighting
+    into discrete bands and optionally darkening edges (where the normal
+    is nearly perpendicular to the view direction) to create outlines.
+    """
+
+    def __init__(self, material: PhongMaterial | None = None,
+                 bands: int = 3, outline_threshold: float = 0.1):
+        self.material = material or PhongMaterial()
+        self.bands = max(2, bands)
+        # outline_threshold is the dot product below which we draw an outline.
+        # Lower values = thinner outlines. 0.1 is a good default.
+        self.outline_threshold = float(outline_threshold)
+
+    def vertex(self, vertex: Vertex, model: Mat4, view: Mat4,
+               projection: Mat4, normal_mat: Mat4) -> VertexData:
+        world_pos = model.transform_point(vertex.pos)
+        world_normal = normal_mat.transform_direction(vertex.normal).normalized()
+        clip_pos = projection.transform(view.transform(
+            Vec4(world_pos.x, world_pos.y, world_pos.z, 1.0)))
+        return VertexData(
+            clip_pos=clip_pos,
+            world_pos=world_pos,
+            normal=world_normal,
+            uv=vertex.uv,
+            color=vertex.color,
+        )
+
+    def fragment(self, frag: FragmentData, texture: Texture | None,
+                 lights, camera_pos: Vec3) -> Vec3:
+        n = frag.normal.normalized()
+        view_dir = (camera_pos - frag.world_pos).normalized()
+
+        # Outline detection: if normal is nearly perpendicular to view
+        # direction, we're at a silhouette edge — draw a dark outline.
+        # Use abs() so both back-facing and front-facing edges are caught.
+        outline = abs(n.dot(view_dir))
+        if outline < self.outline_threshold:
+            return Vec3(0.05, 0.05, 0.05)  # dark outline
+
+        # Compute total diffuse intensity
+        total_diff = 0.0
+        for light in lights:
+            if hasattr(light, "direction") and light.direction is not None:
+                light_dir = (-light.direction).normalized()
+            else:
+                light_dir = (light.position - frag.world_pos).normalized()
+            total_diff += max(0.0, n.dot(light_dir)) * getattr(light, "intensity", 1.0)
+        total_diff = min(1.0, total_diff)
+
+        # Quantise into bands
+        quantised = math.floor(total_diff * self.bands) / self.bands
+        quantised = max(1.0 / self.bands, quantised)  # never fully dark
+
+        base_color = frag.color.component_mul(self.material.diffuse)
+        if texture is not None:
+            tex_color = texture.sample(frag.uv.x, frag.uv.y)
+            base_color = base_color.component_mul(tex_color)
+
+        color = base_color * quantised
+        # Add subtle ambient
+        color = color + self.material.ambient * 0.5
+        return color.clamp(0.0, 1.0)
+
+
+class FogShader:
+    """Shader wrapper that applies distance-based fog to any other shader.
+
+    Wraps an existing shader and blends its output towards a fog colour
+    based on the distance from the camera.  Uses exponential fog:
+
+        fog_factor = exp(-density * distance)
+        final_color = lerp(fog_color, shader_color, fog_factor)
+    """
+
+    def __init__(self, inner_shader, fog_color: Vec3 | None = None,
+                 density: float = 0.05, fog_near: float = 5.0):
+        self.inner = inner_shader
+        self.fog_color = fog_color or Vec3(0.5, 0.6, 0.7)
+        self.density = float(density)
+        self.fog_near = float(fog_near)
+
+    def vertex(self, vertex: Vertex, model: Mat4, view: Mat4,
+               projection: Mat4, normal_mat: Mat4) -> VertexData:
+        return self.inner.vertex(vertex, model, view, projection, normal_mat)
+
+    def fragment(self, frag: FragmentData, texture: Texture | None,
+                 lights, camera_pos: Vec3) -> Vec3:
+        # Compute the base colour from the inner shader
+        color = self.inner.fragment(frag, texture, lights, camera_pos)
+
+        # Compute fog factor
+        dist = (frag.world_pos - camera_pos).length()
+        if dist <= self.fog_near:
+            return color.clamp(0.0, 1.0)
+
+        effective_dist = dist - self.fog_near
+        fog_factor = math.exp(-self.density * effective_dist)
+        fog_factor = max(0.0, min(1.0, fog_factor))
+
+        result = self.fog_color.lerp(color, fog_factor)
+        return result.clamp(0.0, 1.0)

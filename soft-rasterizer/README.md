@@ -8,15 +8,19 @@ A from-scratch software 3D rasterizer in pure Python — no OpenGL, no NumPy, no
 - **Z-buffer (depth buffer)**: per-pixel depth testing for correct visibility
 - **Perspective-correct interpolation**: all vertex attributes (normals, UVs, colours) are interpolated with proper perspective correction via `1/w` weighting
 - **Near-plane clipping**: Sutherland-Hodgman polygon clipping against the near plane to prevent division-by-zero artifacts
-- **Backface culling**: screen-space winding-order test to skip triangles facing away from the camera
-- **7 shading models**:
+- **Backface culling**: screen-space winding-order test to skip triangles facing away from the camera (correctly accounts for Y-axis flip)
+- **Frustum culling**: broad-phase bounding-sphere test against the view frustum — objects entirely outside the view are skipped
+- **8 shading models**:
   - **Flat** — one colour per triangle (lighting at face centroid)
   - **Gouraud** — per-vertex lighting, colour interpolated across the triangle
   - **Phong** — per-pixel lighting with interpolated normals (most accurate)
+  - **Toon (Cel)** — quantised lighting bands with silhouette outlines
+  - **Fog** — shader wrapper that applies exponential distance-based fog to any other shader
   - **Wireframe** — edge-only rendering
   - **Normal** — visualise normals as RGB colours (debugging)
   - **Depth** — greyscale depth visualisation
 - **Texture mapping**: nearest-neighbour and bilinear sampling with clamp-to-edge wrapping
+- **Mipmapping**: `MipTexture` with pre-computed mipmap chain and LOD-based level selection
 - **Procedural checkerboard texture**
 - **Phong illumination model**: ambient + diffuse (Lambertian) + specular (Phong) with support for multiple point and directional lights, distance attenuation
 - **7 primitive mesh generators**: cube, sphere, plane, cylinder, torus, tetrahedron, octahedron
@@ -24,7 +28,8 @@ A from-scratch software 3D rasterizer in pure Python — no OpenGL, no NumPy, no
 - **PPM image output**: binary P6 PPM format (viewable in any image viewer)
 - **ASCII preview**: render to terminal as ASCII art for quick debugging
 - **Scene graph**: objects with position/rotation/scale transforms, cameras, lights
-- **CLI tool**: render from the command line with configurable primitives, shaders, textures, camera angles
+- **Render statistics**: triangle/fragment/object counts, culling stats, depth test stats
+- **CLI tool**: render from the command line with configurable primitives, shaders, textures, camera angles, fog, toon bands, and stats output
 
 ## How It Works
 
@@ -58,11 +63,15 @@ Vertices → Vertex Shader → Clip Space → Near-Plane Clipping → Perspectiv
 
 ### Shading Models
 
-| Shader | Lighting | Per-Vertex | Per-Pixel | Normals |
-|--------|----------|------------|-----------|---------|
-| Flat | At face centroid | ✗ | Same for all fragments | Face normal |
-| Gouraud | At each vertex | ✓ | Colour interpolated | Vertex normals |
-| Phong | At each pixel | ✗ | ✓ | Interpolated normals |
+| Shader | Lighting | Per-Vertex | Per-Pixel | Normals | Special |
+|--------|----------|------------|-----------|---------|---------|
+| Flat | At face centroid | ✗ | Same for all fragments | Face normal | — |
+| Gouraud | At each vertex | ✓ | Colour interpolated | Vertex normals | — |
+| Phong | At each pixel | ✗ | ✓ | Interpolated normals | Specular highlights |
+| Toon | Quantised per pixel | ✗ | ✓ | Interpolated normals | Silhouette outlines, discrete bands |
+| Fog | Wraps inner shader | — | ✓ | — | Exponential distance fog |
+| Normal | None | ✗ | ✓ | Mapped to RGB | Debugging |
+| Depth | None | ✗ | ✓ | — | Greyscale depth |
 
 ### Coordinate System
 
@@ -134,11 +143,20 @@ soft-rasterizer render -o sphere.ppm -p sphere -s phong --width 640 --height 480
 soft-rasterizer render -o cube.ppm -p cube -s phong --texture checker \
     --angle 0.8 --distance 5 --height 2 --rotation 0.5
 
+# Render a toon-shaded sphere with 4 colour bands
+soft-rasterizer render -o toon.ppm -p sphere -s toon --bands 4
+
+# Render with fog effect
+soft-rasterizer render -o fog.ppm -p torus -s phong --fog --fog-density 0.08
+
 # Render an OBJ file
 soft-rasterizer render -o model.ppm --obj model.obj -s gouraud
 
 # Normal visualization (debugging)
 soft-rasterizer render -o normals.ppm -p torus -s normal
+
+# Render with statistics
+soft-rasterizer render -o cube.ppm -p cube -s phong --stats
 
 # ASCII preview
 soft-rasterizer render -o /dev/null -p cube -s phong --ascii
