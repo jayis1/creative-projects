@@ -1,0 +1,10 @@
+{
+  "rule": "ForestFire",
+  "width": 50,
+  "height": 25,
+  "boundary": "zero",
+  "initial": {"random": 0.3, "seed": 42},
+  "steps": 100,
+  "output": {"format": "ascii"},
+  "multistate": {"p": 0.001, "g": 0.05}
+}

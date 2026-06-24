@@ -22,6 +22,16 @@ from .vectorized import (
     wolfram_rule_table,
 )
 
+# Multi-state rules are imported lazily to avoid a hard dependency
+# (they need NumPy which is already required, but keeping the import lazy
+# means the type checker doesn't complain about Rule vs MultiStateRule).
+try:
+    from .multistate import MultiStateRule
+    _HAS_MULTISTATE = True
+except ImportError:  # pragma: no cover
+    MultiStateRule = None  # type: ignore[assignment, misc]
+    _HAS_MULTISTATE = False
+
 
 class Boundary(str, Enum):
     """Boundary condition for cells outside the grid."""
@@ -110,6 +120,13 @@ class CellularAutomaton:
         # Spacetime history for 1D rules — each row is one timestep.
         self.spacetime: List[np.ndarray] = []
         self._max_spacetime = 10000
+        # Multi-state rule flag (set when rule is a MultiStateRule).
+        self._is_multistate = bool(
+            _HAS_MULTISTATE and MultiStateRule is not None
+            and isinstance(rule, MultiStateRule)
+        )
+        # Optional RNG for stochastic multi-state rules (e.g. Forest Fire).
+        self._rng: Optional[np.random.Generator] = None
 
     # ------------------------------------------------------------------
     # Validation & helpers
@@ -224,6 +241,15 @@ class CellularAutomaton:
 
     def _compute_next(self) -> np.ndarray:
         """Compute the next grid using a fast vectorised path when possible."""
+        # Multi-state rules (Wireworld, Brian's Brain, Forest Fire, etc.)
+        if self._is_multistate:
+            if self._rng is None:
+                self._rng = np.random.default_rng()
+            return self.rule.step(  # type: ignore[attr-defined]
+                self.grid, mode=self.boundary.value,
+                fixed_value=self.fixed_value, rng=self._rng,
+            )
+
         rule = self.rule
         mode = self.boundary.value
 
@@ -302,6 +328,16 @@ class CellularAutomaton:
                     break
                 seen[h] = self.step_count
         return stats
+
+    def set_rng(self, seed: Optional[int] = None) -> None:
+        """Set the random number generator for stochastic rules.
+
+        Parameters
+        ----------
+        seed : int, optional
+            Seed for reproducibility.
+        """
+        self._rng = np.random.default_rng(seed)
 
     # ------------------------------------------------------------------
     # Queries

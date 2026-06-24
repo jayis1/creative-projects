@@ -1,0 +1,18 @@
+{
+  "rule": "GameOfLife",
+  "width": 60,
+  "height": 40,
+  "boundary": "periodic",
+  "initial": {
+    "pattern": "gosper_gun",
+    "x": 5,
+    "y": 10
+  },
+  "steps": 200,
+  "output": {
+    "format": "ascii"
+  },
+  "logging": {
+    "level": "INFO"
+  }
+}

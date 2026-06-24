@@ -1,0 +1,8 @@
+{
+  "rule": "Rule30",
+  "width": 80,
+  "boundary": "zero",
+  "initial": {"center": true},
+  "steps": 40,
+  "output": {"format": "ascii"}
+}

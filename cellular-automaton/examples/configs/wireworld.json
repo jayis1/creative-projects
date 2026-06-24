@@ -1,0 +1,10 @@
+{
+  "rule": "Wireworld",
+  "width": 40,
+  "height": 10,
+  "boundary": "zero",
+  "initial": {"random": 0.3, "seed": 42},
+  "steps": 50,
+  "output": {"format": "ascii"},
+  "multistate": {}
+}
