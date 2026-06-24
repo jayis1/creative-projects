@@ -1,12 +1,12 @@
 # Cellular Automaton Simulator
 
-A from-scratch 1D & 2D cellular automaton (CA) engine in pure Python (NumPy-backed), supporting all 256 of Wolfram's elementary rules, 15 Life-like rule variants, custom user-defined rules, 19 classic patterns, and multi-format rendering (ASCII / ANSI / SVG / PPM / PNG).
+A from-scratch 1D & 2D cellular automaton (CA) engine in pure Python (NumPy-backed), supporting all 256 of Wolfram's elementary rules, 15 Life-like rule variants, custom user-defined rules, 19 classic patterns, RLE pattern loading, spacetime diagrams, animation frame export, serialization, statistics with cycle detection, and multi-format rendering (ASCII / ANSI / SVG / PPM / PNG).
 
 ## Features
 
 ### Rules
 - **256 Elementary 1D rules** — Wolfram's radius-1 rules (Rule 0–255), including the famous Rule 30 (chaotic), Rule 90 (Sierpinski), Rule 110 (Turing-complete), and Rule 184 (traffic flow).
-- **15 Life-like 2D rules** — Conway's Game of Life (B3/S23), HighLife (B36/S23), Seeds (B2/S), Day & Night (B3678/S34678), Replicator, Maze, Mazectric, Anneal, Coral, Diamoeba, Majority, WalledCities, Gnarl, and more.
+- **15 Life-like 2D rules** — Conway's Game of Life (B3/S23), HighLife (B36/S23), Seeds (B2/S), Day & Night (B3678/S34678), Replicator, Maze, Mazectric, Anneal, Coral, Diamoeba, Majority, WalledCities, Gnarl, LifeWithoutDeath, TwoByTwo.
 - **Custom rules** — supply any Python callable that maps a neighbourhood to a new cell state; configurable radius and dimensions.
 - **Bxx/Sxx notation** — any outer-totalistic 2D rule can be specified inline, e.g. `B36/S23`.
 
@@ -24,23 +24,31 @@ A from-scratch 1D & 2D cellular automaton (CA) engine in pure Python (NumPy-back
 ### Rendering
 - **ASCII** — compact text output.
 - **ANSI** — colour-coded terminal display.
-- **SVG** — vector graphics.
+- **SVG** — vector graphics (2D grids and 1D spacetime).
 - **PPM / PNG** — raster image output (PNG requires Pillow).
+- **Spacetime diagrams** — 1D CA history stacked vertically (time flows downward).
+- **Animation frames** — export a numbered sequence of PPM/PNG frames for 2D CAs.
 
 ### Engine
-- Efficient NumPy-backed grids.
+- **Vectorised stepping** — NumPy-accelerated fast paths for elementary 1D rules and Life-like 2D rules (orders of magnitude faster than per-cell Python loops).
 - Step history (undo support via history stack).
+- 1D spacetime accumulation.
 - Cycle/stability detection.
 - State hashing for cycle detection.
+- **Run statistics** — births, deaths, max/min alive, cycle length.
+- **JSON serialization** — save/load complete CA state.
 - Deep-copy support.
 
 ## How it works
 
 ### 1D Elementary Rules
-Each cell looks at itself and its two immediate neighbours (radius 1), forming a 3-bit pattern (000–111, 8 combinations). The rule number's 8-bit binary representation specifies the output for each pattern. For example, Rule 30 = `00011110` in binary, so pattern `111→0, 110→0, 101→0, 100→1, 011→1, 010→1, 001→1, 000→0`.
+Each cell looks at itself and its two immediate neighbours (radius 1), forming a 3-bit pattern (000–111, 8 combinations). The rule number's 8-bit binary representation specifies the output for each pattern. For example, Rule 30 = `00011110` in binary, so pattern `111→0, 110→0, 101→0, 100→1, 011→1, 010→1, 001→1, 000→0`. The engine uses a vectorised NumPy lookup-table approach: the entire row is shifted left/right and combined into index arrays, then a single `table[idx]` gather computes the next generation.
 
 ### 2D Life-like Rules
-Each cell examines its 8 Moore neighbours. The `birth` set specifies neighbour counts that spawn a dead cell to life; the `survive` set specifies counts that keep a live cell alive. All other cells die or stay dead.
+Each cell examines its 8 Moore neighbours. The `birth` set specifies neighbour counts that spawn a dead cell to life; the `survive` set specifies counts that keep a live cell alive. All other cells die or stay dead. The engine computes neighbour counts via a vectorised 3×3 sliding-window sum (eight shifted-array additions) and applies birth/survive masks across the whole grid at once.
+
+### Cycle detection
+During `run()`, each step's grid is hashed (`hash(grid.tobytes())`) and stored in a dictionary. If a hash repeats, a cycle has been found and its length is reported. A stable state (no cells change) is detected via `changed == 0`.
 
 ## Installation
 
@@ -49,6 +57,8 @@ cd cellular-automaton
 pip install -e .          # installs numpy + CLI entry point
 # Optional PNG support:
 pip install -e ".[png]"
+# Optional dev/test:
+pip install -e ".[dev]"
 ```
 
 ## Usage
@@ -58,21 +68,31 @@ pip install -e ".[png]"
 ```python
 from cellular_automaton import (
     CellularAutomaton, ElementaryRule, GameOfLifeRule,
-    get_pattern, place_pattern, render_ascii,
+    get_pattern, place_pattern, render_ascii, render_spacetime_ascii,
 )
 
 # 1D — Wolfram's Rule 30 from a single centre cell
 ca = CellularAutomaton(ElementaryRule(30), width=80)
 ca.center_seed()
-for _ in range(40):
-    print(render_ascii(ca.grid).replace(' ', '.').replace('#', '█'))
-    ca.step()
+ca.step(40)
+# Spacetime diagram (each row is one timestep)
+print(render_spacetime_ascii(ca.get_spacetime_array(), on_char="█", off_char=" "))
 
 # 2D — Conway's Game of Life with a glider
 ca = CellularAutomaton(GameOfLifeRule(), width=40, height=20)
 place_pattern(ca, get_pattern('glider'), x=5, y=5)
 ca.step(100)
 print(render_ascii(ca.grid))
+
+# Run with statistics and cycle detection
+ca = CellularAutomaton(GameOfLifeRule(), width=30, height=30)
+place_pattern(ca, get_pattern('blinker'), x=10, y=10)
+stats = ca.run(50)
+print(f"Stable: {stats.stable}, cycle: {stats.cycle_detected} (len {stats.cycle_length})")
+
+# Serialize / deserialize
+ca.save('state.json')
+ca2 = CellularAutomaton.load('state.json')
 
 # Custom rule via Bxx/Sxx notation
 from cellular_automaton.rules import get_rule
@@ -107,6 +127,23 @@ cellular-automaton run --rule GameOfLife --width 60 --height 30 \
 cellular-automaton render --rule Rule110 --width 100 --steps 50 \
     --format svg --output rule110.svg
 
+# 1D spacetime diagram
+cellular-automaton spacetime --rule Rule90 --width 80 --steps 40 --format ascii
+cellular-automaton spacetime --rule Rule30 --width 100 --steps 60 \
+    --format svg --output rule30.svg
+
+# Simulate with statistics & cycle detection
+cellular-automaton simulate --rule GameOfLife --width 20 --height 20 \
+    --pattern blinker --px 8 --py 8 --steps 50 --json
+
+# Export animation frames
+cellular-automaton animate --rule GameOfLife --width 40 --height 30 \
+    --random 0.3 --seed 7 --steps 50 --format ppm --output frames/
+
+# Save / load state
+cellular-automaton save --rule Rule30 --width 50 --steps 10 -o state.json
+cellular-automaton load state.json
+
 # Load a pattern from RLE
 cellular-automaton run --rule GameOfLife --width 20 --height 20 \
     --rle "bo$2bo$3o!" --px 5 --py 5 --steps 20
@@ -126,13 +163,17 @@ cellular-automaton info --rule GameOfLife
 cellular-automaton/
 ├── cellular_automaton/
 │   ├── __init__.py      # Public API
-│   ├── engine.py        # CellularAutomaton core engine
+│   ├── engine.py        # CellularAutomaton core: stepping, stats, serialization
 │   ├── rules.py         # Rule classes + registry (271 rules)
 │   ├── patterns.py      # 19 builtin patterns + RLE parser
-│   ├── visualizer.py    # ASCII / ANSI / SVG / PPM / PNG renderers
-│   └── cli.py           # argparse CLI (5 subcommands)
-├── tests/
+│   ├── vectorized.py    # NumPy-accelerated stepping functions
+│   ├── visualizer.py    # ASCII / ANSI / SVG / PPM / PNG / spacetime renderers
+│   └── cli.py           # argparse CLI (10 subcommands)
 ├── examples/
+│   ├── 01_rule30.py
+│   ├── 02_gosper_gun.py
+│   └── 03_highlife.py
+├── tests/
 ├── pyproject.toml
 └── README.md
 ```

@@ -124,6 +124,70 @@ def cmd_info(args: argparse.Namespace) -> None:
         print(f"Rule string: {rule.rule_string()}")
 
 
+def cmd_simulate(args: argparse.Namespace) -> None:
+    """Run a CA with statistics and optional cycle detection."""
+    ca = _build_ca(args)
+    stats = ca.run(args.steps, detect_cycles=not args.no_cycle_detect)
+    print(f"Steps run:    {stats.steps}")
+    print(f"Final alive:  {stats.final_alive}")
+    print(f"Max alive:    {stats.max_alive}")
+    print(f"Min alive:    {stats.min_alive}")
+    print(f"Stable:       {stats.stable}")
+    print(f"Cycle found:  {stats.cycle_detected}")
+    if stats.cycle_detected:
+        print(f"Cycle length: {stats.cycle_length}")
+    if args.json:
+        import json as _json
+        print(_json.dumps(stats.to_dict(), indent=2))
+
+
+def cmd_spacetime(args: argparse.Namespace) -> None:
+    """Run a 1D CA and render its spacetime diagram."""
+    ca = _build_ca(args)
+    ca.step(args.steps)
+    st = ca.get_spacetime_array()
+    if args.format == "ascii":
+        out = render_ascii(st, on_char=args.on_char, off_char=args.off_char)
+        if args.output:
+            with open(args.output, "w") as f:
+                f.write(out + "\n")
+        else:
+            print(out)
+    elif args.format == "svg":
+        from .visualizer import render_spacetime_svg
+        render_spacetime_svg(st, path=args.output or "spacetime.svg")
+        print(f"Rendered to {args.output or 'spacetime.svg'}")
+    elif args.format == "ppm":
+        from .visualizer import render_spacetime_ppm
+        render_spacetime_ppm(st, args.output or "spacetime.ppm")
+        print(f"Rendered to {args.output or 'spacetime.ppm'}")
+
+
+def cmd_animate(args: argparse.Namespace) -> None:
+    """Render an animation as a sequence of image frames."""
+    ca = _build_ca(args)
+    from .visualizer import render_animation_frames
+    paths = render_animation_frames(
+        ca, args.steps, args.output, fmt=args.format, cell_size=args.cell_size
+    )
+    print(f"Wrote {len(paths)} frames to {args.output}/")
+
+
+def cmd_save(args: argparse.Namespace) -> None:
+    """Run a CA and save its state to JSON."""
+    ca = _build_ca(args)
+    ca.step(args.steps)
+    ca.save(args.output)
+    print(f"Saved state to {args.output} (step {ca.step_count})")
+
+
+def cmd_load(args: argparse.Namespace) -> None:
+    """Load a CA state from JSON and print it."""
+    ca = CellularAutomaton.load(args.input)
+    print(f"Loaded: {ca}")
+    print(render_ascii(ca.grid))
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="cellular-automaton",
@@ -169,6 +233,40 @@ def build_parser() -> argparse.ArgumentParser:
     sp_info = sub.add_parser("info", help="Show details about a rule")
     sp_info.add_argument("--rule", required=True)
     sp_info.set_defaults(func=cmd_info)
+
+    sp_sim = sub.add_parser("simulate", help="Run with statistics & cycle detection")
+    add_common(sp_sim)
+    sp_sim.add_argument("--steps", type=int, default=100)
+    sp_sim.add_argument("--no-cycle-detect", action="store_true")
+    sp_sim.add_argument("--json", action="store_true", help="Print stats as JSON")
+    sp_sim.set_defaults(func=cmd_simulate)
+
+    sp_st = sub.add_parser("spacetime", help="Render 1D spacetime diagram")
+    add_common(sp_st)
+    sp_st.add_argument("--steps", type=int, default=40)
+    sp_st.add_argument("--format", default="ascii", choices=["ascii", "svg", "ppm"])
+    sp_st.add_argument("--output", "-o", default=None)
+    sp_st.add_argument("--on-char", default="█")
+    sp_st.add_argument("--off-char", default=" ")
+    sp_st.set_defaults(func=cmd_spacetime)
+
+    sp_anim = sub.add_parser("animate", help="Render animation frames")
+    add_common(sp_anim)
+    sp_anim.add_argument("--steps", type=int, default=30)
+    sp_anim.add_argument("--format", default="ppm", choices=["ppm", "png"])
+    sp_anim.add_argument("--output", default="frames")
+    sp_anim.add_argument("--cell-size", type=int, default=4)
+    sp_anim.set_defaults(func=cmd_animate)
+
+    sp_save = sub.add_parser("save", help="Save state to JSON")
+    add_common(sp_save)
+    sp_save.add_argument("--steps", type=int, default=10)
+    sp_save.add_argument("--output", "-o", required=True)
+    sp_save.set_defaults(func=cmd_save)
+
+    sp_load = sub.add_parser("load", help="Load state from JSON")
+    sp_load.add_argument("input")
+    sp_load.set_defaults(func=cmd_load)
 
     return p
 
