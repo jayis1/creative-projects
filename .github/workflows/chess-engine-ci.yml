@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    paths:
+      - 'chess-engine/**'
+  pull_request:
+    paths:
+      - 'chess-engine/**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.10', '3.11', '3.12']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-cov pyyaml
+          pip install -e ./chess-engine
+
+      - name: Run tests
+        run: |
+          cd chess-engine
+          python -m pytest tests/ -v --tb=short
+
+      - name: Run perft suite
+        run: |
+          cd chess-engine
+          PYTHONPATH=. python -m chess_engine.cli perft-suite --depth 2
+
+      - name: Test CLI commands
+        run: |
+          cd chess-engine
+          PYTHONPATH=. python -m chess_engine.cli display
+          PYTHONPATH=. python -m chess_engine.cli moves
+          PYTHONPATH=. python -m chess_engine.cli bestmove --depth 2

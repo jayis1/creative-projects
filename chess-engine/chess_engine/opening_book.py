@@ -72,7 +72,12 @@ class OpeningBook:
 
 
 def create_default_book() -> OpeningBook:
-    """Create a small opening book with common chess openings."""
+    """Create a medium-sized opening book with common chess openings.
+
+    Includes 20+ named opening lines covering the major opening systems:
+    Ruy Lopez, Italian, Sicilian, French, Caro-Kann, Pirc, Queen's Gambit,
+    King's/Queen's Indian, Dutch, English, Réti, Slav, London, etc.
+    """
     book = OpeningBook()
 
     # Helper to add a sequence of moves
@@ -83,24 +88,55 @@ def create_default_book() -> OpeningBook:
             move = parse_algebraic(san, b)
             b.push(move)
 
-    # 1. e4
+    # ── 1. e4 openings ──────────────────────────────────────────
     add_line(["e4", "e5", "Nf3", "Nc6", "Bb5"], weight=3)  # Ruy Lopez
+    add_line(["e4", "e5", "Nf3", "Nc6", "Bb5", "a6", "Ba4", "Nf6", "O-O"], weight=2)  # Ruy Lopez Morphy
     add_line(["e4", "e5", "Nf3", "Nc6", "Bc4"], weight=2)  # Italian Game
+    add_line(["e4", "e5", "Nf3", "Nc6", "Bc4", "Bc5"], weight=1)  # Italian Giuoco Piano
+    add_line(["e4", "e5", "Nf3", "Nc6", "Bc4", "Nf6"], weight=1)  # Italian Two Knights
     add_line(["e4", "e5", "Nf3", "Nc6", "d4"], weight=1)  # Scotch Game
-    add_line(["e4", "c5", "Nf3", "d6", "d4", "cxd4", "Nxd4", "Nf6", "Nc3"], weight=3)  # Sicilian
-    add_line(["e4", "e6"], weight=2)  # French Defense
+    add_line(["e4", "e5", "Nf3", "Nc6", "Bb5", "a6", "Bxc6", "dxc6"], weight=1)  # Ruy Exchange
+    add_line(["e4", "e5", "Nf3", "Nc6", "Nc3", "Nf6"], weight=1)  # Four Knights
+    add_line(["e4", "e5", "Bc4", "Nf6", "d3"], weight=1)  # Bishop's Opening
+
+    # ── Sicilian Defence ────────────────────────────────────────
+    add_line(["e4", "c5", "Nf3", "d6", "d4", "cxd4", "Nxd4", "Nf6", "Nc3"], weight=3)  # Sicilian Najdorf
+    add_line(["e4", "c5", "Nf3", "Nc6", "d4", "cxd4", "Nxd4", "Nf6", "Nc3", "g6"], weight=1)  # Sicilian Dragon
+    add_line(["e4", "c5", "Nf3", "e6"], weight=2)  # Sicilian Taimanov/Paulsen
+    add_line(["e4", "c5", "c3"], weight=1)  # Sicilian Alapin
+    add_line(["e4", "c5", "Nf3", "Nc6", "Bb5"], weight=1)  # Sicilian Rossolimo
+
+    # ── 1. e4 … semi-open ───────────────────────────────────────
+    add_line(["e4", "e6"], weight=2)  # French Defence
+    add_line(["e4", "e6", "d4", "d5", "Nc3"], weight=1)  # French Classical
     add_line(["e4", "c6"], weight=2)  # Caro-Kann
-    add_line(["e4", "d6", "d4", "g6"], weight=1)  # Pirc
+    add_line(["e4", "c6", "d4", "d5", "Nc3", "dxe4", "Nxe4"], weight=1)  # Caro-Kann Classical
+    add_line(["e4", "d6", "d4", "g6"], weight=1)  # Pirc Defence
+    add_line(["e4", "g6", "d4", "Bg7", "Nc3"], weight=1)  # Modern Defence
+    add_line(["e4", "Nf6"], weight=1)  # Alekhine's Defence
 
-    # 1. d4
+    # ── 1. d4 openings ──────────────────────────────────────────
     add_line(["d4", "d5", "c4"], weight=3)  # Queen's Gambit
-    add_line(["d4", "Nf6", "c4", "e6"], weight=2)  # Indian Defense
+    add_line(["d4", "d5", "c4", "e6"], weight=2)  # QGD
+    add_line(["d4", "d5", "c4", "c6"], weight=2)  # Slav Defence
+    add_line(["d4", "d5", "c4", "dxc4"], weight=1)  # QGA
+    add_line(["d4", "d5", "c4", "e6", "Nc3", "Nf6", "Bg5"], weight=1)  # QGD Orthodox
+    add_line(["d4", "Nf6", "c4", "e6"], weight=2)  # Indian Defence
     add_line(["d4", "Nf6", "c4", "g6"], weight=2)  # King's Indian
-    add_line(["d4", "f5"], weight=1)  # Dutch Defense
-    add_line(["d4", "d5", "Nf3", "Nf6", "c4"], weight=1)  # QGD
+    add_line(["d4", "Nf6", "c4", "g6", "Nc3", "Bg7", "e4", "d6"], weight=1)  # KID Classical
+    add_line(["d4", "Nf6", "c4", "e6", "Nc3", "Bb4"], weight=2)  # Nimzo-Indian
+    add_line(["d4", "Nf6", "c4", "e6", "Nf3", "b6"], weight=1)  # Queen's Indian
+    add_line(["d4", "f5"], weight=1)  # Dutch Defence
+    add_line(["d4", "d5", "Nf3", "Nf6", "c4"], weight=1)  # QGD via Nf3
 
-    # Other first moves
-    add_line(["Nf3"], weight=1)  # Reti
-    add_line(["c4"], weight=1)  # English Opening
+    # ── Other first moves ────────────────────────────────────────
+    add_line(["Nf3"], weight=1)  # Réti Opening
+    add_line(["c4"], weight=2)  # English Opening
+    add_line(["c4", "e5"], weight=1)  # English Reversed Sicilian
+    add_line(["c4", "Nf6"], weight=1)  # English Indian
+    add_line(["g3"], weight=1)  # Hungarian / King's Fianchetto
+    add_line(["b3"], weight=1)  # Larsen's Opening
+    add_line(["d4", "Nf6", "Nf3", "g6", "Bf4"], weight=1)  # London System
+    add_line(["e4", "e5", "f4"], weight=1)  # King's Gambit
 
     return book

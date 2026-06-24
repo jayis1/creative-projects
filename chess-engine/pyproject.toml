@@ -4,13 +4,36 @@ build-backend = "setuptools.backends._legacy:_Backend"
 
 [project]
 name = "chess-engine"
-version = "1.0.0"
-description = "A from-scratch chess engine in pure Python"
+version = "3.0.0"
+description = "A from-scratch chess engine in pure Python with alpha-beta search, opening book, PGN, UCI protocol"
+readme = "README.md"
 requires-python = ">=3.9"
 license = {text = "MIT"}
+authors = [{name = "creative-projects"}]
+keywords = ["chess", "engine", "alpha-beta", "search", "uci", "pgn"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Games/Entertainment :: Board Games",
+]
+
+[project.optional-dependencies]
+yaml = ["pyyaml>=6.0"]
+test = ["pytest>=7.0", "pytest-cov>=4.0"]
 
 [project.scripts]
 chess-engine = "chess_engine.cli:main"
 
 [tool.setuptools]
 packages = ["chess_engine"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v"

@@ -1,0 +1,25 @@
+# chess-engine configuration file (YAML format)
+# Copy this file and modify as needed.
+# Load with: chess-engine --config engine.yaml bestmove --depth 6
+
+search:
+  max_depth: 6
+  time_limit: null  # seconds, or null for unlimited
+  use_quiescence: true
+  use_killers: true
+  use_history: true
+  use_lmr: true           # late move reductions
+  use_null_move: true     # null move pruning
+  use_iterative_deepening: true
+  use_tt: true            # transposition table
+
+evaluation:
+  tempo_bonus: 10
+
+opening_book:
+  enabled: true
+  file: null  # null = built-in book; or path to JSON book file
+
+logging:
+  level: WARNING  # DEBUG, INFO, WARNING, ERROR
+  file: null      # null = stderr; or path to log file

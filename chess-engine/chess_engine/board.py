@@ -755,6 +755,51 @@ class Board:
         self.history.append(state)
         self._record_position()
 
+    def push_null(self) -> None:
+        """Make a 'null move' (pass turn without moving any piece).
+
+        Used for null-move pruning in the search.  The side to move
+        simply passes; en passant square is cleared and the halfmove
+        clock is incremented.  The position is recorded for repetition
+        detection so that null moves don't corrupt the history.
+        """
+        state = {
+            "move": None,
+            "captured": None,
+            "castling": {
+                Color.WHITE: dict(self.castling_rights[Color.WHITE]),
+                Color.BLACK: dict(self.castling_rights[Color.BLACK]),
+            },
+            "ep_square": self.ep_square,
+            "halfmove_clock": self.halfmove_clock,
+            "fullmove_number": self.fullmove_number,
+            "king_squares": dict(self._king_squares),
+            "ep_captured_piece": None,
+            "ep_captured_square": -1,
+            "is_null": True,
+        }
+        self.ep_square = -1
+        self.halfmove_clock += 1
+        if self.turn == Color.BLACK:
+            self.fullmove_number += 1
+        self.turn = self.turn.opposite
+        self.history.append(state)
+        self._record_position()
+
+    def pop_null(self) -> None:
+        """Undo a null move."""
+        if not self.history:
+            raise IndexError("No moves to undo")
+        self._unrecord_position()
+        state = self.history.pop()
+        # Restore state (no piece movement to undo)
+        self.turn = self.turn.opposite
+        self.castling_rights = state["castling"]
+        self.ep_square = state["ep_square"]
+        self.halfmove_clock = state["halfmove_clock"]
+        self.fullmove_number = state["fullmove_number"]
+        self._king_squares = state["king_squares"]
+
     def pop(self) -> dict:
         """Undo the last move, restoring previous state."""
         if not self.history:

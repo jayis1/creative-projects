@@ -97,10 +97,14 @@ class UCIEngine:
             self.send(f"info score cp {score}")
 
     def _cmd_uci(self) -> None:
-        self.send("id name chess-engine v2.0")
+        self.send("id name chess-engine v3.0")
         self.send("id author creative-projects")
-        self.send("option name SearchDepth type spin default 4 min 1 max 10")
+        self.send("option name SearchDepth type spin default 4 min 1 max 20")
         self.send("option name TimeLimit type spin default 0 min 0 max 600000")
+        self.send("option name UseNullMove type check default true")
+        self.send("option name UseLMR type check default true")
+        self.send("option name UseHistory type check default true")
+        self.send("option name UseKiller type check default true")
         self.send("uciok")
 
     def _cmd_setoption(self, args: list) -> None:
@@ -111,11 +115,20 @@ class UCIEngine:
             value_idx = args.index("value")
             name = " ".join(args[name_idx + 1:value_idx])
             value = " ".join(args[value_idx + 1:])
-            if name.lower() == "searchdepth":
+            name_lower = name.lower()
+            if name_lower == "searchdepth":
                 self.options["depth"] = int(value)
-            elif name.lower() == "timelimit":
+            elif name_lower == "timelimit":
                 v = int(value)
                 self.options["time_limit"] = v / 1000.0 if v > 0 else None
+            elif name_lower == "usenullmove":
+                self.search.use_null_move = value.lower() == "true"
+            elif name_lower == "uselmr":
+                self.search.use_lmr = value.lower() == "true"
+            elif name_lower == "usehistory":
+                self.search.use_history = value.lower() == "true"
+            elif name_lower == "usekiller":
+                self.search.use_killers = value.lower() == "true"
         except (ValueError, IndexError):
             pass
 
@@ -172,6 +185,12 @@ class UCIEngine:
         # Search
         move, score = self.search.search(self.board, depth=depth,
                                          time_limit=time_limit)
+
+        # Send info line
+        info = self.search.get_info()
+        time_ms = int(info["time"] * 1000)
+        self.send(f"info depth {depth} nodes {info['nodes']} time {time_ms} "
+                  f"score cp {score}")
 
         if move:
             self.send(f"bestmove {move.uci()}")
