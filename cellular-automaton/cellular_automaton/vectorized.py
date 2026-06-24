@@ -16,12 +16,23 @@ import numpy as np
 
 
 def _pad2d(grid: np.ndarray, radius: int, mode: str, fixed_value: int = 0) -> np.ndarray:
+    """Pad a 2D grid according to the boundary mode.
+
+    For ``reflect`` we use ``edge`` (zero-gradient / Neumann boundary — the
+    out-of-bounds cell mirrors the nearest edge cell).  This is consistent
+    with the 1D vectorized path and the standard CA convention.  (NumPy's
+    ``reflect`` mode mirrors the *second-from-edge* cell, which is a different
+    boundary condition.)
+    """
     if radius == 0:
         return grid
     if mode == "periodic":
         return np.pad(grid, radius, mode="wrap")
     if mode == "reflect":
-        return np.pad(grid, radius, mode="reflect")
+        # Use 'edge' (clamp) for zero-gradient / Neumann boundary, consistent
+        # with the 1D vectorized path.  NumPy's 'reflect' mirrors the
+        # second-from-edge cell which is a different (Lagrange) condition.
+        return np.pad(grid, radius, mode="edge")
     if mode == "fixed":
         return np.pad(grid, radius, mode="constant", constant_values=fixed_value)
     return np.pad(grid, radius, mode="constant", constant_values=0)
@@ -71,8 +82,11 @@ def step_life_vectorized(
     """Vectorised Game-of-Life-style step (outer totalistic, radius 1)."""
     birth = frozenset(birth)
     survive = frozenset(survive)
-    n = neighbour_sum_2d(grid, radius=1, mode=mode, fixed_value=fixed_value)
-    grid_int = grid.astype(np.int32)
+    # Clamp grid to binary — fixed_value > 1 in FIXED boundary mode could
+    # introduce non-binary values that break the neighbour count logic.
+    grid_bin = (grid > 0).astype(np.uint8)
+    n = neighbour_sum_2d(grid_bin, radius=1, mode=mode, fixed_value=fixed_value)
+    grid_int = grid_bin.astype(np.int32)
     new = np.zeros_like(grid_int)
     # Survive: currently alive AND neighbour count in survive set.
     for s in survive:
@@ -106,6 +120,10 @@ def step_elementary_vectorized(
         right[:-1] = row[1:]
     else:  # fixed or zero
         fv = fixed_value if mode == "fixed" else 0
+        # Clamp to binary — any non-zero value is treated as alive (1).
+        # Without this, fixed_value > 1 would produce an index > 7, causing
+        # an IndexError on the 8-element lookup table.
+        fv = 1 if fv else 0
         left = np.empty_like(row)
         right = np.empty_like(row)
         left[0] = fv

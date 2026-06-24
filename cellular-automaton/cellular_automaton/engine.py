@@ -173,14 +173,21 @@ class CellularAutomaton:
     # ------------------------------------------------------------------
 
     def _pad(self) -> np.ndarray:
-        """Return a padded copy of the grid according to boundary mode."""
+        """Return a padded copy of the grid according to boundary mode.
+
+        For ``reflect`` we use ``edge`` (clamp/Neumann) for consistency with
+        the vectorized paths — the out-of-bounds cell mirrors the nearest edge
+        cell (zero-gradient).  NumPy's ``reflect`` mode mirrors the
+        second-from-edge cell, which is a different boundary condition.
+        """
         r = self.rule.radius
         if r == 0:
             return self.grid
         if self.boundary == Boundary.PERIODIC:
             return np.pad(self.grid, r, mode="wrap")
         if self.boundary == Boundary.REFLECT:
-            return np.pad(self.grid, r, mode="reflect")
+            # 'edge' = clamp = Neumann zero-gradient, consistent with vectorized paths.
+            return np.pad(self.grid, r, mode="edge")
         if self.boundary == Boundary.FIXED:
             return np.pad(self.grid, r, mode="constant", constant_values=self.fixed_value)
         # zero
@@ -270,16 +277,19 @@ class CellularAutomaton:
         stats.max_alive = self.alive_count()
         stats.min_alive = self.alive_count()
 
-        prev_alive = self.alive_count()
         for _ in range(steps):
+            prev_grid = self.grid.copy()
             result = self._single_step()
             stats.steps += 1
             stats.final_alive = result.alive
-            stats.total_births += max(0, result.alive - prev_alive + result.changed // 2)
-            stats.total_deaths += max(0, prev_alive - result.alive + result.changed // 2)
+            # Births = dead cells that became alive; deaths = alive cells that died.
+            # Compare prev_grid (before step) with current grid (after step).
+            births = int(np.count_nonzero((prev_grid == 0) & (self.grid == 1)))
+            deaths = int(np.count_nonzero((prev_grid == 1) & (self.grid == 0)))
+            stats.total_births += births
+            stats.total_deaths += deaths
             stats.max_alive = max(stats.max_alive, result.alive)
             stats.min_alive = min(stats.min_alive, result.alive)
-            prev_alive = result.alive
 
             if result.changed == 0:
                 stats.stable = True
@@ -370,10 +380,19 @@ class CellularAutomaton:
         """Reconstruct a CA from a serialized dict."""
         from .rules import get_rule, parse_bx_sx_notation
         rule_name = data["rule"]
-        rule = get_rule(rule_name)
-        # If get_rule failed to find a GameOfLife variant by name, try Bxx/Sxx.
-        if rule is None:
-            rule = parse_bx_sx_notation(rule_name)
+        # Try registry first; if not found, try Bxx/Sxx notation (for
+        # custom-named GameOfLife rules like "B36/S23" that aren't in RULES).
+        try:
+            rule = get_rule(rule_name)
+        except KeyError:
+            parsed = parse_bx_sx_notation(rule_name)
+            if parsed is not None:
+                rule = parsed
+            else:
+                raise KeyError(
+                    f"Cannot reconstruct rule {rule_name!r}: not in registry "
+                    f"and not valid Bxx/Sxx notation"
+                )
         ca = cls(
             rule,
             width=data["width"],

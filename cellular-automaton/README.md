@@ -181,3 +181,20 @@ cellular-automaton/
 ## License
 
 MIT
+## Known Issues (Resolved)
+
+The following bugs were identified during the Phase 3 bug hunt and fixed:
+
+1. **Beacon pattern missing 2 cells** — The `BEACON` pattern had only 6 cells instead of 8 (missing the inner cells at (1,1) and (2,2)). This prevented the beacon from oscillating correctly. **Fix:** Added the missing cells; verified period-2 oscillation with zero boundary.
+
+2. **Pentadecathlon pattern incorrect** — The `PENTADECATHLON` pattern was a plain row of 10 cells (not a period-15 oscillator). The canonical RLE is `2bo4bo$2ob4ob2o$2bo4bo!` (12 cells in 3 rows). **Fix:** Replaced with the correct 12-cell pattern from LifeWiki; verified period-15 oscillation.
+
+3. **`reflect` boundary inconsistency** — The 1D vectorized path used edge/clamp (Neumann zero-gradient) while the 2D vectorized and generic paths used NumPy's `reflect` mode (which mirrors the *second-from-edge* cell). These are different boundary conditions. **Fix:** Changed all paths to use `edge` (clamp/Neumann) for `reflect` boundary, ensuring consistent behaviour across 1D and 2D.
+
+4. **Incorrect births/deaths statistics** — `CAStats.total_births` and `total_deaths` used a heuristic formula `(alive_diff + changed/2)` that produced wrong results. **Fix:** Replaced with exact per-cell comparison: births = `count(dead→alive)`, deaths = `count(alive→dead)`.
+
+5. **`render_png` fallback writes wrong filename** — When PIL is unavailable, `render_png` wrote to `path + ".ppm"` instead of the requested path, causing animation frames to be named `frame_00000.png.ppm`. **Fix:** Writes PPM data to the exact requested path.
+
+6. **`fixed_value > 1` causes `IndexError`** — In the elementary 1D vectorized path, a `fixed_value` greater than 1 produced a 3-bit neighbourhood index exceeding 7, crashing the 8-element lookup table. The 2D vectorized path had a similar issue with non-binary values corrupting neighbour counts. **Fix:** Clamp `fixed_value` to binary (1 if non-zero, else 0) before use.
+
+7. **`from_dict` deserialization fails for custom-named rules** — `get_rule()` raises `KeyError` (not `None`) when a rule isn't found, but `from_dict` checked for `None`, so custom Bxx/Sxx rules stored by name couldn't be deserialized. **Fix:** Use `try/except KeyError` and fall back to `parse_bx_sx_notation()`.

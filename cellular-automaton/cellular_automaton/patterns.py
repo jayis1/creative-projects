@@ -29,7 +29,7 @@ TUB: Pattern = [(1, 0), (0, 1), (2, 1), (1, 2)]
 
 BLINKER: Pattern = [(0, 0), (1, 0), (2, 0)]
 TOAD: Pattern = [(1, 0), (2, 0), (3, 0), (0, 1), (1, 1), (2, 1)]
-BEACON: Pattern = [(0, 0), (1, 0), (0, 1), (3, 2), (2, 3), (3, 3)]
+BEACON: Pattern = [(0, 0), (1, 0), (0, 1), (1, 1), (2, 2), (3, 2), (2, 3), (3, 3)]
 PULSAR: Pattern = [
     (2, 0), (3, 0), (4, 0), (8, 0), (9, 0), (10, 0),
     (0, 2), (5, 2), (7, 2), (12, 2),
@@ -42,9 +42,15 @@ PULSAR: Pattern = [
     (0, 10), (5, 10), (7, 10), (12, 10),
     (2, 12), (3, 12), (4, 12), (8, 12), (9, 12), (10, 12),
 ]
+# The pentadecathlon is a period-15 oscillator.
+# RLE: 2bo4bo$2ob4ob2o$2bo4bo! (from LifeWiki)
+# Row 0: 2 dead, 1 alive, 4 dead, 1 alive  →  cells at x=2 and x=7
+# Row 1: 2 alive, 1 dead, 4 alive, 1 dead, 2 alive → cells at x=0,1,3,4,5,6,8,9
+# Row 2: same as row 0 → cells at x=2 and x=7
 PENTADECATHLON: Pattern = [
-    (0, 0), (1, 0), (2, 0), (3, 0), (4, 0),
-    (5, 0), (6, 0), (7, 0), (8, 0), (9, 0),
+    (2, 0), (7, 0),
+    (0, 1), (1, 1), (3, 1), (4, 1), (5, 1), (6, 1), (8, 1), (9, 1),
+    (2, 2), (7, 2),
 ]
 
 

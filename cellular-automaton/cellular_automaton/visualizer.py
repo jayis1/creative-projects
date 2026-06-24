@@ -102,11 +102,15 @@ def render_ppm(grid: np.ndarray, path: str, cell_size: int = 4) -> None:
 # ---------------------------------------------------------------------------
 
 def render_png(grid: np.ndarray, path: str, cell_size: int = 4) -> None:
-    """Write the grid as a PNG file. Uses PIL if available, else writes PPM."""
+    """Write the grid as a PNG file. Uses PIL if available, else writes PPM
+    to the *same* path (with a PPM header, readable by most image tools)."""
     try:
         from PIL import Image  # type: ignore
     except ImportError:
-        render_ppm(grid, path + ".ppm", cell_size)
+        # PIL not available — write PPM data to the requested path so callers
+        # don't need to guess a different filename.  The file is still valid
+        # PPM, just with a .png extension.
+        render_ppm(grid, path, cell_size)
         return
     if grid.ndim == 1:
         grid = grid.reshape(1, -1)
