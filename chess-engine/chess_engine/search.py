@@ -16,6 +16,8 @@ from typing import Optional, List, Tuple
 
 from .board import Board, Move, Piece, Color
 from .evaluate import Evaluator
+from .transposition import TranspositionTable, TTEntry, FLAG_EXACT, FLAG_LOWER, FLAG_UPPER
+from .zobrist import ZobristHash
 
 
 MATE_SCORE = 100000
@@ -23,10 +25,25 @@ MATE_THRESHOLD = 99000
 
 
 class Search:
-    """Alpha-beta search engine with quiescence and move ordering."""
+    """Alpha-beta search engine with quiescence, move ordering, and
+    transposition table.
 
-    def __init__(self, evaluator: Optional[Evaluator] = None) -> None:
+    Features:
+    - Negamax with alpha-beta pruning
+    - Quiescence search (captures only)
+    - MVV-LVA move ordering for captures
+    - Killer move heuristic for quiet moves
+    - Transposition table with Zobrist hashing
+    - Iterative deepening
+    - Time management
+    - Mate score handling (prefers faster mates)
+    """
+
+    def __init__(self, evaluator: Optional[Evaluator] = None,
+                 tt: Optional[TranspositionTable] = None) -> None:
         self.evaluator = evaluator or Evaluator()
+        self.tt = tt or TranspositionTable()
+        self.zobrist = ZobristHash()
         self.max_depth: int = 4
         self.time_limit: Optional[float] = None  # seconds
         self.nodes: int = 0
@@ -45,6 +62,7 @@ class Search:
         self.use_quiescence: bool = True
         self.use_killers: bool = True
         self.use_iterative_deepening: bool = True
+        self.use_tt: bool = True
 
     def _time_up(self) -> bool:
         if self.time_limit is None:
@@ -119,7 +137,7 @@ class Search:
 
     def _negamax(self, board: Board, depth: int, alpha: int, beta: int,
                  ply: int) -> int:
-        """Negamax with alpha-beta pruning."""
+        """Negamax with alpha-beta pruning and transposition table lookup."""
         self.nodes += 1
 
         if self._time_up():
@@ -132,6 +150,24 @@ class Search:
             return 0
         if board.is_fifty_move():
             return 0
+        if board.is_threefold_repetition():
+            return 0
+
+        # Transposition table probe
+        tt_move = None
+        key = 0
+        if self.use_tt:
+            key = self.zobrist.hash(board)
+            entry = self.tt.probe(key)
+            if entry is not None:
+                tt_move = entry.best_move
+                if entry.depth >= depth:
+                    if entry.flag == FLAG_EXACT:
+                        return entry.score
+                    elif entry.flag == FLAG_LOWER and entry.score >= beta:
+                        return entry.score
+                    elif entry.flag == FLAG_UPPER and entry.score <= alpha:
+                        return entry.score
 
         if depth <= 0:
             if self.use_quiescence:
@@ -139,11 +175,16 @@ class Search:
             else:
                 return self.evaluator.evaluate(board)
 
-        moves = self._order_moves(board, board.legal_moves(), depth=ply)
+        moves = self._order_moves(board, board.legal_moves(), depth=ply,
+                                  tt_move=tt_move)
         if not moves:
             # No legal moves (shouldn't happen here since we checked
             # checkmate/stalemate above, but safety net)
             return 0
+
+        best_score = -MATE_SCORE - 1
+        best_move = None
+        original_alpha = alpha
 
         for move in moves:
             board.push(move)
@@ -153,14 +194,29 @@ class Search:
             if self.stopped:
                 return 0
 
+            if score > best_score:
+                best_score = score
+                best_move = move
+
             if score >= beta:
                 # Killer move heuristic (non-capture cutoff)
                 if self.use_killers and not self._is_capture(board, move):
                     self._store_killer(move, ply)
+                # Store in TT
+                if self.use_tt:
+                    self.tt.store(key, depth, score, FLAG_LOWER, best_move)
                 return beta  # fail-high
 
             if score > alpha:
                 alpha = score
+
+        # Store in TT
+        if self.use_tt and not self.stopped:
+            if best_score > original_alpha:
+                flag = FLAG_EXACT
+            else:
+                flag = FLAG_UPPER
+            self.tt.store(key, depth, best_score, flag, best_move)
 
         return alpha
 
@@ -211,14 +267,19 @@ class Search:
         return board.piece_at(move.to_square) is not None
 
     def _order_moves(self, board: Board, moves: List[Move],
-                     depth: int) -> List[Move]:
+                     depth: int, tt_move: Optional[Move] = None) -> List[Move]:
         """Order moves for better alpha-beta pruning efficiency.
 
         Uses MVV-LVA (Most Valuable Victim - Least Valuable Aggressor)
-        for captures, and killer moves for quiet moves.
+        for captures, killer moves for quiet moves, and TT best move first.
         """
         def move_score(m: Move) -> int:
             score = 0
+
+            # TT best move gets highest priority
+            if tt_move is not None and m == tt_move:
+                return 20000
+
             # Captures: MVV-LVA
             if self._is_capture(board, m):
                 victim = board.piece_at(m.to_square)

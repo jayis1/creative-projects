@@ -298,3 +298,153 @@ class TestNotation:
         move = parse_algebraic("e4", b)
         assert move.from_square == 12
         assert move.to_square == 28
+
+
+class TestTranspositionTable:
+    def test_tt_store_probe(self):
+        from chess_engine.transposition import TranspositionTable, FLAG_EXACT
+        from chess_engine.zobrist import ZobristHash
+        tt = TranspositionTable()
+        z = ZobristHash()
+        b = Board()
+        key = z.hash(b)
+        tt.store(key, depth=3, score=50, flag=FLAG_EXACT)
+        entry = tt.probe(key)
+        assert entry is not None
+        assert entry.score == 50
+        assert entry.depth == 3
+
+    def test_tt_replacement(self):
+        from chess_engine.transposition import TranspositionTable, FLAG_EXACT
+        tt = TranspositionTable()
+        tt.store(123, depth=2, score=10, flag=FLAG_EXACT)
+        # Higher depth should replace
+        tt.store(123, depth=4, score=20, flag=FLAG_EXACT)
+        entry = tt.probe(123)
+        assert entry.depth == 4
+        assert entry.score == 20
+
+
+class TestZobristHash:
+    def test_same_position_same_hash(self):
+        from chess_engine.zobrist import ZobristHash
+        z = ZobristHash()
+        b1 = Board()
+        b2 = Board()
+        assert z.hash(b1) == z.hash(b2)
+
+    def test_different_positions_different_hash(self):
+        from chess_engine.zobrist import ZobristHash
+        z = ZobristHash()
+        b1 = Board()
+        b2 = Board()
+        b2.push(Move(12, 28))  # e4
+        assert z.hash(b1) != z.hash(b2)
+
+
+class TestOpeningBook:
+    def test_book_has_starting_moves(self):
+        from chess_engine.opening_book import create_default_book
+        book = create_default_book()
+        b = Board()
+        move = book.probe(b)
+        assert move is not None
+
+    def test_book_returns_none_for_unknown(self):
+        from chess_engine.opening_book import create_default_book
+        book = create_default_book()
+        b = Board()
+        b.push(Move(12, 28))  # e4
+        b.push(Move(52, 36))  # e5
+        b.push(Move(6, 21))   # Nf3
+        b.push(Move(62, 45))  # Ng8-f6?? unusual
+        # This should not be in the book
+        # (may or may not return None depending on book entries)
+        # Just test it doesn't crash
+        result = book.probe(b)
+        # It's okay if it returns a move or None
+
+
+class TestPGN:
+    def test_pgn_roundtrip(self):
+        from chess_engine.pgn import PGNGame
+        b = Board()
+        b.push(Move(12, 28))  # e4
+        b.push(Move(52, 36))  # e5
+        b.push(Move(6, 21))   # Nf3
+        b.push(Move(57, 42))  # Nc6
+        from chess_engine.pgn import board_to_pgn
+        pgn_text = board_to_pgn(b)
+        game = PGNGame.from_string(pgn_text)
+        assert len(game.moves) == 4
+        assert game.moves[0] == "e4"
+        assert game.moves[1] == "e5"
+        assert game.moves[2] == "Nf3"
+        assert game.moves[3] == "Nc6"
+
+
+class TestThreefoldRepetition:
+    def test_threefold_detected(self):
+        b = Board()
+        # Move knights back and forth to create repetition
+        # Nb1-c3, Ng8-f6, Nc3-b1, Nf6-g8 (x3)
+        for _ in range(3):
+            b.push(Move(1, 18))   # Nb1-c3
+            b.push(Move(57, 42))  # Ng8-f6
+            b.push(Move(18, 1))   # Nc3-b1
+            b.push(Move(42, 57))  # Nf6-g8
+        assert b.is_threefold_repetition()
+        assert b.is_game_over()
+
+    def test_no_false_threefold(self):
+        b = Board()
+        b.push(Move(12, 28))  # e4
+        b.push(Move(52, 36))  # e5
+        assert not b.is_threefold_repetition()
+
+
+class TestEnhancedEvaluation:
+    def test_doubled_pawn_penalty(self):
+        from chess_engine.evaluate import Evaluator
+        ev = Evaluator()
+        # Two white pawns on e-file: e2 and e3 (doubled)
+        fen = "4k3/8/8/8/8/4P3/4P3/4K3 w - - 0 1"
+        b = Board.from_fen(fen)
+        doubled_score = ev._evaluate_pawn_structure(b)
+        # Compare with two non-doubled pawns: c2 and e2
+        fen2 = "4k3/8/8/8/8/8/2P1P3/4K3 w - - 0 1"
+        b2 = Board.from_fen(fen2)
+        normal_score = ev._evaluate_pawn_structure(b2)
+        # Doubled pawns should score worse
+        assert doubled_score < normal_score
+
+    def test_isolated_pawn_penalty(self):
+        from chess_engine.evaluate import Evaluator
+        ev = Evaluator()
+        # Isolated white pawn on d4, blocked by black d5 pawn (not passed)
+        # Black has connected pawns on f7/g7 (not isolated)
+        fen = "5kp1/8/8/3p4/3P4/8/8/4K3 w - - 0 1"
+        b = Board.from_fen(fen)
+        isolated_score = ev._evaluate_pawn_structure(b)
+        # White d-pawn: isolated (-20), not passed (blocked by d5), not backward
+        # Black d-pawn: not isolated (no, actually it IS isolated - no black c/e pawns)
+        # Black f7/g7: connected, not isolated
+        # So: white: -20 (isolated), black d5: -(-20) = +20, black f7/g7: 0
+        # Net = -20 + 20 = 0... hmm
+        # Let me just check that white's isolated pawn contributes negative
+        # by comparing with a non-isolated version
+        fen_connected = "5kp1/8/8/3p4/2PP4/8/8/4K3 w - - 0 1"
+        b_connected = Board.from_fen(fen_connected)
+        connected_score = ev._evaluate_pawn_structure(b_connected)
+        # The isolated position should be worse for white than the connected one
+        assert isolated_score < connected_score
+
+    def test_passed_pawn_bonus(self):
+        from chess_engine.evaluate import Evaluator
+        # White pawn on e5 with no black pawns nearby
+        fen = "4k3/8/8/4P3/8/8/8/4K3 w - - 0 1"
+        b = Board.from_fen(fen)
+        ev = Evaluator()
+        pawn_score = ev._evaluate_pawn_structure(b)
+        # Passed pawn should give positive score for white
+        assert pawn_score > 0

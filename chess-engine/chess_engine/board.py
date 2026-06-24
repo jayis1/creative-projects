@@ -222,7 +222,9 @@ class Board:
             Color.WHITE: -1,
             Color.BLACK: -1,
         }
+        self._position_history: dict = {}  # FEN-based for repetition detection
         self._set_fen(self.STARTING_FEN)
+        self._record_position()
 
     # --- FEN ---
 
@@ -240,7 +242,9 @@ class Board:
         b.fullmove_number = 1
         b.history = []
         b._king_squares = {Color.WHITE: -1, Color.BLACK: -1}
+        b._position_history = {}
         b._set_fen(fen)
+        b._record_position()
         return b
 
     def _set_fen(self, fen: str) -> None:
@@ -345,6 +349,59 @@ class Board:
         return f"{placement} {turn} {castling} {ep} {self.halfmove_clock} {self.fullmove_number}"
 
     # --- Basic board access ---
+
+    def _position_key(self) -> str:
+        """Return a simplified FEN key for repetition detection
+        (ignores clocks and move numbers)."""
+        rows = []
+        for rank in range(7, -1, -1):
+            row = ""
+            empty = 0
+            for file in range(8):
+                sq = rank * 8 + file
+                p = self.squares[sq]
+                if p is None:
+                    empty += 1
+                else:
+                    if empty:
+                        row += str(empty)
+                        empty = 0
+                    row += p.symbol()
+            if empty:
+                row += str(empty)
+            rows.append(row)
+        placement = "/".join(rows)
+        turn = "w" if self.turn == Color.WHITE else "b"
+        castling = ""
+        if self.castling_rights[Color.WHITE]["K"]:
+            castling += "K"
+        if self.castling_rights[Color.WHITE]["Q"]:
+            castling += "Q"
+        if self.castling_rights[Color.BLACK]["K"]:
+            castling += "k"
+        if self.castling_rights[Color.BLACK]["Q"]:
+            castling += "q"
+        from chess_engine.notation import square_name
+        ep = square_name(self.ep_square) if self.ep_square >= 0 else "-"
+        return f"{placement} {turn} {castling} {ep}"
+
+    def _record_position(self) -> None:
+        """Record current position in the repetition history."""
+        key = self._position_key()
+        self._position_history[key] = self._position_history.get(key, 0) + 1
+
+    def _unrecord_position(self) -> None:
+        """Remove current position from the repetition history."""
+        key = self._position_key()
+        if key in self._position_history:
+            self._position_history[key] -= 1
+            if self._position_history[key] <= 0:
+                del self._position_history[key]
+
+    def is_threefold_repetition(self) -> bool:
+        """Check if the current position has occurred three or more times."""
+        key = self._position_key()
+        return self._position_history.get(key, 0) >= 3
 
     def piece_at(self, square: int) -> Optional[Piece]:
         """Get the piece at a square index, or None."""
@@ -696,11 +753,13 @@ class Board:
         # Switch turn
         self.turn = self.turn.opposite
         self.history.append(state)
+        self._record_position()
 
     def pop(self) -> dict:
         """Undo the last move, restoring previous state."""
         if not self.history:
             raise IndexError("No moves to undo")
+        self._unrecord_position()
         state = self.history.pop()
 
         move: Move = state["move"]
@@ -777,14 +836,16 @@ class Board:
 
     def is_game_over(self) -> bool:
         return (self.is_checkmate() or self.is_stalemate()
-                or self.is_insufficient_material() or self.is_fifty_move())
+                or self.is_insufficient_material() or self.is_fifty_move()
+                or self.is_threefold_repetition())
 
     def result(self) -> str:
         """Return game result: '1-0', '0-1', '1/2-1/2', or '*' (ongoing)."""
         if self.is_checkmate():
             # The side to move is checkmated; the other side wins
             return "0-1" if self.turn == Color.WHITE else "1-0"
-        if self.is_stalemate() or self.is_insufficient_material() or self.is_fifty_move():
+        if (self.is_stalemate() or self.is_insufficient_material()
+                or self.is_fifty_move() or self.is_threefold_repetition()):
             return "1/2-1/2"
         return "*"
 

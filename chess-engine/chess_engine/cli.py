@@ -84,6 +84,15 @@ def cmd_move(args: argparse.Namespace) -> int:
 
 def cmd_bestmove(args: argparse.Namespace) -> int:
     board = _load_board(args)
+    # Check opening book first
+    if not args.no_book:
+        from .opening_book import create_default_book
+        book = create_default_book()
+        book_move = book.probe(board)
+        if book_move is not None:
+            san = to_algebraic(book_move, board)
+            print(f"Best move: {san} ({book_move.uci()})  [from book]")
+            return 0
     search = Search()
     move, score = search.search(board, depth=args.depth, time_limit=args.time)
     if move:
@@ -175,6 +184,27 @@ def cmd_moves(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_uci(args: argparse.Namespace) -> int:
+    """Run UCI protocol loop."""
+    from .uci import UCIEngine
+    engine = UCIEngine()
+    engine.run()
+    return 0
+
+
+def cmd_pgn(args: argparse.Namespace) -> int:
+    """Output the game as PGN."""
+    from .pgn import board_to_pgn
+    board = _load_board(args)
+    pgn_text = board_to_pgn(board, headers={
+        "Event": "chess-engine game",
+        "White": "chess-engine",
+        "Black": "chess-engine",
+    })
+    print(pgn_text)
+    return 0
+
+
 def _load_board(args: argparse.Namespace) -> Board:
     """Load board from FEN argument or file, else starting position."""
     if hasattr(args, "fen") and args.fen:
@@ -218,6 +248,8 @@ def build_parser() -> argparse.ArgumentParser:
                           help="Search depth (default: 4)")
     sub_best.add_argument("--time", type=float, default=None,
                           help="Time limit in seconds")
+    sub_best.add_argument("--no-book", action="store_true",
+                          help="Disable opening book")
     sub_best.set_defaults(func=cmd_bestmove)
 
     sub_analyze = subparsers.add_parser("analyze", help="Analyze position")
@@ -245,6 +277,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub_moves = subparsers.add_parser("moves", help="List all legal moves")
     sub_moves.set_defaults(func=cmd_moves)
+
+    sub_uci = subparsers.add_parser("uci", help="Run UCI protocol (for GUI integration)")
+    sub_uci.set_defaults(func=cmd_uci)
+
+    sub_pgn = subparsers.add_parser("pgn", help="Output game as PGN")
+    sub_pgn.set_defaults(func=cmd_pgn)
 
     return parser
 
