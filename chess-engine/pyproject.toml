@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "chess-engine"
+version = "1.0.0"
+description = "A from-scratch chess engine in pure Python"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+
+[project.scripts]
+chess-engine = "chess_engine.cli:main"
+
+[tool.setuptools]
+packages = ["chess_engine"]
