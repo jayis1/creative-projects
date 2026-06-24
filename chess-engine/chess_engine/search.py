@@ -162,12 +162,21 @@ class Search:
             if entry is not None:
                 tt_move = entry.best_move
                 if entry.depth >= depth:
+                    # Adjust mate scores for ply distance
+                    score = entry.score
+                    if abs(score) > MATE_THRESHOLD:
+                        # Mate scores are stored relative to the ply at which
+                        # they were found. Adjust for current ply.
+                        if score > 0:
+                            score = score + ply
+                        else:
+                            score = score - ply
                     if entry.flag == FLAG_EXACT:
-                        return entry.score
-                    elif entry.flag == FLAG_LOWER and entry.score >= beta:
-                        return entry.score
-                    elif entry.flag == FLAG_UPPER and entry.score <= alpha:
-                        return entry.score
+                        return score
+                    elif entry.flag == FLAG_LOWER and score >= beta:
+                        return score
+                    elif entry.flag == FLAG_UPPER and score <= alpha:
+                        return score
 
         if depth <= 0:
             if self.use_quiescence:
@@ -202,50 +211,69 @@ class Search:
                 # Killer move heuristic (non-capture cutoff)
                 if self.use_killers and not self._is_capture(board, move):
                     self._store_killer(move, ply)
-                # Store in TT
+                # Store in TT (adjust mate scores for ply)
                 if self.use_tt:
-                    self.tt.store(key, depth, score, FLAG_LOWER, best_move)
+                    store_score = score
+                    if abs(store_score) > MATE_THRESHOLD:
+                        store_score = store_score - ply if store_score > 0 else store_score + ply
+                    self.tt.store(key, depth, store_score, FLAG_LOWER, best_move)
                 return beta  # fail-high
 
             if score > alpha:
                 alpha = score
 
-        # Store in TT
+        # Store in TT (adjust mate scores for ply)
         if self.use_tt and not self.stopped:
+            store_score = best_score
+            if abs(store_score) > MATE_THRESHOLD:
+                store_score = store_score - ply if store_score > 0 else store_score + ply
             if best_score > original_alpha:
                 flag = FLAG_EXACT
             else:
                 flag = FLAG_UPPER
-            self.tt.store(key, depth, best_score, flag, best_move)
+            self.tt.store(key, depth, store_score, flag, best_move)
 
         return alpha
 
     def _quiescence(self, board: Board, alpha: int, beta: int, ply: int) -> int:
-        """Quiescence search: only search captures to avoid horizon effect."""
+        """Quiescence search: only search captures to avoid horizon effect.
+
+        When in check, search ALL legal moves (not just captures) since
+        the player must escape check. This prevents missing checkmates
+        and check evasions at the horizon.
+        """
         self.nodes += 1
 
         if self._time_up():
             self.stopped = True
             return 0
 
-        stand_pat = self.evaluator.evaluate(board)
-
         if board.is_checkmate():
             return -MATE_SCORE + ply
         if board.is_stalemate() or board.is_insufficient_material():
             return 0
 
-        if stand_pat >= beta:
-            return beta
-        if stand_pat > alpha:
-            alpha = stand_pat
+        in_check = board.is_check()
 
-        # Generate only capture moves
-        captures = [m for m in board.legal_moves()
-                    if self._is_capture(board, m)]
-        captures = self._order_moves(board, captures, depth=ply)
+        if not in_check:
+            # Stand-pat evaluation (not in check, can skip capturing)
+            stand_pat = self.evaluator.evaluate(board)
+            if stand_pat >= beta:
+                return beta
+            if stand_pat > alpha:
+                alpha = stand_pat
 
-        for move in captures:
+        # When in check, search ALL legal moves (must escape check).
+        # When not in check, search only captures.
+        if in_check:
+            moves = board.legal_moves()
+        else:
+            moves = [m for m in board.legal_moves()
+                     if self._is_capture(board, m)]
+
+        moves = self._order_moves(board, moves, depth=ply)
+
+        for move in moves:
             board.push(move)
             score = -self._quiescence(board, -beta, -alpha, ply + 1)
             board.pop()

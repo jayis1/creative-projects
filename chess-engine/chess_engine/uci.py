@@ -122,7 +122,6 @@ class UCIEngine:
     def _cmd_position(self, args: list) -> None:
         """Handle: position [fen <fenstring>] | startpos moves <move1> ..."""
         self.board = Board()
-        self._position_history = {}
         idx = 0
         if idx < len(args) and args[idx] == "startpos":
             idx += 1

@@ -199,4 +199,31 @@ The book stores position hashes mapped to candidate moves with weights. When the
 python -m pytest tests/ -v
 ```
 
-Tests include perft verification (the gold standard for move generation correctness — verified to 8902 nodes at depth 3), castling, en passant, checkmate detection, search, notation conversion, transposition table, Zobrist hashing, opening book, PGN, threefold repetition, and pawn structure evaluation. 41 tests total.
+Tests include perft verification (the gold standard for move generation correctness — verified to 8902 nodes at depth 3, Kiwipete position verified to 97862 at depth 3), castling, en passant, checkmate detection, search, notation conversion, transposition table, Zobrist hashing, opening book, PGN, threefold repetition, pawn structure evaluation, quiescence-in-check, TT mate score adjustment, backward pawn for black, and copy semantics. 71 tests total.
+
+## Known Issues (Resolved)
+
+### Bug 1: Quiescence search missed check evasions (Fixed)
+**Problem**: The quiescence search only considered capture moves, even when the side to move was in check. This meant it could miss checkmates and fail to find check evasions at the search horizon, leading to incorrect evaluations.
+
+**Fix**: When the side to move is in check, the quiescence search now considers ALL legal moves (not just captures), ensuring check evasions are always found. The stand-pat evaluation is also skipped when in check (since the player cannot "pass").
+
+### Bug 2: Transposition table mate scores not adjusted for ply (Fixed)
+**Problem**: Mate scores stored in the transposition table were relative to the ply at which they were found. When the same position was probed at a different ply (common with iterative deepening), the mate score would be incorrect — e.g., a mate-in-2 found at ply 4 would be reported as mate-in-2 when probed at ply 2, making it seem closer than it actually is.
+
+**Fix**: Mate scores are now adjusted when storing (subtracting the current ply) and when probing (adding the current ply), ensuring correct mate distance reporting regardless of when the position was evaluated.
+
+### Bug 3: Backward pawn detection wrong for black pawns (Fixed)
+**Problem**: The backward pawn detection searched "behind" the pawn using `range(behind_rank, -1, -1)`, which always searched downward (toward rank 1). For black pawns, "behind" means toward rank 8 (higher ranks), so the search direction was reversed.
+
+**Fix**: The search direction is now color-dependent: `range(behind_rank, -1, -1)` for white pawns (toward rank 1) and `range(behind_rank, 8)` for black pawns (toward rank 8).
+
+### Bug 4: Board.copy() didn't copy position history (Fixed)
+**Problem**: `Board.copy()` created a new board from FEN and copied `history` but forgot to copy `_position_history` (the repetition detection dictionary). This meant threefold repetition detection would not work correctly on copied boards.
+
+**Fix**: `_position_history` is now explicitly copied in `Board.copy()`.
+
+### Bug 5: UCI position command set non-existent attribute (Fixed)
+**Problem**: The UCI `_cmd_position` handler set `self._position_history = {}` on the `UCIEngine` object, which was a no-op (the Board manages its own position history internally via push/pop). This was harmless but indicated a misunderstanding of the architecture.
+
+**Fix**: Removed the unnecessary attribute assignment.

@@ -876,9 +876,10 @@ class Board:
         return f"Board('{self.fen()}')"
 
     def copy(self) -> "Board":
-        """Create a deep copy of the board."""
+        """Create a deep copy of the board, including all state."""
         new = Board.from_fen(self.fen())
         new.history = copy.deepcopy(self.history)
+        new._position_history = dict(self._position_history)
         return new
 
 

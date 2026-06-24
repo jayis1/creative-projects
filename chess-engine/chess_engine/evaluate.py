@@ -294,15 +294,23 @@ class Evaluator:
 
             # Backward pawn (no friendly pawns behind on adjacent files,
             # but enemy pawn stops its advance)
+            # "Behind" means toward the pawn's home rank.
+            # For white: lower ranks (behind_rank = rank - 1, search down to 0)
+            # For black: higher ranks (behind_rank = rank + 1, search up to 7)
             behind_rank = rank - direction
             if 0 <= behind_rank <= 7:
+                # Determine search direction for "behind"
+                if color == Color.WHITE:
+                    behind_range = range(behind_rank, -1, -1)  # down to 0
+                else:
+                    behind_range = range(behind_rank, 8)  # up to 7
                 has_behind_left = (left_file >= 0 and
                                    any(own_pawns[r * 8 + left_file]
-                                       for r in range(behind_rank, -1, -1)
+                                       for r in behind_range
                                        if 0 <= r <= 7))
                 has_behind_right = (right_file <= 7 and
                                     any(own_pawns[r * 8 + right_file]
-                                        for r in range(behind_rank, -1, -1)
+                                        for r in behind_range
                                         if 0 <= r <= 7))
                 if not has_behind_left and not has_behind_right:
                     # Check if the square in front is blocked by enemy pawn
