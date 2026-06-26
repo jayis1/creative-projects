@@ -55,11 +55,21 @@ import numpy as np
 
 from .engine import CellularAutomaton, Boundary
 from .rules import RULES, get_rule, parse_bx_sx_notation, Rule
-from .patterns import PATTERNS, get_pattern, place_pattern, parse_rle
-from .visualizer import render_ascii, render_svg, render_ppm, render_png, render_ansi
+from .patterns import PATTERNS, get_pattern, place_pattern, parse_rle, load_rle_file
+from .visualizer import (
+    render_ascii, render_svg, render_ppm, render_png, render_ansi,
+    render_gif, render_multistate_gif,
+)
 from .multistate import (
     MULTISTATE_RULES, get_multistate_rule, is_multistate_rule,
     WireworldRule, BriansBrainRule, ForestFireRule,
+)
+from .ltl import (
+    LargerThanLifeRule, parse_ltl_notation, LTL_PRESETS,
+)
+from .continuous import (
+    GrayScott, FitzHughNagumo, GRAY_SCOTT_PRESETS, CONTINUOUS_MODELS,
+    get_continuous_model, is_continuous_model, render_continuous_ascii,
 )
 
 logger = logging.getLogger("cellular_automaton")
@@ -193,6 +203,21 @@ def cmd_rules(args: argparse.Namespace) -> None:
     for k in sorted(MULTISTATE_RULES):
         rule = MULTISTATE_RULES[k]
         print(f"  {k}: {rule.n_states} states")
+
+    from .ltl import LTL_PRESETS
+    print(f"\nLarger-than-Life (LtL) rules:")
+    for k in sorted(LTL_PRESETS):
+        rule = LTL_PRESETS[k]
+        print(f"  {k}: {rule.rule_string()}")
+
+    from .continuous import CONTINUOUS_MODELS, GRAY_SCOTT_PRESETS
+    print(f"\nContinuous CA models:")
+    for k in sorted(CONTINUOUS_MODELS):
+        print(f"  {k}")
+    print(f"\nGray-Scott presets:")
+    for k in sorted(GRAY_SCOTT_PRESETS):
+        p = GRAY_SCOTT_PRESETS[k]
+        print(f"  {k}: F={p['F']}, k={p['k']}")
 
 
 def cmd_patterns(args: argparse.Namespace) -> None:
@@ -449,6 +474,189 @@ def _print_multistate(ca: CellularAutomaton, fmt: str) -> None:
         print(render_ascii(ca.grid))
 
 
+# --------------------------------------------------------------------------- #
+# New commands: gif, rle-file, ltl, continuous
+# --------------------------------------------------------------------------- #
+
+
+def cmd_gif(args: argparse.Namespace) -> None:
+    """Render a CA evolution as an animated GIF."""
+    if is_multistate_rule(args.rule):
+        ca = _build_multistate_ca(args)
+        render_multistate_gif(
+            ca, path=args.output, steps=args.steps,
+            cell_size=args.cell_size, duration=args.duration,
+        )
+    else:
+        ca = _build_ca(args)
+        render_gif(
+            ca, path=args.output, steps=args.steps,
+            cell_size=args.cell_size, duration=args.duration,
+        )
+    print(f"Animated GIF written to {args.output} ({args.steps} frames)")
+
+
+def cmd_rle_file(args: argparse.Namespace) -> None:
+    """Load a pattern from an RLE file and run it."""
+    pat = load_rle_file(args.rle_file)
+    rule = get_rule(args.rule)
+    height = args.height if args.height else (None if rule.dimensions == 1 else 30)
+    ca = CellularAutomaton(
+        rule, width=args.width, height=height, boundary=args.boundary,
+    )
+    place_pattern(ca, pat, x=args.px, y=args.py)
+    ca.step(args.steps)
+    fmt = args.format
+    if fmt == "ansi":
+        print(render_ansi(ca.grid))
+    elif fmt == "svg":
+        render_svg(ca.grid, path=args.output or "output.svg")
+        print(f"Rendered to {args.output or 'output.svg'}")
+    elif fmt == "png":
+        render_png(ca.grid, args.output or "output.png")
+        print(f"Rendered to {args.output or 'output.png'}")
+    else:
+        print(render_ascii(ca.grid))
+    print(f"\nLoaded pattern with {len(pat)} cells from {args.rle_file}")
+
+
+def cmd_ltl(args: argparse.Namespace) -> None:
+    """Run a Larger-than-Life CA."""
+    # Try preset registry first, then parse B/S/R notation.
+    if args.rule in LTL_PRESETS:
+        rule = LTL_PRESETS[args.rule]
+    else:
+        rule = parse_ltl_notation(args.rule)
+        if rule is None:
+            # Try get_rule in case it's a regular rule.
+            try:
+                rule = get_rule(args.rule)
+            except KeyError:
+                print(f"Error: '{args.rule}' is not a valid LtL rule or B/S/R notation")
+                return
+    height = args.height if args.height else 30
+    ca = CellularAutomaton(
+        rule, width=args.width, height=height, boundary=args.boundary,
+    )
+    if args.random is not None:
+        ca.randomize(args.random, seed=args.seed)
+    elif args.pattern:
+        pat = get_pattern(args.pattern)
+        place_pattern(ca, pat, x=args.px, y=args.py)
+    else:
+        ca.randomize(0.3, seed=args.seed or 42)
+
+    fmt = args.format
+    print(f"Rule: {rule.rule_string()}")
+    print(render_ascii(ca.grid))
+    print()
+    for _ in range(args.steps):
+        ca.step()
+        if fmt == "ansi":
+            print(render_ansi(ca.grid))
+        else:
+            print(render_ascii(ca.grid))
+        print()
+
+
+def cmd_continuous(args: argparse.Namespace) -> None:
+    """Run a continuous CA (reaction-diffusion model)."""
+    model_name = args.model
+    if model_name not in CONTINUOUS_MODELS:
+        print(f"Error: unknown model '{model_name}'. Available: {list(CONTINUOUS_MODELS)}")
+        return
+
+    width = args.width
+    height = args.height if args.height else width
+
+    # Build model — handle Gray-Scott presets.
+    if model_name == "GrayScott" and args.preset:
+        model = GrayScott.from_preset(args.preset, width=width, height=height)
+    else:
+        model = get_continuous_model(model_name, width=width, height=height)
+
+    # Seed the model.
+    if model_name == "GrayScott":
+        if args.random:
+            model.seed_random(n_seeds=8, seed=args.seed)
+        else:
+            model.seed_square(width // 2, height // 2, radius=args.seed_radius)
+    elif model_name == "FitzHughNagumo":
+        if args.random:
+            model.randomize(seed=args.seed)
+        else:
+            model.seed_spiral()
+
+    # Run.
+    model.step(args.steps)
+
+    # Render.
+    if args.format == "ascii":
+        # Show the second species (v / w) which carries the visible pattern.
+        field = model.states[1] if model.n_species > 1 else model.states[0]
+        print(f"Model: {model.name}, step {model.step_count}")
+        print(render_continuous_ascii(field))
+    elif args.format == "png":
+        try:
+            from PIL import Image  # type: ignore
+        except ImportError:
+            print("PNG output requires Pillow: pip install pillow")
+            return
+        field = model.states[1] if model.n_species > 1 else model.states[0]
+        vmin, vmax = float(field.min()), float(field.max())
+        if vmax <= vmin:
+            vmax = vmin + 1e-9
+        normalised = ((field - vmin) / (vmax - vmin) * 255).astype(np.uint8)
+        # Apply a simple colormap (blue → cyan → green → yellow → red).
+        img = np.zeros((height, width, 3), dtype=np.uint8)
+        for i in range(256):
+            mask = normalised == i
+            t = i / 255.0
+            img[mask] = (
+                int(255 * min(1, max(0, 4 * t - 1.5))),
+                int(255 * min(1, max(0, -4 * abs(t - 0.5) + 1))),
+                int(255 * min(1, max(0, -4 * t + 1.5))),
+            )
+        Image.fromarray(img, "RGB").save(args.output or "output.png")
+        print(f"Rendered to {args.output or 'output.png'}")
+    elif args.format == "gif":
+        try:
+            from PIL import Image  # type: ignore
+        except ImportError:
+            print("GIF output requires Pillow: pip install pillow")
+            return
+        # Re-run from scratch to capture frames.
+        model2 = get_continuous_model(model_name, width=width, height=height)
+        if model_name == "GrayScott":
+            model2.seed_square(width // 2, height // 2, radius=args.seed_radius)
+        elif model_name == "FitzHughNagumo":
+            model2.seed_spiral()
+        frames: list = []
+        for _ in range(args.steps + 1):
+            field = model2.states[1] if model2.n_species > 1 else model2.states[0]
+            vmin, vmax = float(field.min()), float(field.max())
+            if vmax <= vmin:
+                vmax = vmin + 1e-9
+            normalised = ((field - vmin) / (vmax - vmin) * 255).astype(np.uint8)
+            img = np.zeros((height, width, 3), dtype=np.uint8)
+            for i in range(256):
+                mask = normalised == i
+                t = i / 255.0
+                img[mask] = (
+                    int(255 * min(1, max(0, 4 * t - 1.5))),
+                    int(255 * min(1, max(0, -4 * abs(t - 0.5) + 1))),
+                    int(255 * min(1, max(0, -4 * t + 1.5))),
+                )
+            frames.append(Image.fromarray(img, "RGB"))
+            model2.step()
+        frames[0].save(
+            args.output or "output.gif",
+            save_all=True, append_images=frames[1:],
+            duration=args.duration, loop=0, optimize=True,
+        )
+        print(f"Animated GIF written to {args.output or 'output.gif'}")
+
+
 # ---------------------------------------------------------------------------
 # Parser construction
 # ---------------------------------------------------------------------------
@@ -462,7 +670,7 @@ def build_parser() -> argparse.ArgumentParser:
                     "analysis tools, and config files.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p.add_argument("--version", action="version", version="%(prog)s 3.0.0")
+    p.add_argument("--version", action="version", version="%(prog)s 4.0.0")
     sub = p.add_subparsers(dest="command", required=True)
 
     # Common rule/initial args
@@ -604,6 +812,71 @@ def build_parser() -> argparse.ArgumentParser:
     sp_ms.add_argument("--params", default=None,
                        help="Comma-separated key=value params for the rule, e.g. p=0.01,g=0.1")
     sp_ms.set_defaults(func=cmd_multistate)
+
+    # gif
+    sp_gif = sub.add_parser("gif", help="Render a CA evolution as an animated GIF")
+    add_common(sp_gif)
+    sp_gif.add_argument("--steps", type=int, default=50, help="Number of frames")
+    sp_gif.add_argument("--output", "-o", default="output.gif", help="Output GIF path")
+    sp_gif.add_argument("--cell-size", type=int, default=4, help="Pixel size per cell")
+    sp_gif.add_argument("--duration", type=int, default=100, help="Frame duration (ms)")
+    sp_gif.add_argument("--random-states", type=float, default=None,
+                        help="Random multi-state init (for multistate rules)")
+    sp_gif.add_argument("--params", default=None,
+                        help="Comma-separated key=value params for multistate rules")
+    sp_gif.set_defaults(func=cmd_gif)
+
+    # rle-file
+    sp_rle = sub.add_parser("rle-file", help="Load a pattern from an RLE file and run it")
+    sp_rle.add_argument("rle_file", help="Path to the .rle file")
+    sp_rle.add_argument("--rule", default="GameOfLife", help="Rule to use")
+    sp_rle.add_argument("--width", type=int, default=60, help="Grid width")
+    sp_rle.add_argument("--height", type=int, default=None, help="Grid height")
+    sp_rle.add_argument("--boundary", default="periodic",
+                        choices=[b.value for b in Boundary])
+    sp_rle.add_argument("--px", type=int, default=5, help="Pattern x offset")
+    sp_rle.add_argument("--py", type=int, default=5, help="Pattern y offset")
+    sp_rle.add_argument("--steps", type=int, default=100, help="Number of steps")
+    sp_rle.add_argument("--format", default="ascii", choices=["ascii", "ansi", "svg", "png"])
+    sp_rle.add_argument("--output", "-o", default=None, help="Output file (for svg/png)")
+    sp_rle.set_defaults(func=cmd_rle_file)
+
+    # ltl — Larger than Life
+    sp_ltl = sub.add_parser("ltl", help="Run a Larger-than-Life CA (Bxx/Sxx/Rn)")
+    sp_ltl.add_argument("--rule", required=True,
+                        help="LtL rule name (Boon, Grenville, Bugs) or Bxx/Sxx/Rn notation")
+    sp_ltl.add_argument("--width", type=int, default=40)
+    sp_ltl.add_argument("--height", type=int, default=None)
+    sp_ltl.add_argument("--boundary", default="periodic",
+                        choices=[b.value for b in Boundary])
+    sp_ltl.add_argument("--random", type=float, default=None, help="Random density")
+    sp_ltl.add_argument("--seed", type=int, default=None)
+    sp_ltl.add_argument("--pattern", default=None, help="Named pattern")
+    sp_ltl.add_argument("--px", type=int, default=5)
+    sp_ltl.add_argument("--py", type=int, default=5)
+    sp_ltl.add_argument("--steps", type=int, default=20)
+    sp_ltl.add_argument("--format", default="ascii", choices=["ascii", "ansi"])
+    sp_ltl.set_defaults(func=cmd_ltl)
+
+    # continuous — reaction-diffusion
+    sp_cont = sub.add_parser("continuous", help="Run a continuous CA (reaction-diffusion)")
+    sp_cont.add_argument("--model", required=True,
+                         choices=list(CONTINUOUS_MODELS.keys()),
+                         help="Continuous model name")
+    sp_cont.add_argument("--preset", default=None,
+                         help="Gray-Scott preset (spots, stripes, maze, worms, solitons, ...)")
+    sp_cont.add_argument("--width", type=int, default=60)
+    sp_cont.add_argument("--height", type=int, default=None)
+    sp_cont.add_argument("--steps", type=int, default=500)
+    sp_cont.add_argument("--seed", type=int, default=None)
+    sp_cont.add_argument("--seed-radius", type=int, default=5,
+                         help="Radius of initial seed square (Gray-Scott)")
+    sp_cont.add_argument("--random", action="store_true",
+                         help="Use random initial seeds instead of a centre seed")
+    sp_cont.add_argument("--format", default="ascii", choices=["ascii", "png", "gif"])
+    sp_cont.add_argument("--output", "-o", default=None, help="Output file (for png/gif)")
+    sp_cont.add_argument("--duration", type=int, default=50, help="GIF frame duration (ms)")
+    sp_cont.set_defaults(func=cmd_continuous)
 
     return p
 

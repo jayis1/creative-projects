@@ -38,6 +38,25 @@ from .multistate import (
     MULTISTATE_RULES, get_multistate_rule, is_multistate_rule,
 )
 
+# Larger-than-Life rules.
+from .ltl import (
+    LargerThanLifeRule, parse_ltl_notation, LTL_PRESETS,
+)
+
+# Continuous CAs (reaction-diffusion).
+from .continuous import (
+    ContinuousCA, GrayScott, FitzHughNagumo,
+    GRAY_SCOTT_PRESETS, CONTINUOUS_MODELS,
+    get_continuous_model, is_continuous_model,
+    render_continuous_ascii,
+)
+
+# RLE file loader.
+from .patterns import load_rle_file, save_rle_file
+
+# GIF export.
+from .visualizer import render_gif, render_multistate_gif
+
 # Analysis tools.
 from .analysis import (
     WolframClassification, classify_elementary_rule,
@@ -74,6 +93,22 @@ __all__ = [
     "MULTISTATE_RULES",
     "get_multistate_rule",
     "is_multistate_rule",
+    # Larger-than-Life
+    "LargerThanLifeRule",
+    "parse_ltl_notation",
+    "LTL_PRESETS",
+    # Continuous CAs
+    "ContinuousCA",
+    "GrayScott",
+    "FitzHughNagumo",
+    "GRAY_SCOTT_PRESETS",
+    "CONTINUOUS_MODELS",
+    "get_continuous_model",
+    "is_continuous_model",
+    "render_continuous_ascii",
+    # RLE files
+    "load_rle_file",
+    "save_rle_file",
     # Patterns
     "PATTERNS",
     "get_pattern",
@@ -88,6 +123,8 @@ __all__ = [
     "render_spacetime_ascii",
     "render_spacetime_svg",
     "render_animation_frames",
+    "render_gif",
+    "render_multistate_gif",
     # Vectorized
     "step_life_vectorized",
     "step_elementary_vectorized",
@@ -108,4 +145,4 @@ __all__ = [
     "CAConfig",
 ]
 
-__version__ = "3.0.0"
+__version__ = "4.0.0"

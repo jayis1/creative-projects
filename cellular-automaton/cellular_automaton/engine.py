@@ -32,6 +32,14 @@ except ImportError:  # pragma: no cover
     MultiStateRule = None  # type: ignore[assignment, misc]
     _HAS_MULTISTATE = False
 
+# Larger-than-Life rules.
+try:
+    from .ltl import LargerThanLifeRule
+    _HAS_LTL = True
+except ImportError:  # pragma: no cover
+    LargerThanLifeRule = None  # type: ignore[assignment, misc]
+    _HAS_LTL = False
+
 
 class Boundary(str, Enum):
     """Boundary condition for cells outside the grid."""
@@ -267,6 +275,12 @@ class CellularAutomaton:
                 mode=mode, fixed_value=self.fixed_value,
             )
 
+        # Fast path: LargerThanLife rules (arbitrary radius, vectorised).
+        if _HAS_LTL and isinstance(rule, LargerThanLifeRule):
+            return rule.step_vectorized(
+                self.grid, mode=mode, fixed_value=self.fixed_value,
+            )
+
         # Generic fallback: per-cell Python loop (CustomRule or radius > 1).
         return self._compute_next_generic()
 
@@ -415,6 +429,7 @@ class CellularAutomaton:
     def from_dict(cls, data: Dict) -> "CellularAutomaton":
         """Reconstruct a CA from a serialized dict."""
         from .rules import get_rule, parse_bx_sx_notation
+        from .ltl import parse_ltl_notation
         rule_name = data["rule"]
         # Try registry first; if not found, try Bxx/Sxx notation (for
         # custom-named GameOfLife rules like "B36/S23" that aren't in RULES).
@@ -425,10 +440,15 @@ class CellularAutomaton:
             if parsed is not None:
                 rule = parsed
             else:
-                raise KeyError(
-                    f"Cannot reconstruct rule {rule_name!r}: not in registry "
-                    f"and not valid Bxx/Sxx notation"
-                )
+                # Try Larger-than-Life notation Bxx/Sxx/Rn
+                parsed_ltl = parse_ltl_notation(rule_name)
+                if parsed_ltl is not None:
+                    rule = parsed_ltl
+                else:
+                    raise KeyError(
+                        f"Cannot reconstruct rule {rule_name!r}: not in registry "
+                        f"and not valid Bxx/Sxx or Bxx/Sxx/Rn notation"
+                    )
         ca = cls(
             rule,
             width=data["width"],

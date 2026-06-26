@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Optional, Tuple
 
 import numpy as np
 
@@ -224,9 +224,9 @@ def render_spacetime_ppm(spacetime: np.ndarray, path: str, cell_size: int = 2) -
         f.write(pixels.tobytes())
 
 
-# ---------------------------------------------------------------------------
+# --------------------------------------------------------------------------- #
 # Animation — render a sequence of frames (PPM) for 2D CAs
-# ---------------------------------------------------------------------------
+# --------------------------------------------------------------------------- #
 
 
 def render_animation_frames(
@@ -257,3 +257,132 @@ def render_animation_frames(
         if i < steps:
             ca.step()
     return paths
+
+
+# --------------------------------------------------------------------------- #
+# GIF export — animated GIF via Pillow
+# --------------------------------------------------------------------------- #
+
+
+def render_gif(
+    ca,
+    path: str,
+    steps: int = 50,
+    cell_size: int = 4,
+    duration: int = 100,
+    loop: bool = True,
+    on_color: Tuple[int, int, int] = (26, 26, 26),
+    off_color: Tuple[int, int, int] = (255, 255, 255),
+) -> None:
+    """Render a CA evolution as an animated GIF.
+
+    Requires Pillow (``pip install pillow``).
+
+    Parameters
+    ----------
+    ca : CellularAutomaton
+        The CA to step and record.  Will be stepped in-place.
+    path : str
+        Output ``.gif`` file path.
+    steps : int
+        Number of steps to record.
+    cell_size : int
+        Pixel size per cell.
+    duration : int
+        Frame duration in milliseconds.
+    loop : bool
+        If True, the GIF loops infinitely (Pillow loop=0); otherwise plays once.
+    on_color, off_color : tuple of (r, g, b)
+        Colours for alive and dead cells.
+    """
+    try:
+        from PIL import Image  # type: ignore
+    except ImportError:
+        raise ImportError("GIF export requires Pillow: pip install pillow")
+
+    frames: list = []
+    for _ in range(steps + 1):
+        frame = _grid_to_image(ca.grid, cell_size, on_color, off_color)
+        frames.append(Image.fromarray(frame, "RGB"))
+        ca.step()
+
+    frames[0].save(
+        path,
+        save_all=True,
+        append_images=frames[1:],
+        duration=duration,
+        loop=0 if loop else 1,
+        optimize=True,
+    )
+
+
+def _grid_to_image(
+    grid: np.ndarray,
+    cell_size: int,
+    on_color: Tuple[int, int, int],
+    off_color: Tuple[int, int, int],
+) -> np.ndarray:
+    """Convert a binary grid to an RGB pixel array (height×width×3)."""
+    if grid.ndim == 1:
+        grid = grid.reshape(1, -1)
+    h, w = grid.shape
+    img_h = h * cell_size
+    img_w = w * cell_size
+    pixels = np.full((img_h, img_w, 3), off_color, dtype=np.uint8)
+    on_arr = np.array(on_color, dtype=np.uint8)
+    for y in range(h):
+        for x in range(w):
+            if grid[y, x]:
+                pixels[y * cell_size:(y + 1) * cell_size,
+                       x * cell_size:(x + 1) * cell_size] = on_arr
+    return pixels
+
+
+def render_multistate_gif(
+    ca,
+    path: str,
+    steps: int = 50,
+    cell_size: int = 4,
+    duration: int = 100,
+    loop: bool = True,
+) -> None:
+    """Render a multi-state CA evolution as an animated GIF with state colours.
+
+    Uses ``ca.rule.state_colors()`` for the colour mapping.
+    """
+    try:
+        from PIL import Image  # type: ignore
+    except ImportError:
+        raise ImportError("GIF export requires Pillow: pip install pillow")
+
+    colors = {}
+    if hasattr(ca.rule, "state_colors"):
+        colors = ca.rule.state_colors()
+    default = (128, 128, 128)
+
+    frames: list = []
+    for _ in range(steps + 1):
+        grid = ca.grid
+        if grid.ndim == 1:
+            grid = grid.reshape(1, -1)
+        h, w = grid.shape
+        img_h = h * cell_size
+        img_w = w * cell_size
+        pixels = np.zeros((img_h, img_w, 3), dtype=np.uint8)
+        for y in range(h):
+            for x in range(w):
+                c = int(grid[y, x])
+                color = colors.get(c, default)
+                pixels[y * cell_size:(y + 1) * cell_size,
+                       x * cell_size:(x + 1) * cell_size] = np.array(color, dtype=np.uint8)
+        frames.append(Image.fromarray(pixels, "RGB"))
+        ca.step()
+
+    frames[0].save(
+        path,
+        save_all=True,
+        append_images=frames[1:],
+        duration=duration,
+        loop=0 if loop else 1,
+        optimize=True,
+    )

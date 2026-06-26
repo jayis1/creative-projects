@@ -198,3 +198,101 @@ def pattern_bounds(pattern: Pattern) -> Tuple[int, int, int, int]:
     xs = [p[0] for p in pattern]
     ys = [p[1] for p in pattern]
     return min(xs), min(ys), max(xs), max(ys)
+
+
+def load_rle_file(path: str) -> Pattern:
+    """Load a pattern from an RLE file on disk.
+
+    RLE (Run Length Encoded) is the standard file format for sharing
+    Game of Life patterns (used by LifeWiki, Golly, etc.).
+
+    The file format is::
+
+        #C comment lines (optional)
+        x = width, y = height, rule = B3/S23
+        ...RLE body...
+
+    This parser handles the header line, comment lines (``#C``, ``#N``, etc.),
+    and the full RLE body including run-length prefixes and ``$`` row breaks.
+
+    Parameters
+    ----------
+    path : str
+        Path to the ``.rle`` file.
+
+    Returns
+    -------
+    Pattern
+        List of ``(x, y)`` coordinates of live cells.
+    """
+    with open(path, "r") as f:
+        lines = f.readlines()
+
+    # Skip comment lines (starting with #) and find the header line.
+    rle_lines: list = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("#"):
+            continue
+        if stripped.startswith("x"):
+            # Header line: x = W, y = H, rule = ...
+            # We don't strictly need to parse it but validate format.
+            continue
+        rle_lines.append(stripped)
+
+    rle_body = "".join(rle_lines)
+    return parse_rle(rle_body)
+
+
+def save_rle_file(pattern: Pattern, path: str, rule: str = "B3/S23") -> None:
+    """Save a pattern to an RLE file.
+
+    Parameters
+    ----------
+    pattern : Pattern
+        List of ``(x, y)`` coordinates.
+    path : str
+        Output ``.rle`` file path.
+    rule : str
+        Rule string for the header (default Conway's Life).
+    """
+    if not pattern:
+        with open(path, "w") as f:
+            f.write(f"x = 0, y = 0, rule = {rule}\n!\n")
+        return
+
+    min_x, min_y, max_x, max_y = pattern_bounds(pattern)
+    width = max_x - min_x + 1
+    height = max_y - min_y + 1
+
+    # Build a grid for RLE encoding.
+    grid = [["b"] * width for _ in range(height)]
+    for x, y in pattern:
+        gx, gy = x - min_x, y - min_y
+        grid[gy][gx] = "o"
+
+    # Encode with run-length.
+    body_lines: list = []
+    for row in grid:
+        encoded = ""
+        i = 0
+        while i < width:
+            ch = row[i]
+            count = 1
+            while i + count < width and row[i + count] == ch:
+                count += 1
+            if count > 1:
+                encoded += str(count)
+            encoded += ch
+            i += count
+        body_lines.append(encoded)
+
+    body = "$".join(body_lines) + "!"
+
+    with open(path, "w") as f:
+        f.write(f"x = {width}, y = {height}, rule = {rule}\n")
+        # Wrap body at ~70 columns.
+        for i in range(0, len(body), 70):
+            f.write(body[i:i + 70] + "\n")

@@ -1,0 +1,11 @@
+{
+  "rule": "GrayScott",
+  "model": "GrayScott",
+  "preset": "spots",
+  "width": 60,
+  "height": 40,
+  "initial": {"center": true},
+  "steps": 500,
+  "output": {"format": "ascii"},
+  "logging": {"level": "INFO"}
+}

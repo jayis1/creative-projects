@@ -1,0 +1,10 @@
+{
+  "rule": "B5678/S45678/R5",
+  "width": 40,
+  "height": 30,
+  "boundary": "periodic",
+  "initial": {"random": 0.3, "seed": 42},
+  "steps": 50,
+  "output": {"format": "ascii"},
+  "logging": {"level": "WARNING"}
+}

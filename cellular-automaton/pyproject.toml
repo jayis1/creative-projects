@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cellular-automaton"
-version = "3.0.0"
-description = "Comprehensive 1D & 2D cellular automaton engine: 256 elementary rules, 15 Life variants, 5 multi-state CAs (Wireworld/Brian's Brain/Forest Fire/Cyclic/Immigration), custom rules, 19 patterns, RLE loader, analysis tools (Wolfram classification, entropy, density, parameter sweeps, Lyapunov proxy), config files (JSON/YAML/TOML), logging, ASCII/ANSI/SVG/PPM/PNG output, CLI"
+version = "4.0.0"
+description = "Comprehensive 1D & 2D + continuous cellular automaton engine: 256 elementary rules, 15 Life variants, 5 multi-state CAs, Larger-than-Life, Gray-Scott & FitzHugh-Nagumo reaction-diffusion, custom rules, 19 patterns, RLE file loader, analysis tools (Wolfram classification, entropy, density, sweeps, Lyapunov proxy), config files (JSON/YAML/TOML), logging, ASCII/ANSI/SVG/PPM/PNG/GIF output, CLI with 19 subcommands"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [{name = "creative-projects"}]
