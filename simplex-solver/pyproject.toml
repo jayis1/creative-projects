@@ -4,26 +4,65 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "simplex-solver"
-version = "1.0.0"
+version = "2.0.0"
 description = "Exact linear & integer programming via the two-phase Simplex method (pure Python, stdlib only)"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [{name = "creative-projects"}]
-keywords = ["linear-programming", "simplex", "integer-programming", "branch-and-bound", "operations-research", "exact-arithmetic"]
+keywords = [
+    "linear-programming",
+    "simplex",
+    "integer-programming",
+    "branch-and-bound",
+    "gomory-cuts",
+    "operations-research",
+    "exact-arithmetic",
+    "optimization",
+    "mps-format",
+    "lp-format",
+]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Mathematics",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+[project.optional-dependencies]
+yaml = ["pyyaml>=6.0"]
+toml = ["tomli>=1.2; python_version < '3.11'"]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.1.0",
+    "pyyaml>=6.0",
 ]
 
 [project.scripts]
 simplex-solver = "simplex.cli:main"
+
+[project.urls]
+Repository = "https://github.com/jayis1/creative-projects"
+Documentation = "https://github.com/jayis1/creative-projects/blob/main/simplex-solver/README.md"
 
 [tool.setuptools.packages.find]
 include = ["simplex*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP"]
+ignore = ["E501"]  # line length handled by formatter

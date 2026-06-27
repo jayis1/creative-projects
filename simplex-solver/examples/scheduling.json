@@ -1,0 +1,18 @@
+{
+  "name": "scheduling",
+  "objective": "min",
+  "variables": ["x1", "x2", "x3", "x4", "x5", "x6", "x7"],
+  "objective_coeffs": {"x1": 200, "x2": 200, "x3": 200, "x4": 250, "x5": 250, "x6": 250, "x7": 200},
+  "constraints": [
+    {"coeffs": {"x1": 1, "x2": 1, "x3": 1, "x4": 1, "x5": 1, "x6": 1, "x7": 1}, "relation": ">=", "rhs": 14, "name": "total_staff"},
+    {"coeffs": {"x1": 1}, "relation": ">=", "rhs": 4, "name": "monday"},
+    {"coeffs": {"x2": 1}, "relation": ">=", "rhs": 3, "name": "tuesday"},
+    {"coeffs": {"x3": 1}, "relation": ">=", "rhs": 5, "name": "wednesday"},
+    {"coeffs": {"x4": 1}, "relation": ">=", "rhs": 2, "name": "thursday"},
+    {"coeffs": {"x5": 1}, "relation": ">=", "rhs": 6, "name": "friday"},
+    {"coeffs": {"x6": 1}, "relation": ">=", "rhs": 7, "name": "saturday"},
+    {"coeffs": {"x7": 1}, "relation": ">=", "rhs": 3, "name": "sunday"}
+  ],
+  "bounds": {"x1": [0, null], "x2": [0, null], "x3": [0, null], "x4": [0, null], "x5": [0, null], "x6": [0, null], "x7": [0, null]},
+  "integer": ["x1", "x2", "x3", "x4", "x5", "x6", "x7"]
+}
