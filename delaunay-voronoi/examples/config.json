@@ -1,0 +1,26 @@
+{
+  "render": {
+    "width": 800,
+    "height": 600,
+    "background": "#0f0f17",
+    "delaunay_color": "#3a506b",
+    "voronoi_color": "#e0a458",
+    "point_color": "#5bc0be",
+    "hull_color": "#9bf6ff",
+    "point_radius": 3.0,
+    "show_points": true,
+    "show_delaunay": true,
+    "show_voronoi": true,
+    "show_hull": true
+  },
+  "algorithm": {
+    "num_points": 50,
+    "seed": 42,
+    "lloyd_iterations": 5,
+    "ruppert_min_angle": 30.0,
+    "ruppert_max_area": null,
+    "ruppert_max_points": 10000
+  },
+  "output_dir": ".",
+  "log_level": "INFO"
+}

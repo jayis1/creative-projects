@@ -1,3 +1,34 @@
-# Delaunay-Voronoi generated output
-*.svg
-*.ppm
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Test artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Delaunay-Voronoi generated output (root level only)
+/*.svg
+/*.ppm
+/*.png
+/*.obj
+/*.stl
+/*.json
+
+# But allow example outputs in examples/
+!examples/*.svg
+!examples/*.ppm
+!examples/*.png
+!examples/*.obj
+!examples/*.stl

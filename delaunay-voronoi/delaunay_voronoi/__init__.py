@@ -21,7 +21,7 @@ floating-point degeneracies for coplanar / cocircular inputs.
 
 from .geometry import Point, Triangle, Edge, Circle, orient2d, incircle
 from .delaunay import DelaunayTriangulation
-from .voronoi import VoronoiDiagram
+from .voronoi import VoronoiDiagram, VoronoiCell
 from .convex_hull import convex_hull
 from .lloyd import lloyd_relaxation, generate_poisson_seed
 from .refine import ruppert_refine
@@ -35,13 +35,21 @@ from .animate import render_animated_svg, render_lloyd_animation
 from .serialize import (
     save_json, load_json, triangulation_to_dict, triangulation_from_dict,
 )
+from .spatial_hash import SpatialHashGrid, nearest_neighbor_grid, deduplicate_points
+from .metrics import compute_mesh_report, MeshReport, AngleStats, AreaStats, EdgeStats
+from .exporters import (
+    export_obj, save_obj, export_ascii_stl,
+    export_png, render_png, save_png,
+    extract_boundary_edges, extract_boundary_loops,
+)
+from .config import Config, RenderConfig, AlgorithmConfig, load_config, save_config
 
-__version__ = "2.0.0"
+__version__ = "3.0.0"
 
 __all__ = [
     "Point", "Triangle", "Edge", "Circle",
     "orient2d", "incircle",
-    "DelaunayTriangulation", "VoronoiDiagram",
+    "DelaunayTriangulation", "VoronoiDiagram", "VoronoiCell",
     "convex_hull", "lloyd_relaxation", "generate_poisson_seed",
     "ruppert_refine",
     "nearest_neighbor", "k_nearest_neighbors", "locate_point",
@@ -51,5 +59,12 @@ __all__ = [
     "render_animated_svg", "render_lloyd_animation",
     "save_json", "load_json",
     "triangulation_to_dict", "triangulation_from_dict",
+    # New in v3.0
+    "SpatialHashGrid", "nearest_neighbor_grid", "deduplicate_points",
+    "compute_mesh_report", "MeshReport", "AngleStats", "AreaStats", "EdgeStats",
+    "export_obj", "save_obj", "export_ascii_stl",
+    "export_png", "render_png", "save_png",
+    "extract_boundary_edges", "extract_boundary_loops",
+    "Config", "RenderConfig", "AlgorithmConfig", "load_config", "save_config",
     "__version__",
 ]

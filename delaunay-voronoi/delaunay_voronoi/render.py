@@ -96,8 +96,9 @@ def render_ppm(
 ) -> bytes:
     """Render a flat-shaded Voronoi diagram to PPM (P6 binary) bytes.
 
-    Each pixel is coloured according to the nearest site (a brute-force
-    O(width*height*n) computation suitable for modest images / demos).
+    Each pixel is coloured according to the nearest site, using a
+    :class:`SpatialHashGrid` for O(k) nearest-site lookup (much faster
+    than brute-force for large point sets).
     """
     if not points:
         # Flat-fill the background colour for every pixel.
@@ -118,18 +119,25 @@ def render_ppm(
             b = (i * 197) % 256
             site_colors[p] = (r, g, b)
 
-    pixels = bytearray()
+    # Build a spatial hash grid for fast nearest-neighbour lookups.
+    from .spatial_hash import SpatialHashGrid
+    grid = SpatialHashGrid.from_points(points)
+
+    pixels = bytearray(width * height * 3)
+    bg = bytes(background)
+    for i in range(0, len(pixels), 3):
+        pixels[i:i + 3] = bg
+
     for y in range(height):
+        row = y * width * 3
         for x in range(width):
-            best = None
-            best_d = float("inf")
-            for p in points:
-                d = (p.x - x) ** 2 + (p.y - y) ** 2
-                if d < best_d:
-                    best_d = d
-                    best = p
-            color = site_colors[best]
-            pixels.extend(color)
+            nearest = grid.nearest(Point(float(x), float(y)))
+            if nearest is not None:
+                colour = site_colors[nearest]
+                idx = row + x * 3
+                pixels[idx] = colour[0]
+                pixels[idx + 1] = colour[1]
+                pixels[idx + 2] = colour[2]
 
     # Draw points on top
     for p in points:

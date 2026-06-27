@@ -1,24 +1,47 @@
 [build-system]
 requires = ["setuptools>=64"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "delaunay-voronoi"
-version = "1.0.0"
-description = "Computational geometry toolkit: Delaunay triangulation, Voronoi diagrams, convex hull, Lloyd's relaxation"
+version = "3.0.0"
+description = "Computational geometry toolkit: Delaunay triangulation, Voronoi diagrams, convex hull, Lloyd's relaxation, mesh refinement, quality metrics, and multiple export formats"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [{name = "creative-projects"}]
-keywords = ["delaunay", "voronoi", "computational-geometry", "convex-hull", "lloyd"]
+keywords = [
+    "delaunay", "voronoi", "computational-geometry",
+    "convex-hull", "lloyd", "ruppert", "mesh",
+    "triangulation", "quality-mesh", "spatial",
+]
 classifiers = [
+    "Development Status :: 4 - Beta",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "License :: OSI Approved :: MIT License",
     "Topic :: Scientific/Engineering :: Mathematics",
+    "Topic :: Multimedia :: Graphics",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
 ]
+
+[project.optional-dependencies]
+yaml = ["pyyaml>=6.0"]
+dev = ["pytest>=7.0", "pyyaml>=6.0"]
 
 [project.scripts]
 delaunay-voronoi = "delaunay_voronoi.cli:main"
 
 [tool.setuptools]
 packages = ["delaunay_voronoi"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
