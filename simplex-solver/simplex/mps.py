@@ -190,11 +190,11 @@ def read_mps(path: str) -> LPProblem:
         if rn in ranges:
             r = ranges[rn]
             if rel == "L":
+                # L row with range: b - |r| <= a.x <= b
                 constraints.append({"coeffs": coeffs, "relation": "<=", "rhs": b, "name": cname})
-                constraints.append({"coeffs": coeffs, "relation": "<=", "rhs": b + abs(r), "name": cname + "_hi"})
-                # actually L+range means a.x <= b and a.x >= b-|r| → add >=
-                constraints[-1] = {"coeffs": coeffs, "relation": ">=", "rhs": b - abs(r), "name": cname + "_lo"}
+                constraints.append({"coeffs": coeffs, "relation": ">=", "rhs": b - abs(r), "name": cname + "_lo"})
             elif rel == "G":
+                # G row with range: b <= a.x <= b + |r|
                 constraints.append({"coeffs": coeffs, "relation": ">=", "rhs": b, "name": cname})
                 constraints.append({"coeffs": coeffs, "relation": "<=", "rhs": b + abs(r), "name": cname + "_hi"})
             else:  # E
@@ -257,7 +257,12 @@ def write_mps(problem: LPProblem, path: str) -> None:
                 parts.append(f"    {rn:<8} {float(val):<14.6g}")
             lines.append("".join(parts))
     if int_active:
-        lines.append(f"    MARKER 'INTEND'")
+        # Use the last variable's name as the column field for the INTEND
+        # marker, matching the INTORG format.  Without a column name the
+        # marker line is malformed and may be rejected by strict parsers.
+        last_var = problem.variables[-1]
+        lines.append(f"    {last_var:<8} 'MARKER'                 'INTEND'")
+        int_active = False
     lines.append("RHS")
     rhs_name = "RHS1"
     for i, c in enumerate(problem.constraints):

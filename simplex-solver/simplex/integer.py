@@ -17,17 +17,11 @@ from __future__ import annotations
 import heapq
 from dataclasses import dataclass
 from fractions import Fraction
-from typing import Iterable
 
 from .problem import LPProblem, LPResult, LPStatus
 from .simplex import SimplexSolver
 
 __all__ = ["MILPSolver"]
-
-
-def _frac_part(x: Fraction) -> Fraction:
-    """Fractional part in [0, 1)."""
-    return x - int(x) if x >= 0 else x - int(x) + (1 if x != int(x) else 0)
 
 
 @dataclass(order=True)
@@ -183,9 +177,11 @@ class MILPSolver:
             right_lo = ceil_v if cur_lo is None else max(cur_lo, ceil_v)
             right_bounds[frac_var] = (right_lo, cur_hi)
             # Push children with bound = relaxation obj (best-bound heuristic).
-            key = (-obj, self._node_counter + 1)
-            heapq.heappush(heap, self._new_node(priority=key, bounds=left_bounds, parent_obj=obj))
-            heapq.heappush(heap, self._new_node(priority=key, bounds=right_bounds, parent_obj=obj))
+            # Create the nodes first to get the correct node_id, then push.
+            left_node = self._new_node(priority=(-obj, self._node_counter), bounds=left_bounds, parent_obj=obj)
+            right_node = self._new_node(priority=(-obj, self._node_counter), bounds=right_bounds, parent_obj=obj)
+            heapq.heappush(heap, left_node)
+            heapq.heappush(heap, right_node)
         if best_obj is None:
             return LPResult(status=LPStatus.INFEASIBLE, message="no integer feasible solution found")
         return LPResult(

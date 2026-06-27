@@ -27,7 +27,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from fractions import Fraction
-from typing import Iterable, Sequence
 
 from .problem import LPProblem, LPResult, LPStatus
 
@@ -546,7 +545,10 @@ class Tableau:
         # reduced-cost rule uses rc > 0 for entering.  We set artificial
         # costs to -1 in a *copy* of obj_row.
         saved_obj = dict(self.obj_row)
-        saved_const = self.obj_const
+        # The construction-time obj_const includes the variable-shift constant
+        # (sum c_v * lb_v for shifted vars, plus flip offsets).  We must
+        # preserve this through Phase I and re-add it after restoration.
+        saved_shift_const = self.obj_const
         # Phase-I objective row: reduced cost of artificials must be 0 if they
         # are basic (they are), and -1 if non-basic.  We compute the proper
         # reduced costs by pricing out: rc_j = c_j - c_B * A_B^-1 * A_j.
@@ -581,7 +583,7 @@ class Tableau:
             # Phase I cannot be unbounded (artificials are bounded ≥ 0).
             # This indicates a logic error; treat as numerical.
             self.obj_row = saved_obj
-            self.obj_const = saved_const
+            self.obj_const = saved_shift_const
             return LPStatus.NUMERICAL
         if status is LPStatus.TIMEOUT:
             return status
@@ -591,7 +593,7 @@ class Tableau:
             if self.vars[b].is_artificial and self.rhs[i] > 0:
                 # restore objective (best-effort) and report infeasible.
                 self.obj_row = saved_obj
-                self.obj_const = saved_const
+                self.obj_const = saved_shift_const
                 return LPStatus.INFEASIBLE
         # Drive any remaining (zero-valued) artificials out of the basis.
         for i in range(len(self.basis)):
@@ -631,23 +633,14 @@ class Tableau:
                 rc -= cb * self.rows[i].get(j, Fraction(0))
             if rc != 0:
                 self.obj_row[j] = rc
-        # Objective constant.
+        # Objective constant: z = sum c_B * rhs[i], plus the original
+        # construction-time shift constant (c·lb for shifted vars, c·ub for
+        # flipped vars) which was saved before Phase I.
         z = Fraction(0)
         for i in range(len(self.rows)):
             cb = self.vars[self.basis[i]].cost
             z += cb * self.rhs[i]
-        self.obj_const = z
-        # Also need to incorporate the constant from variable shifts handled
-        # at construction time.  We lost that when we overwrote obj_const —
-        # re-add the original objective shift.  This is stored implicitly in
-        # the original objective coefficients already (the shift only affects
-        # the *constant*, not the reduced costs).  However we threw away
-        # saved_const above which held the Phase-I constant, not the shift.
-        # The shift was folded into obj_const at from_problem time and then
-        # overwritten.  We must re-derive it.  The shift equals
-        #   sum_v c_v * lb_v  (for shifted vars)  plus contributions from flips.
-        # Rather than re-derive, we recompute the total objective from scratch
-        # once we extract the primal solution — see extract_solution().
+        self.obj_const = z + saved_shift_const
         return LPStatus.OPTIMAL
 
     # ------------------------------------------------------------------ #

@@ -173,6 +173,32 @@ pip install -e .
 pytest tests/
 ```
 
+## Known Issues (Resolved)
+
+The following bugs were identified during the Phase 3 bug hunt and fixed:
+
+1. **Artificial variables re-entering basis in Phase II** — After Phase I drove artificials out of the basis, they could re-enter during Phase II (their reduced cost was positive under the restored objective), undoing Phase I's work and returning a trivially zero solution. **Fix**: Artificials are permanently barred from re-entering the basis in `_select_entering`.
+
+2. **Dual sign error** — The shadow price for `<=` constraints was reported with the wrong sign (negative instead of positive). **Fix**: Dual is now correctly extracted as `-reduced_cost(slack)` for `<=`, `+reduced_cost(surplus)` for `>=`, and `-reduced_cost(artificial)` for `=`.
+
+3. **Negative-rhs constraint handling** — Constraints with negative rhs after variable shifts would have their slack/surplus coefficient negated by a blanket "multiply row by -1" step, breaking the identity column and causing the solver to return infeasible solutions as optimal. **Fix**: Negative-rhs rows now use an artificial variable with the correct sign, and the entire row is negated *before* the identity coefficient is established, ensuring the basic variable always has coefficient +1.
+
+4. **MILP `_apply_bounds` convoluted logic** — The bound-tightening code had dead, unreachable branches and a duplicate `return p` statement. **Fix**: Simplified to a clean max/min tightening.
+
+5. **MILP `floor_v` computation** — The floor of fractional values used an ad-hoc expression that was incorrect for negative values. **Fix**: Replaced with `math.floor()`.
+
+6. **MILP node_id mismatch in priority key** — The heap priority tuple used `self._node_counter + 1` which didn't match the actual node_id assigned by `_new_node`. **Fix**: Create nodes first, then push, so the priority key matches.
+
+7. **Phase I obj_const not restored** — After Phase I, the objective constant was reset to `sum c_B * rhs[i]` without re-adding the construction-time variable-shift constant (`c·lb` for shifted vars, `c·ub` for flipped vars). This didn't affect the reported objective (which is recomputed from scratch) but made `obj_const` inconsistent. **Fix**: The shift constant is now saved before Phase I and re-added during restoration.
+
+8. **MPS INTEND marker malformed** — When the last variable in the COLUMNS section was integer, the INTEND marker line was `MARKER 'INTEND'` without a column name field, which strict MPS parsers reject. **Fix**: The marker now includes the last variable's name in the column field.
+
+9. **MPS RANGES L-row handling** — For L (≤) rows with RANGES, the code appended a `<=` constraint with `b + |r|` and then overwrote it with a `>=` constraint, resulting in only one constraint instead of two. **Fix**: Correctly generates both `a.x <= b` and `a.x >= b - |r|`.
+
+10. **Dead code: `_frac_part`** — The `_frac_part` helper function in `integer.py` was unused and had incorrect behaviour for negative integers. **Fix**: Removed.
+
+11. **Unused imports** — `Iterable`, `Sequence` in `simplex.py` and `Iterable` in `integer.py` were imported but never used. **Fix**: Removed.
+
 ## License
 
 MIT
