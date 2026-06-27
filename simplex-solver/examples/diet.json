@@ -1,0 +1,12 @@
+{
+  "name": "diet",
+  "objective": "min",
+  "variables": ["bread", "milk"],
+  "objective_coeffs": {"bread": 2, "milk": 3},
+  "constraints": [
+    {"coeffs": {"bread": 1, "milk": 3}, "relation": ">=", "rhs": 5, "name": "cal"},
+    {"coeffs": {"bread": 2, "milk": 1}, "relation": ">=", "rhs": 4, "name": "vit"}
+  ],
+  "bounds": {},
+  "integer": []
+}

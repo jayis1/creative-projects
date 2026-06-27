@@ -1,0 +1,11 @@
+{
+  "name": "knapsack",
+  "objective": "max",
+  "variables": ["i1", "i2", "i3", "i4", "i5"],
+  "objective_coeffs": {"i1": 60, "i2": 50, "i3": 70, "i4": 30, "i5": 80},
+  "constraints": [
+    {"coeffs": {"i1": 5, "i2": 3, "i3": 4, "i4": 2, "i5": 6}, "relation": "<=", "rhs": 15, "name": "cap"}
+  ],
+  "bounds": {"i1": [0, 1], "i2": [0, 1], "i3": [0, 1], "i4": [0, 1], "i5": [0, 1]},
+  "integer": ["i1", "i2", "i3", "i4", "i5"]
+}
