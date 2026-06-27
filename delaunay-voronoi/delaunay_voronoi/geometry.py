@@ -102,7 +102,7 @@ class Triangle:
         d = 2.0 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by))
         if d == 0.0:
             # Degenerate (collinear) - return a huge circle
-            return Point(0.0, 0.0), float("inf")
+            return Circle(Point(0.0, 0.0), float("inf"))
         ux = (
             (ax * ax + ay * ay) * (by - cy)
             + (bx * bx + by * by) * (cy - ay)

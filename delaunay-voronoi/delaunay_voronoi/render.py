@@ -100,9 +100,10 @@ def render_ppm(
     O(width*height*n) computation suitable for modest images / demos).
     """
     if not points:
-        return b"P6\n%d %d\n255\n" % (width, height) + bytes(
-            background for _ in range(width * height)
-        )
+        # Flat-fill the background colour for every pixel.
+        header = f"P6\n{width} {height}\n255\n".encode("ascii")
+        pixel_data = bytes(background) * (width * height)
+        return header + pixel_data
 
     # Map cells to colours
     site_colors: dict = {}

@@ -35,9 +35,20 @@ def ruppert_refine(
     max_area : if given, triangles larger than this are also split.
 
     Returns the refined list of points (originals + circumcenter inserts).
+
+    Note: inserted circumcenters are clamped to the bounding box of the
+    input points so that skinny triangles on the convex hull don't produce
+    circumcenters far outside the domain (which would create even larger
+    triangles and prevent convergence).
     """
     if len(points) < 3:
         return list(points)
+
+    # Compute bounding box for clamping
+    min_x = min(p.x for p in points)
+    max_x = max(p.x for p in points)
+    min_y = min(p.y for p in points)
+    max_y = max(p.y for p in points)
 
     min_angle_rad = math.radians(min_angle_deg)
     current = list(points)
@@ -63,9 +74,11 @@ def ruppert_refine(
             break
         # Detect stall: if not making meaningful progress, stop to avoid
         # infinite loops (Ruppert's without constrained segments can diverge).
+        # We compare the worst ratio against the previous worst; if it
+        # hasn't improved after several consecutive iterations we bail out.
         if worst_ratio >= last_worst - 1e-9:
             stall_count += 1
-            if stall_count >= 5:
+            if stall_count >= 20:
                 break
         else:
             stall_count = 0
@@ -75,6 +88,13 @@ def ruppert_refine(
             c = circumcenter(bad.a, bad.b, bad.c)
         except ValueError:
             break
+        # Clamp the circumcenter to the bounding box of the input.  Skinny
+        # hull triangles have circumcenters far outside the domain; inserting
+        # them would create even larger triangles and prevent convergence.
+        c = Point(
+            min(max(c.x, min_x), max_x),
+            min(max(c.y, min_y), max_y),
+        )
         # Guard against inserting a point essentially identical to an
         # existing one (which would create a degenerate triangle).
         if any(c.distance_to(p) < 1e-9 for p in current):

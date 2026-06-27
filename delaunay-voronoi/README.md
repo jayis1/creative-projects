@@ -170,6 +170,22 @@ delaunay-voronoi/
 └── pyproject.toml
 ```
 
+## Known Issues (Resolved)
+
+The following bugs were found during the Phase 3 bug hunt and have been fixed:
+
+1. **`Triangle.circumcircle()` returned a bare tuple instead of `Circle`** for degenerate (collinear) triangles. Fixed to always return a `Circle` object. *(geometry.py)*
+
+2. **`render_ppm()` crashed on empty point sets.** The empty-points branch used `bytes()` on an iterable of tuples (invalid) and a bytes-format `%` operator (invalid in Python 3). Fixed to use `f-string` header and `bytes(background) * (width * height)` for flat-fill. *(render.py)*
+
+3. **Ruppert's refinement threshold formula was wrong.** The original code used `0.5 * sin(2θ)` as the threshold but `_min_angle_sin_ratio` returns `sin(min_angle)`, so the comparison was incorrect — the algorithm never terminated for reasonable angle targets. Fixed to use `sin(min_angle_rad)` directly. *(refine.py)*
+
+4. **Ruppert's refinement could insert circumcenters far outside the input domain.** Skinny hull triangles have circumcenters very far from the input points, creating even larger triangles and preventing convergence. Fixed by clamping inserted circumcenters to the input bounding box. *(refine.py)*
+
+5. **Ruppert's stall detection was too aggressive (5 iterations).** The stall counter broke out of refinement before making meaningful progress on large meshes. Increased to 20 to allow more refinement while still preventing true infinite loops. *(refine.py)*
+
+6. **CLI `info` subcommand had an undefined variable `r`.** The min-angle computation referenced `r` instead of `min(ratios)`. Fixed. *(cli.py)*
+
 ## License
 
 MIT
