@@ -1,0 +1,13 @@
+{
+  "name": "production",
+  "objective": "max",
+  "variables": ["x", "y", "z"],
+  "objective_coeffs": {"x": 30, "y": 20, "z": 50},
+  "constraints": [
+    {"coeffs": {"x": 2, "y": 1, "z": 3}, "relation": "<=", "rhs": 100, "name": "labor"},
+    {"coeffs": {"x": 1, "y": 3, "z": 2}, "relation": "<=", "rhs": 120, "name": "machine"},
+    {"coeffs": {"x": 1, "y": 1, "z": 1}, "relation": "<=", "rhs": 50, "name": "material"}
+  ],
+  "bounds": {},
+  "integer": []
+}

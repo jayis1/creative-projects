@@ -186,3 +186,46 @@ class LPProblem:
         if integer:
             self.integer.add(name)
         self.objective_coeffs.setdefault(name, Fraction(0))
+
+    # ------------------------------------------------------------------ #
+    # validation
+    # ------------------------------------------------------------------ #
+    def validate(self) -> list[str]:
+        """Return a list of validation error messages (empty if valid).
+
+        Checks performed:
+        * All constraint coefficients reference declared variables.
+        * Bounds are consistent (lb <= ub when both are finite).
+        * Integer variables have integer bounds (or None).
+        * Constraint names are unique (if provided).
+        * No duplicate variable names.
+        """
+        errors: list[str] = []
+        var_set = set(self.variables)
+        if len(var_set) != len(self.variables):
+            errors.append("duplicate variable names in problem")
+        # bounds consistency
+        for v in self.variables:
+            lo, hi = self.bounds.get(v, (Fraction(0), None))
+            if lo is not None and hi is not None and lo > hi:
+                errors.append(f"variable {v!r}: lower bound {lo} > upper bound {hi}")
+            if v in self.integer:
+                if lo is not None and lo != int(lo):
+                    errors.append(f"integer variable {v!r} has non-integer lower bound {lo}")
+                if hi is not None and hi != int(hi):
+                    errors.append(f"integer variable {v!r} has non-integer upper bound {hi}")
+        # constraint coefficients
+        seen_names: set[str] = set()
+        for i, c in enumerate(self.constraints):
+            cname = c.get("name")
+            if cname is not None:
+                if cname in seen_names:
+                    errors.append(f"constraint {i}: duplicate name {cname!r}")
+                seen_names.add(cname)
+            for vname in c.get("coeffs", {}):
+                if vname not in var_set:
+                    errors.append(f"constraint {i}: unknown variable {vname!r}")
+            # check rhs is a number
+            if "rhs" not in c:
+                errors.append(f"constraint {i}: missing 'rhs'")
+        return errors

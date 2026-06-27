@@ -4,20 +4,23 @@ The implementation here is deliberately *classical* — a dense, dictionary-styl
 simplex that operates on :class:`fractions.Fraction` so every pivot is
 bit-exact.  Phase I minimises the sum of artificials to find a feasible basis;
 Phase II optimises the original objective.  Anti-cycling is provided by
-Bland's rule (selectable) and a cycling-detection guard.
+Bland's rule (selectable).
 
 Design notes
 ------------
-* The tableau is stored as a list-of-lists of :class:`Fraction`.
+* The tableau is stored as a list of dicts (sparse rows) of
+  :class:`Fraction`, keyed by non-basic column index.
 * Slack/surplus variables are added automatically for ``<=`` / ``>=``
-  constraints; artificial variables are added for ``=`` and ``>=`` rows (the
-  latter needs an artificial because its surplus has cost 0 and coefficient
-  −1, which cannot form an initial identity column).
-* Free variables (both bounds ``None``) are handled by the **bounded-variable
-  simplex** substitution: x = x⁺ − x⁻ where both are non-negative.  Upper
-  bounds are handled with a *bounded-variable ratio test* (Bland-style) so we
-  never have to add explicit upper-bound rows.
-* Lower bounds other than 0 are shifted: x' = x − lo.
+  constraints; artificial variables are added for ``=`` and ``>=`` rows.
+* Free variables (both bounds ``None``) are split: ``x = x⁺ − x⁻`` with both
+  parts non-negative.
+* Upper bounds are handled by adding explicit ``x ≤ ub`` constraint rows —
+  this keeps the simplex core simple and robust (no bounded-variable ratio
+  test needed).
+* Lower bounds other than 0 are shifted: ``x' = x − lb``.
+* Negative-rhs rows are normalised by negating the entire row *before* fixing
+  the basic variable's identity coefficient to +1, ensuring the initial basis
+  is always feasible.
 """
 
 from __future__ import annotations
@@ -481,8 +484,11 @@ class Tableau:
     def solve(self, max_iter: int = 10_000, bland: bool = True) -> LPStatus:
         """Run Phase II simplex (assumes a feasible starting basis).
 
-        Returns :class:`LPStatus`.  ``OPTIMAL``, ``UNBOUNDED``.
+        Returns :class:`LPStatus`.  ``OPTIMAL``, ``UNBOUNDED``, or
+        ``TIMEOUT`` if the iteration limit is reached.  The number of pivots
+        performed is stored in :attr:`num_pivots`.
         """
+        self.num_pivots = 0
         for _ in range(max_iter):
             entering_pos = self._select_entering(bland=bland)
             if entering_pos is None:
@@ -492,42 +498,33 @@ class Tableau:
                 return LPStatus.UNBOUNDED
             pivot_row, step = res
             if pivot_row == -1:
-                # bound flip: move entering to its upper bound, no basis change.
+                # Bound flip (only triggered if a variable has an upper bound,
+                # which doesn't occur in the current construction since upper
+                # bounds are converted to explicit constraint rows).  Kept
+                # for correctness if the tableau is ever constructed with
+                # bounded variables directly.
                 entering = self.nonbasis[entering_pos]
                 ev = self.vars[entering]
-                # Set ev.ub consumed: swap its bound to (0, None) representing
-                # "at upper bound" by negating the variable.  This is the
-                # classic bounded-variable simplex "flip".  Implementation:
-                # substitute x = ub - x'  where x' >= 0.  We do this by
-                # complementing the column: rhs[i] += a_ij * ub for all rows,
-                # obj_const += rc * ub, and negating all coefficients of
-                # `entering` in every row and in obj_row.  Then the variable's
-                # "value" restarts at 0 with lb=0 and ub = old ub (unchanged).
                 ub = ev.ub
-                # Update rhs for all rows that reference entering.
                 for i in range(len(self.rows)):
                     a = self.rows[i].get(entering, Fraction(0))
                     if a != 0:
                         self.rhs[i] += a * ub
-                # Update objective constant.
                 rc = self.obj_row.get(entering, Fraction(0))
                 if rc != 0:
                     self.obj_const += rc * ub
-                # Negate coefficients of `entering` in every row.
                 for i in range(len(self.rows)):
                     a = self.rows[i].get(entering, Fraction(0))
                     if a != 0:
                         self.rows[i][entering] = -a
-                    # (coefficient 0 stays 0)
-                # Negate reduced cost.
                 if rc != 0:
                     self.obj_row[entering] = -rc
-                # The variable is now "at its lower bound" again (value 0) but
-                # represents the complement.  ub stays the same.
+                self.num_pivots += 1
                 continue
             # Perform the pivot.
             entering = self.nonbasis[entering_pos]
             self._pivot(pivot_row, entering)
+            self.num_pivots += 1
         return LPStatus.TIMEOUT
 
     # ------------------------------------------------------------------ #
@@ -800,9 +797,11 @@ class SimplexSolver:
     def solve(self, problem: LPProblem) -> LPResult:
         """Solve ``problem`` and return an :class:`LPResult`."""
         t = Tableau.from_problem(problem)
+        total_pivots = 0
         # Phase I if needed.
         if t.artificial_indices:
             status = t.run_phase_one(max_iter=self.max_iter, bland=self.bland)
+            total_pivots += getattr(t, "num_pivots", 0)
             if status is LPStatus.INFEASIBLE:
                 return LPResult(status=LPStatus.INFEASIBLE, message="infeasible (Phase I)")
             if status is LPStatus.NUMERICAL:
@@ -810,14 +809,14 @@ class SimplexSolver:
             if status is LPStatus.TIMEOUT:
                 return LPResult(status=LPStatus.TIMEOUT, message="Phase I iteration limit")
         # Phase II.
-        iters_before = 0  # we don't track per-pivot count here yet
         status = t.solve(max_iter=self.max_iter, bland=self.bland)
+        total_pivots += getattr(t, "num_pivots", 0)
         if status is LPStatus.UNBOUNDED:
-            return LPResult(status=LPStatus.UNBOUNDED, message="unbounded objective")
+            return LPResult(status=LPStatus.UNBOUNDED, message="unbounded objective",
+                            iterations=total_pivots)
         if status is LPStatus.TIMEOUT:
-            return LPResult(status=LPStatus.TIMEOUT, message="iteration limit reached")
+            return LPResult(status=LPStatus.TIMEOUT, message="iteration limit reached",
+                            iterations=total_pivots)
         res = t.extract_solution(problem)
-        # count pivots approximately as difference in iteration budget — we
-        # instead instrument solve() to return a count.  For simplicity we
-        # leave iterations at 0; a richer implementation would track it.
+        res.iterations = total_pivots
         return res

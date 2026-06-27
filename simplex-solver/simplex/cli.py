@@ -137,30 +137,6 @@ def _format_result(res: LPResult, problem: LPProblem, pretty: bool) -> str:
         return json.dumps(out, indent=2, default=str)
 
 
-def _cmd_solve(args: argparse.Namespace) -> int:
-    if args.input.endswith(".mps") or args.input.endswith(".mps.gz"):
-        problem = read_mps(args.input)
-    else:
-        with open(args.input) as fh:
-            spec = json.load(fh)
-        problem = _build_problem_from_json(spec)
-    if problem.is_integer() or args.milp:
-        res = MILPSolver(max_nodes=args.max_nodes, max_iter=args.max_iter).solve(problem)
-    else:
-        res = SimplexSolver(max_iter=args.max_iter, bland=not args.dantzig).solve(problem)
-    print(_format_result(res, problem, args.pretty))
-    if args.sensitivity and res.status is LPStatus.OPTIMAL:
-        rep = analyse(problem, res)
-        print("\nSensitivity Analysis:")
-        print("Objective coefficient ranges:")
-        for v, (lo, hi) in rep.obj_coeff_ranges.items():
-            print(f"  {v}: [{lo:.6g}, {hi:.6g}]")
-        print("RHS ranges:")
-        for c, (lo, hi) in rep.rhs_ranges.items():
-            print(f"  {c}: [{lo:.6g}, {hi:.6g}]")
-    return 0 if res.status is LPStatus.OPTIMAL else 1
-
-
 def _cmd_mps_info(args: argparse.Namespace) -> int:
     problem = read_mps(args.input)
     print(f"Name: {problem.name}")
@@ -178,6 +154,58 @@ def _cmd_version(_: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_validate(args: argparse.Namespace) -> int:
+    """Validate a problem file and report any issues."""
+    if args.input.endswith(".mps") or args.input.endswith(".mps.gz"):
+        problem = read_mps(args.input)
+    else:
+        with open(args.input) as fh:
+            spec = json.load(fh)
+        problem = _build_problem_from_json(spec)
+    errors = problem.validate()
+    if not errors:
+        print(f"OK: {problem.name} — {problem.num_vars()} variables, "
+              f"{problem.num_constraints()} constraints")
+        if problem.integer:
+            print(f"  Integer variables: {', '.join(sorted(problem.integer))}")
+        return 0
+    print(f"INVALID: {len(errors)} error(s)")
+    for e in errors:
+        print(f"  - {e}")
+    return 1
+
+
+def _cmd_solve(args: argparse.Namespace) -> int:
+    if args.input.endswith(".mps") or args.input.endswith(".mps.gz"):
+        problem = read_mps(args.input)
+    else:
+        with open(args.input) as fh:
+            spec = json.load(fh)
+        problem = _build_problem_from_json(spec)
+    # Validate before solving to catch issues early.
+    errors = problem.validate()
+    if errors and not args.force:
+        print("Problem validation errors (use --force to solve anyway):")
+        for e in errors:
+            print(f"  - {e}")
+        return 1
+    if problem.is_integer() or args.milp:
+        res = MILPSolver(max_nodes=args.max_nodes, max_iter=args.max_iter).solve(problem)
+    else:
+        res = SimplexSolver(max_iter=args.max_iter, bland=not args.dantzig).solve(problem)
+    print(_format_result(res, problem, args.pretty))
+    if args.sensitivity and res.status is LPStatus.OPTIMAL:
+        rep = analyse(problem, res)
+        print("\nSensitivity Analysis:")
+        print("Objective coefficient ranges:")
+        for v, (lo, hi) in rep.obj_coeff_ranges.items():
+            print(f"  {v}: [{lo:.6g}, {hi:.6g}]")
+        print("RHS ranges:")
+        for c, (lo, hi) in rep.rhs_ranges.items():
+            print(f"  {c}: [{lo:.6g}, {hi:.6g}]")
+    return 0 if res.status is LPStatus.OPTIMAL else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="simplex-solver",
@@ -191,6 +219,7 @@ def main(argv: list[str] | None = None) -> int:
     p_solve.add_argument("--pretty", action="store_true", help="Human-readable output.")
     p_solve.add_argument("--sensitivity", action="store_true", help="Run sensitivity analysis.")
     p_solve.add_argument("--dantzig", action="store_true", help="Use Dantzig's rule (most positive rc).")
+    p_solve.add_argument("--force", action="store_true", help="Solve even if validation fails.")
     p_solve.add_argument("--max-nodes", type=int, default=10000)
     p_solve.add_argument("--max-iter", type=int, default=10000)
     p_solve.set_defaults(func=_cmd_solve)
@@ -198,6 +227,10 @@ def main(argv: list[str] | None = None) -> int:
     p_info = sub.add_parser("mps-info", help="Inspect an MPS file.")
     p_info.add_argument("input", help="Path to .mps file")
     p_info.set_defaults(func=_cmd_mps_info)
+
+    p_val = sub.add_parser("validate", help="Validate a problem file.")
+    p_val.add_argument("input", help="Path to .json or .mps file")
+    p_val.set_defaults(func=_cmd_validate)
 
     p_ver = sub.add_parser("version", help="Print version.")
     p_ver.set_defaults(func=_cmd_version)

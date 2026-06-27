@@ -1,0 +1,15 @@
+{
+  "name": "transport",
+  "objective": "min",
+  "variables": ["x11", "x12", "x13", "x21", "x22", "x23"],
+  "objective_coeffs": {"x11": 4, "x12": 6, "x13": 8, "x21": 5, "x22": 7, "x23": 6},
+  "constraints": [
+    {"coeffs": {"x11": 1, "x12": 1, "x13": 1}, "relation": "<=", "rhs": 50, "name": "supply1"},
+    {"coeffs": {"x21": 1, "x22": 1, "x23": 1}, "relation": "<=", "rhs": 40, "name": "supply2"},
+    {"coeffs": {"x11": 1, "x21": 1}, "relation": ">=", "rhs": 30, "name": "demand1"},
+    {"coeffs": {"x12": 1, "x22": 1}, "relation": ">=", "rhs": 35, "name": "demand2"},
+    {"coeffs": {"x13": 1, "x23": 1}, "relation": ">=", "rhs": 25, "name": "demand3"}
+  ],
+  "bounds": {},
+  "integer": []
+}
