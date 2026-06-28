@@ -155,18 +155,26 @@ def type_to_string(t: object) -> str:
 
 
 def scheme_to_string(sc: Scheme) -> str:
-    """Render a type scheme, renaming variables to a, b, c …."""
-    renamed_t = _renumber_type(sc.type)
-    if sc.vars:
-        # build a mapping old-id -> new-letter
-        mapping: Dict[int, str] = {}
-        for v in sc.vars:
-            mapping.setdefault(v, _tvar_name(len(mapping)))
-        # apply
-        renamed_t = _apply_names(sc.type, mapping)
-        names = " ".join(mapping[v] for v in sc.vars)
-        return f"∀ {names}. {renamed_t}"
-    return str(renamed_t)
+    """Render a type scheme, renaming all type variables to a, b, c ….
+
+    Quantified variables are listed in the ``∀`` header; free variables
+    get names that continue the sequence after the quantified ones so
+    there is no clash.
+    """
+    if not sc.vars:
+        return type_to_string(sc.type)
+    # Build a single consistent mapping: quantified vars first (a, b, …),
+    # then free vars (continuing the alphabet).
+    mapping: Dict[int, str] = {}
+    for v in sc.vars:
+        mapping[v] = _tvar_name(len(mapping))
+    # Add free vars in sorted order for determinism
+    free = sorted(free_type_vars(sc.type) - set(sc.vars))
+    for v in free:
+        mapping.setdefault(v, _tvar_name(len(mapping)))
+    body = _apply_names(sc.type, mapping)
+    names = " ".join(mapping[v] for v in sc.vars)
+    return f"∀ {names}. {body}"
 
 
 def _renumber_type(t: object, mapping: Optional[Dict[int, int]] = None) -> object:

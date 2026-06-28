@@ -10,6 +10,7 @@ Grammar (with precedence levels)::
     cmp       := add ( ('==' | '!=' | '<' | '>' | '<=' | '>=') add )?   # non-assoc
     add       := mul ( ('+' | '-') mul )*            # left-assoc
     mul       := app ( ('*' | '/') app )*            # left-assoc
+    unary     := '-' unary | app                     # prefix minus
     app       := atom (atom)*
     atom      := INT | BOOL | IDENT | '(' expr (',' expr)* ')'
 
@@ -191,7 +192,7 @@ class _Parser:
     # -- operator precedence climbing ------------------------------------
     def _parse_binop(self, level: int) -> object:
         if level >= len(_PRECEDENCE):
-            return self._parse_app()
+            return self._parse_unary()
         ops, assoc = _PRECEDENCE[level]
         if assoc == "right":
             left = self._parse_binop(level + 1)
@@ -217,6 +218,21 @@ class _Parser:
         """Desugar ``left op right`` into ``((op) left) right``."""
         return EApp(EApp(EVar(op), left), right)
 
+    def _parse_unary(self) -> object:
+        """Parse a prefix unary operator (currently only ``-``).
+
+        ``-x`` desugars to ``neg x`` (the built-in ``neg : Int -> Int``).
+        Unary minus binds tighter than all binary operators but looser than
+        application, so ``- f x`` parses as ``- (f x)`` and ``- - 5``
+        parses as ``- (- 5)``.
+        """
+        op = self._peek_op()
+        if op == "-":
+            self._advance()
+            inner = self._parse_unary()
+            return EApp(EVar("neg"), inner)
+        return self._parse_app()
+
     def _parse_app(self) -> object:
         fn = self._parse_atom()
         while self._peek_kind() in ("INT", "BOOL", "IDENT", "LPAREN"):
@@ -238,7 +254,8 @@ class _Parser:
             return EVar(t.value)
         if k == "LPAREN":
             self._advance()
-            # could be () unit, (expr), or (expr, expr, ...) tuple
+            # could be () unit, (expr), (expr, expr, ...) tuple,
+            # or (expr,) single-element tuple (trailing comma)
             if self._peek_kind() == "RPAREN":
                 self._advance()
                 return ETuple(())  # unit value
@@ -247,6 +264,9 @@ class _Parser:
                 items = [first]
                 while self._peek_kind() == "COMMA":
                     self._advance()
+                    # Allow trailing comma: (a, b, ) — stop if next is RPAREN
+                    if self._peek_kind() == "RPAREN":
+                        break
                     items.append(self.parse_expr())
                 self._expect("RPAREN")
                 return ETuple(tuple(items))

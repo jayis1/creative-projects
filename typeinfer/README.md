@@ -172,6 +172,44 @@ The engine detects and reports:
 - **Branch mismatches** — `if c then a else b` where `a` and `b` have
   different types, or `c` is not `Bool`.
 
+## Known Issues (Resolved)
+
+The following bugs were found during the Phase 3 bug hunt and have been
+fixed.  Each fix is covered by tests in `tests/test_bugs.py`.
+
+1. **Single-element tuple with trailing comma** — `(1,)` caused a parser
+   error because the parser only supported tuples with ≥2 elements.
+   *Fix*: the parser now allows a trailing comma after any tuple element,
+   enabling 1-element tuples like `(x,)`.
+
+2. **Unary minus not supported** — `-5` failed to parse because `-` was
+   only treated as a binary operator.
+   *Fix*: added a `_parse_unary` production that desugars prefix `-` into
+   an application of the built-in `neg : Int -> Int`.  Unary minus binds
+   tighter than all binary operators but looser than application.
+
+3. **Error reason lost in `_format_unify_error`** — the human-friendly
+   error wrapper discarded the reason string (e.g. "occurs check failed")
+   from `UnificationError`, producing messages like
+   "Cannot unify a with a -> b" with no explanation.
+   *Fix*: the reason is now extracted from the exception's original
+   message and appended, e.g. "Cannot unify a with a -> b: occurs check
+   failed (infinite type)".
+
+4. **Trace printed raw type-variable ids** — the `--explain` trace for a
+   polymorphic `let` displayed `∀0 . a -> a` instead of `∀ a. a -> a`,
+   because the trace formatting used raw integer ids instead of the
+   scheme pretty-printer.
+   *Fix*: the let trace now uses `scheme_to_string`, which renames
+   quantified and free variables consistently to `a, b, c, …`.
+
+5. **`scheme_to_string` inconsistent variable naming** — the function
+   renumbered the type and then applied a separate name mapping to the
+   *original* (un-renumbered) type, producing inconsistent names when
+   both quantified and free variables were present.
+   *Fix*: rewrote to build a single consistent mapping (quantified vars
+   first, then free vars) and apply it once.
+
 ## License
 
 MIT.

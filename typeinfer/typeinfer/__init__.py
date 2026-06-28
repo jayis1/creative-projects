@@ -2,6 +2,7 @@ r"""typeinfer — Hindley-Milner type inference for a small lambda calculus."""
 
 from .types import (
     TVar, TCon, TFun, Scheme,
+    INT, BOOL, STRING, UNIT,
     type_to_string, scheme_to_string,
 )
 from .lexer import tokenize, Token, LexerError
@@ -14,6 +15,7 @@ from .primitives import primitives_env, default_env, list_env, maybe_env
 
 __all__ = [
     "TVar", "TCon", "TFun", "Scheme",
+    "INT", "BOOL", "STRING", "UNIT",
     "type_to_string", "scheme_to_string",
     "tokenize", "Token", "LexerError",
     "parse", "ParserError",

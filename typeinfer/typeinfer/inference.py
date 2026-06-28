@@ -167,11 +167,10 @@ def _infer_let(ctx: InferContext, expr: ELet) -> Tuple[object, Dict[int, object]
     ctx.env = apply_subst_env(s1, ctx.env)
     # generalise the bound type
     scheme = ctx.generalise(apply_subst(s1, val_t))
-    ctx._trace_step(
-        f"let {expr.name} = ... : {scheme.vars and '∀' or ''}"
-        f"{' '.join(str(v) for v in scheme.vars)} . {type_to_string(scheme.type)}"
-        if scheme.vars else f"let {expr.name} = ... : {type_to_string(scheme.type)}"
-    )
+    # Render the scheme nicely: use scheme_to_string so quantified vars
+    # get named a, b, … rather than printing raw ids like ∀0.
+    from .types import scheme_to_string
+    ctx._trace_step(f"let {expr.name} = ... : {scheme_to_string(scheme)}")
     new_env = dict(ctx.env)
     new_env[expr.name] = scheme
     saved = ctx.env
@@ -281,13 +280,26 @@ def infer_with_trace(
 
 
 def _format_unify_error(e: UnificationError) -> str:
-    """Produce a human-friendly message from a UnificationError."""
+    """Produce a human-friendly message from a UnificationError.
+
+    The UnificationError stores the two types as ``e.t1`` and ``e.t2``,
+    and the original message (including any reason) in ``e.args[0]``.
+    We re-render the types with pretty names and append the reason if one
+    was provided.
+    """
     try:
         t1 = type_to_string(e.t1)
         t2 = type_to_string(e.t2)
     except Exception:
         t1, t2 = str(e.t1), str(e.t2)
-    base = f"Cannot unify {t1} with {t2}"
-    if e.args and len(e.args) > 1:
-        return f"{base} ({e.args[1]})" if len(e.args) > 1 else base
-    return base
+    # The original args[0] is "Cannot unify X with Y: <reason>".
+    # Extract the reason portion (after the colon) if present.
+    reason = ""
+    if e.args:
+        msg = e.args[0]
+        # Try to extract a reason after the last colon
+        if ": " in msg:
+            reason = msg.rsplit(": ", 1)[-1]
+    if reason:
+        return f"Cannot unify {t1} with {t2}: {reason}"
+    return f"Cannot unify {t1} with {t2}"
