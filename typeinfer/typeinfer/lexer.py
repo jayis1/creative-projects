@@ -4,15 +4,17 @@ Tokens
 ------
 * ``INT``      – integer literal (e.g. ``42``)
 * ``BOOL``     – ``true`` / ``false``
-* ``IDENT``    – identifier
+* ``IDENT``    – identifier (also operator names like ``+``, ``==``)
+* ``OP``       – an operator symbol (``+ - * / < > <= >= == != && ||``)
 * ``LAMBDA``   – ``\`` or ``λ``
 * ``DOT``      – ``.``
 * ``LET``      – ``let``
 * ``REC``      – ``rec``
 * ``IN``       – ``in``
 * ``IF`` / ``THEN`` / ``ELSE``
-* ``ARROW``    – ``->``  (used in type annotations, future)
+* ``ARROW``    – ``->``
 * ``EQ``       – ``=``
+* ``COMMA``    – ``,``
 * ``LPAREN`` / ``RPAREN``
 * ``EOF``
 """
@@ -34,6 +36,9 @@ KEYWORDS = {
     "false": "BOOL",
 }
 
+# Multi-char operators must be tried before single-char ones.
+_OPERATORS = ["->", "==", "!=", "<=", ">=", "&&", "||", "+", "-", "*", "/", "<", ">"]
+
 
 @dataclass
 class Token:
@@ -41,12 +46,20 @@ class Token:
     value: str
     pos: int
 
-    def __repr__(self) -> str:  # pragma: no cover
+    def __repr__(self) -> str:  # pragma: no cover - debugging only
         return f"Token({self.kind!r}, {self.value!r}, pos={self.pos})"
 
 
 class LexerError(Exception):
     """Raised on an invalid character during tokenisation."""
+
+
+def _is_ident_start(c: str) -> bool:
+    return c.isalpha() or c == "_"
+
+
+def _is_ident_char(c: str) -> bool:
+    return c.isalnum() or c in "_'"
 
 
 def tokenize(source: str) -> List[Token]:
@@ -60,7 +73,7 @@ def tokenize(source: str) -> List[Token]:
         if c.isspace():
             i += 1
             continue
-        # comments: -- to end of line
+        # comments: -- to end of line (only when not followed by >)
         if c == "-" and i + 1 < n and source[i + 1] == "-":
             while i < n and source[i] != "\n":
                 i += 1
@@ -75,12 +88,26 @@ def tokenize(source: str) -> List[Token]:
             tokens.append(Token("DOT", c, i))
             i += 1
             continue
-        # arrow ->  (must check before minus/single dash)
-        if c == "-" and i + 1 < n and source[i + 1] == ">":
-            tokens.append(Token("ARROW", "->", i))
-            i += 2
+        # comma
+        if c == ",":
+            tokens.append(Token("COMMA", c, i))
+            i += 1
             continue
-        # equals
+        # equals (used in let; not an operator here).
+        # Must check AFTER operators so that ``==`` is tokenised as an OP,
+        # not as two ``EQ`` tokens.  The operator loop below handles ``==``.
+        # operators — try longest match first (before single-char ``=``)
+        matched_op = None
+        for op in _OPERATORS:
+            if source.startswith(op, i):
+                matched_op = op
+                break
+        if matched_op:
+            # ARROW is its own token kind for clarity
+            kind = "ARROW" if matched_op == "->" else "OP"
+            tokens.append(Token(kind, matched_op, i))
+            i += len(matched_op)
+            continue
         if c == "=":
             tokens.append(Token("EQ", c, i))
             i += 1
@@ -103,9 +130,9 @@ def tokenize(source: str) -> List[Token]:
             i = j
             continue
         # identifiers / keywords
-        if c.isalpha() or c == "_":
+        if _is_ident_start(c):
             j = i
-            while j < n and (source[j].isalnum() or source[j] in "_'"):
+            while j < n and _is_ident_char(source[j]):
                 j += 1
             word = source[i:j]
             kw = KEYWORDS.get(word)

@@ -1,21 +1,34 @@
-"""Recursive-descent parser for the mini lambda calculus.
+r"""Recursive-descent parser for the mini lambda calculus.
 
-Grammar (roughly, precedence climbing for application)::
+Grammar (with precedence levels)::
 
-    expr   := let | if | lambda | app
-    let    := 'let' ['rec'] IDENT '=' expr 'in' expr
-    if     := 'if' expr 'then' expr 'else' expr
-    lambda := ('\\' | 'λ') IDENT+ '.' expr     # multi-arg sugar
-    app    := atom (atom)*
-    atom   := INT | BOOL | IDENT | '(' expr ')'
+    expr      := let | if | lambda | binop
+    let       := 'let' ['rec'] IDENT '=' expr 'in' expr
+    if        := 'if' expr 'then' expr 'else' expr
+    lambda    := ('\' | 'λ') IDENT+ '.' expr
+    binop     := cmp ( ('&&' | '||') cmp )*          # level 1 (lowest)
+    cmp       := add ( ('==' | '!=' | '<' | '>' | '<=' | '>=') add )?   # non-assoc
+    add       := mul ( ('+' | '-') mul )*            # left-assoc
+    mul       := app ( ('*' | '/') app )*            # left-assoc
+    app       := atom (atom)*
+    atom      := INT | BOOL | IDENT | '(' expr (',' expr)* ')'
 
-The AST nodes are small frozen dataclasses defined below.
+Operator-precedence levels (highest binds tightest):
+
+    1  &&  ||          (right-assoc)
+    2  == != < > <= >= (non-assoc, chainable via desugaring to nested)
+    3  +  -            (left-assoc)
+    4  *  /            (left-assoc)
+    5  application     (left-assoc)
+
+Infix operators desugar to left-associative applications of a variable
+named by the operator symbol, e.g. ``a + b``  ⟶  ``((+) a) b``.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from .lexer import tokenize, Token
 
@@ -66,6 +79,25 @@ class EIf:
     els: object
 
 
+@dataclass(frozen=True)
+class ETuple:
+    items: tuple  # of Expr
+
+
+# ---------------------------------------------------------------------------
+# Operator precedence tables
+# ---------------------------------------------------------------------------
+
+# (operators, associativity)  — listed lowest-precedence first
+# associativity: 'left' | 'right' | 'non'
+_PRECEDENCE = [
+    ({"&&", "||"}, "right"),
+    ({"==", "!=", "<", ">", "<=", ">="}, "left"),
+    ({"+", "-"}, "left"),
+    ({"*", "/"}, "left"),
+]
+
+
 # ---------------------------------------------------------------------------
 # Parser
 # ---------------------------------------------------------------------------
@@ -85,6 +117,13 @@ class _Parser:
 
     def _peek_kind(self) -> str:
         return self.toks[self.i].kind
+
+    def _peek_op(self) -> Optional[str]:
+        """If the current token is an OP, return its value; else None."""
+        t = self._peek()
+        if t.kind == "OP":
+            return t.value
+        return None
 
     def _advance(self) -> Token:
         t = self.toks[self.i]
@@ -108,7 +147,7 @@ class _Parser:
             return self._parse_if()
         if k == "LAMBDA":
             return self._parse_lambda()
-        return self._parse_app()
+        return self._parse_binop(0)
 
     def _parse_let(self) -> ELet:
         self._expect("LET")
@@ -149,6 +188,35 @@ class _Parser:
             body = ELam(p, body)
         return body
 
+    # -- operator precedence climbing ------------------------------------
+    def _parse_binop(self, level: int) -> object:
+        if level >= len(_PRECEDENCE):
+            return self._parse_app()
+        ops, assoc = _PRECEDENCE[level]
+        if assoc == "right":
+            left = self._parse_binop(level + 1)
+            op = self._peek_op()
+            while op is not None and op in ops:
+                self._advance()
+                right = self._parse_binop(level)
+                left = self._mk_app_op(op, left, right)
+                op = self._peek_op()
+            return left
+        else:
+            left = self._parse_binop(level + 1)
+            op = self._peek_op()
+            while op is not None and op in ops:
+                self._advance()
+                right = self._parse_binop(level + 1)
+                left = self._mk_app_op(op, left, right)
+                op = self._peek_op()
+            return left
+
+    @staticmethod
+    def _mk_app_op(op: str, left: object, right: object) -> EApp:
+        """Desugar ``left op right`` into ``((op) left) right``."""
+        return EApp(EApp(EVar(op), left), right)
+
     def _parse_app(self) -> object:
         fn = self._parse_atom()
         while self._peek_kind() in ("INT", "BOOL", "IDENT", "LPAREN"):
@@ -170,9 +238,20 @@ class _Parser:
             return EVar(t.value)
         if k == "LPAREN":
             self._advance()
-            e = self.parse_expr()
+            # could be () unit, (expr), or (expr, expr, ...) tuple
+            if self._peek_kind() == "RPAREN":
+                self._advance()
+                return ETuple(())  # unit value
+            first = self.parse_expr()
+            if self._peek_kind() == "COMMA":
+                items = [first]
+                while self._peek_kind() == "COMMA":
+                    self._advance()
+                    items.append(self.parse_expr())
+                self._expect("RPAREN")
+                return ETuple(tuple(items))
             self._expect("RPAREN")
-            return e
+            return first
         raise ParserError(
             f"Unexpected token {t.kind} ({t.value!r}) at pos {t.pos}"
         )

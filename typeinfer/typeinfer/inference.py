@@ -20,7 +20,7 @@ from .types import (
     free_type_vars, free_env_vars,
     type_to_string,
 )
-from .parser import EInt, EBool, EVar, ELam, EApp, ELet, EIf
+from .parser import EInt, EBool, EVar, ELam, EApp, ELet, EIf, ETuple
 from .unify import (
     unify, apply_subst, apply_subst_env, apply_subst_scheme,
     compose_subst, UnificationError,
@@ -38,6 +38,8 @@ class InferContext:
 
     counter: int = 0
     env: Dict[str, Scheme] = field(default_factory=dict)
+    # Trace of inference steps for the --explain mode.
+    trace: List[str] = field(default_factory=list)
 
     # -- fresh variable generation ----------------------------------------
     def fresh(self) -> TVar:
@@ -59,6 +61,10 @@ class InferContext:
         mapping: Dict[int, object] = {v: self.fresh() for v in sc.vars}
         return _instantiate_type(sc.type, mapping)
 
+    # -- trace helpers ----------------------------------------------------
+    def _trace_step(self, msg: str) -> None:
+        self.trace.append(msg)
+
 
 def _instantiate_type(t: object, mapping: Dict[int, object]) -> object:
     if isinstance(t, TVar):
@@ -77,13 +83,18 @@ def _instantiate_type(t: object, mapping: Dict[int, object]) -> object:
 def _infer(ctx: InferContext, expr) -> Tuple[object, Dict[int, object]]:
     """Return (type, substitution) for *expr* under ctx.env."""
     if isinstance(expr, EInt):
+        ctx._trace_step(f"int literal {expr.value} : Int")
         return INT, {}
     if isinstance(expr, EBool):
+        ctx._trace_step(f"bool literal {expr.value} : Bool")
         return BOOL, {}
     if isinstance(expr, EVar):
         if expr.name not in ctx.env:
             raise InferError(f"Unbound variable: {expr.name!r}")
-        return ctx.instantiate(ctx.env[expr.name]), {}
+        sc = ctx.env[expr.name]
+        t = ctx.instantiate(sc)
+        ctx._trace_step(f"variable {expr.name} : {type_to_string(t)}")
+        return t, {}
     if isinstance(expr, ELam):
         # \x. body  ==>  x: T fresh, infer body under (env + x: T)
         tv = ctx.fresh()
@@ -95,7 +106,10 @@ def _infer(ctx: InferContext, expr) -> Tuple[object, Dict[int, object]]:
             body_t, s = _infer(ctx, expr.body)
         finally:
             ctx.env = saved
-        return TFun(apply_subst(s, tv), body_t), s
+        param_t = apply_subst(s, tv)
+        result = TFun(param_t, body_t)
+        ctx._trace_step(f"lambda \\{expr.param}. ... : {type_to_string(result)}")
+        return result, s
     if isinstance(expr, EApp):
         # infer fn type, infer arg type, unify fn with (arg -> fresh)
         fn_t, s1 = _infer(ctx, expr.fn)
@@ -105,7 +119,9 @@ def _infer(ctx: InferContext, expr) -> Tuple[object, Dict[int, object]]:
         ret_tv = ctx.fresh()
         s3 = unify(apply_subst(s2, fn_t), TFun(arg_t, ret_tv))
         s = compose_subst(s3, compose_subst(s2, s1))
-        return apply_subst(s3, ret_tv), s
+        result = apply_subst(s3, ret_tv)
+        ctx._trace_step(f"application : {type_to_string(result)}")
+        return result, s
     if isinstance(expr, ELet):
         if expr.is_rec:
             return _infer_let_rec(ctx, expr)
@@ -122,7 +138,27 @@ def _infer(ctx: InferContext, expr) -> Tuple[object, Dict[int, object]]:
         ctx.env = apply_subst_env(s3, ctx.env)
         s_branch = unify(apply_subst(s3, then_t), els_t)
         s = compose_subst(s_branch, compose_subst(s3, compose_subst(s2, s)))
-        return apply_subst(s_branch, els_t), s
+        result = apply_subst(s_branch, els_t)
+        ctx._trace_step(f"if : {type_to_string(result)}")
+        return result, s
+    if isinstance(expr, ETuple):
+        # ()        -> Unit
+        # (a, b, c) -> Tuple<a, b, c>
+        if len(expr.items) == 0:
+            ctx._trace_step("unit () : Unit")
+            return UNIT, {}
+        item_types: List[object] = []
+        s: Dict[int, object] = {}
+        for item in expr.items:
+            it, si = _infer(ctx, item)
+            ctx.env = apply_subst_env(si, ctx.env)
+            s = compose_subst(si, s)
+            item_types.append(it)
+        # Apply the full substitution to all items so they're consistent.
+        item_types = [apply_subst(s, it) for it in item_types]
+        result = TCon("Tuple", tuple(item_types))
+        ctx._trace_step(f"tuple : {type_to_string(result)}")
+        return result, s
     raise InferError(f"Cannot infer type for node {expr!r}")
 
 
@@ -131,6 +167,11 @@ def _infer_let(ctx: InferContext, expr: ELet) -> Tuple[object, Dict[int, object]
     ctx.env = apply_subst_env(s1, ctx.env)
     # generalise the bound type
     scheme = ctx.generalise(apply_subst(s1, val_t))
+    ctx._trace_step(
+        f"let {expr.name} = ... : {scheme.vars and '∀' or ''}"
+        f"{' '.join(str(v) for v in scheme.vars)} . {type_to_string(scheme.type)}"
+        if scheme.vars else f"let {expr.name} = ... : {type_to_string(scheme.type)}"
+    )
     new_env = dict(ctx.env)
     new_env[expr.name] = scheme
     saved = ctx.env
@@ -179,21 +220,74 @@ def _infer_let_rec(ctx: InferContext, expr: ELet) -> Tuple[object, Dict[int, obj
 # Public API
 # ---------------------------------------------------------------------------
 
-def infer(source_or_ast, *, env: Optional[Dict[str, Scheme]] = None) -> object:
+def infer(
+    source_or_ast,
+    *,
+    env: Optional[Dict[str, Scheme]] = None,
+    use_builtins: bool = False,
+) -> object:
     """Infer the principal type of *source_or_ast*.
 
     If a string is given it is parsed first; if an AST node is given it is
     used directly.  An optional initial *env* of type schemes may be supplied
-    to provide built-in identifiers.
+    to provide built-in identifiers.  When *use_builtins* is True the standard
+    primitive environment (arithmetic/comparison/boolean operators, List,
+    Maybe) is loaded.
     """
     if isinstance(source_or_ast, str):
         from .parser import parse
         ast = parse(source_or_ast)
     else:
         ast = source_or_ast
-    ctx = InferContext(env=dict(env) if env else {})
+    initial_env: Dict[str, Scheme] = {}
+    if use_builtins:
+        from .primitives import default_env
+        initial_env.update(default_env())
+    if env:
+        initial_env.update(env)
+    ctx = InferContext(env=initial_env)
     try:
         t, s = _infer(ctx, ast)
     except UnificationError as e:
-        raise InferError(str(e)) from e
+        raise InferError(_format_unify_error(e)) from e
     return apply_subst(s, t)
+
+
+def infer_with_trace(
+    source_or_ast,
+    *,
+    env: Optional[Dict[str, Scheme]] = None,
+    use_builtins: bool = False,
+) -> Tuple[object, List[str]]:
+    """Like `infer` but also returns the list of trace messages produced
+    during inference (useful for the ``--explain`` CLI flag)."""
+    if isinstance(source_or_ast, str):
+        from .parser import parse
+        ast = parse(source_or_ast)
+    else:
+        ast = source_or_ast
+    initial_env: Dict[str, Scheme] = {}
+    if use_builtins:
+        from .primitives import default_env
+        initial_env.update(default_env())
+    if env:
+        initial_env.update(env)
+    ctx = InferContext(env=initial_env)
+    try:
+        t, s = _infer(ctx, ast)
+    except UnificationError as e:
+        raise InferError(_format_unify_error(e)) from e
+    return apply_subst(s, t), list(ctx.trace)
+
+
+def _format_unify_error(e: UnificationError) -> str:
+    """Produce a human-friendly message from a UnificationError."""
+    try:
+        t1 = type_to_string(e.t1)
+        t2 = type_to_string(e.t2)
+    except Exception:
+        t1, t2 = str(e.t1), str(e.t2)
+    base = f"Cannot unify {t1} with {t2}"
+    if e.args and len(e.args) > 1:
+        return f"{base} ({e.args[1]})" if len(e.args) > 1 else base
+    return base

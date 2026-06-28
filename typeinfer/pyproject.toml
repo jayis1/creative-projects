@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "typeinfer"
+version = "0.1.0"
+description = "Hindley-Milner type inference engine (Algorithm W) for a small lambda calculus"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "creative-projects" }]
+requires-python = ">=3.8"
+keywords = ["type-inference", "hindley-milner", "lambda-calculus", "algorithm-w"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Compilers",
+]
+
+[project.scripts]
+typeinfer = "typeinfer.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["typeinfer*"]
