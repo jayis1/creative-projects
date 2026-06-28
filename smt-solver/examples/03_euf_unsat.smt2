@@ -1,0 +1,10 @@
+; EUF: uninterpreted functions with equality
+(set-logic QF_UF)
+(declare-fun f (Real) Real)
+(declare-const a Real)
+(declare-const b Real)
+(declare-const c Real)
+(assert (= a b))
+(assert (= (f a) c))
+(assert (not (= (f b) c)))
+(check-sat)

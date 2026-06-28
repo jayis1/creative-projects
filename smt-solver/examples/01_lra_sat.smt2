@@ -1,0 +1,10 @@
+; Simple satisfiable LRA problem
+(set-logic LRA)
+(declare-const x Real)
+(declare-const y Real)
+(assert (> x 5.0))
+(assert (< x 10.0))
+(assert (= y (* 2.0 x)))
+(assert (> y 12.0))
+(check-sat)
+(get-model)
