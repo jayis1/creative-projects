@@ -1,0 +1,4 @@
+# Example: Recursive functions
+# A recursive function using let-rec.
+# The condition `n` must be Bool (used in if), so f: Bool -> Int.
+let rec f = \n. if n then 42 else f false in f true

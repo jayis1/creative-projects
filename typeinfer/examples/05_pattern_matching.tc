@@ -1,0 +1,9 @@
+# Example: Pattern matching
+# Match on Maybe and List ADTs using pattern matching.
+# The map function applies f to each element of a list.
+# Note: recursive functions need `let rec`.
+let rec map = \f. \xs. 
+  match xs with 
+  | Nil -> Nil
+  | Cons x rest -> Cons (f x) (map f rest)
+in map (\n. n + 1) (Cons 1 (Cons 2 Nil))

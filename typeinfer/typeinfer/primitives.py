@@ -1,8 +1,17 @@
-r"""Built-in type environments and primitive operators.
+"""Built-in type environments and primitive operators.
 
 Provides a ready-to-use typing environment for common primitive operations
-so that expressions such as ``1 + 2`` or ``(\x. x == 0) 5`` can be inferred
+so that expressions such as ``1 + 2`` or ``(\\x. x == 0) 5`` can be inferred
 without the user having to supply bindings manually.
+
+Available environments:
+    * :func:`primitives_env` — arithmetic, comparison, equality, boolean
+    * :func:`list_env` — Nil / Cons constructors for the List ADT
+    * :func:`maybe_env` — Nothing / Just constructors for the Maybe ADT
+    * :func:`string_env` — string primitives (length, concat, append)
+    * :func:`pair_env` — fst / snd for tuples
+    * :func:`either_env` — Left / Right constructors for the Either ADT
+    * :func:`default_env` — all of the above combined
 """
 
 from __future__ import annotations
@@ -108,10 +117,106 @@ def maybe_env() -> Dict[str, Scheme]:
     }
 
 
+def either_env() -> Dict[str, Scheme]:
+    """Return scheme bindings for a polymorphic Either ADT::
+
+        Left  : forall a b. a -> Either<a, b>
+        Right : forall a b. b -> Either<a, b>
+    """
+    a, b = 0, 1
+    Either_ab = TCon("Either", (TVar(a), TVar(b)))
+    return {
+        "Left": _poly([a, b], TFun(TVar(a), Either_ab)),
+        "Right": _poly([a, b], TFun(TVar(b), Either_ab)),
+    }
+
+
+# ---------------------------------------------------------------------------
+# String primitives
+# ---------------------------------------------------------------------------
+
+def string_env() -> Dict[str, Scheme]:
+    """Return scheme bindings for string primitives::
+
+        length   : String -> Int
+        concat   : String -> String -> String
+        append   : String -> String -> String
+        reverse  : String -> String
+        toUpper  : String -> String
+        toLower  : String -> String
+        substring: Int -> Int -> String -> String
+        charAt   : Int -> String -> Int  (character code)
+    """
+    env: Dict[str, Scheme] = {}
+
+    env["length"] = _mono(TFun(STRING, INT))
+    env["concat"] = _mono(TFun(STRING, TFun(STRING, STRING)))
+    env["append"] = _mono(TFun(STRING, TFun(STRING, STRING)))
+    env["reverse"] = _mono(TFun(STRING, STRING))
+    env["toUpper"] = _mono(TFun(STRING, STRING))
+    env["toLower"] = _mono(TFun(STRING, STRING))
+    # substring: Int -> Int -> String -> String
+    env["substring"] = _mono(TFun(INT, TFun(INT, TFun(STRING, STRING))))
+    # charAt: Int -> String -> Int (returns char code)
+    env["charAt"] = _mono(TFun(INT, TFun(STRING, INT)))
+
+    return env
+
+
+# ---------------------------------------------------------------------------
+# Tuple / pair primitives
+# ---------------------------------------------------------------------------
+
+def pair_env() -> Dict[str, Scheme]:
+    """Return scheme bindings for pair primitives::
+
+        fst : forall a b. (a, b) -> a
+        snd : forall a b. (a, b) -> b
+    """
+    a, b = 0, 1
+    Pair_ab = TCon("Tuple", (TVar(a), TVar(b)))
+    return {
+        "fst": _poly([a, b], TFun(Pair_ab, TVar(a))),
+        "snd": _poly([a, b], TFun(Pair_ab, TVar(b))),
+    }
+
+
+# ---------------------------------------------------------------------------
+# IO primitives (typing only — no side effects in a pure type system)
+# ---------------------------------------------------------------------------
+
+def io_env() -> Dict[str, Scheme]:
+    """Return scheme bindings for IO primitives (typing only)::
+
+        print   : Int -> Unit
+        printS  : String -> Unit
+        printB  : Bool -> Unit
+        read    : Unit -> Int
+        readS   : Unit -> String
+    """
+    env: Dict[str, Scheme] = {}
+    from .types import UNIT
+    env["print"] = _mono(TFun(INT, UNIT))
+    env["printS"] = _mono(TFun(STRING, UNIT))
+    env["printB"] = _mono(TFun(BOOL, UNIT))
+    env["read"] = _mono(TFun(UNIT, INT))
+    env["readS"] = _mono(TFun(UNIT, STRING))
+    return env
+
+
+# ---------------------------------------------------------------------------
+# Combined default environment
+# ---------------------------------------------------------------------------
+
 def default_env() -> Dict[str, Scheme]:
-    """Combine primitives + List + Maybe into one environment."""
+    """Combine primitives + List + Maybe + Either + string + pair + io
+    into one environment."""
     env: Dict[str, Scheme] = {}
     env.update(primitives_env())
     env.update(list_env())
     env.update(maybe_env())
+    env.update(either_env())
+    env.update(string_env())
+    env.update(pair_env())
+    env.update(io_env())
     return env

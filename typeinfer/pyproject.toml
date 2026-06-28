@@ -4,20 +4,46 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "typeinfer"
-version = "0.1.0"
-description = "Hindley-Milner type inference engine (Algorithm W) for a small lambda calculus"
+version = "2.0.0"
+description = "Hindley-Milner type inference engine (Algorithm W) for a small lambda calculus with pattern matching, data types, and more"
 readme = "README.md"
 license = { text = "MIT" }
 authors = [{ name = "creative-projects" }]
 requires-python = ">=3.8"
-keywords = ["type-inference", "hindley-milner", "lambda-calculus", "algorithm-w"]
+keywords = [
+    "type-inference",
+    "hindley-milner",
+    "lambda-calculus",
+    "algorithm-w",
+    "pattern-matching",
+    "algebraic-data-types",
+    "compiler",
+]
 classifiers = [
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Topic :: Software Development :: Compilers",
+    "Topic :: Software Development :: Interpreters",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
 ]
+
+[project.optional-dependencies]
+yaml = ["pyyaml>=6.0"]
+dev = ["pytest>=7.0", "pytest-cov>=4.0", "ruff>=0.1.0"]
 
 [project.scripts]
 typeinfer = "typeinfer.__main__:main"
 
 [tool.setuptools.packages.find]
 include = ["typeinfer*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]

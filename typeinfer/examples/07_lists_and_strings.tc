@@ -1,0 +1,5 @@
+# Example: List and string literals
+# List literals and string literals are built-in.
+let xs = [1, 2, 3] in
+let s = "hello" in
+(length s, fst (1, xs))

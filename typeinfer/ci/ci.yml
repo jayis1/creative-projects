@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    paths:
+      - 'typeinfer/**'
+      - 'tests/**'
+      - '.github/workflows/typeinfer-ci.yml'
+  pull_request:
+    paths:
+      - 'typeinfer/**'
+      - 'tests/**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install typeinfer
+        working-directory: typeinfer
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pytest
+
+      - name: Run tests
+        working-directory: typeinfer
+        run: |
+          python -m pytest -v
+
+      - name: Test CLI
+        working-directory: typeinfer
+        run: |
+          python -m typeinfer "λx. x"
+          python -m typeinfer -b "1 + 2"
+          python -m typeinfer -b "[1, 2, 3]"
+          python -m typeinfer -b 'match Just 5 with | Nothing -> 0 | Just n -> n'
+          python -m typeinfer --version
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        working-directory: typeinfer
+        run: |
+          pip install -e .
+          pip install ruff
+
+      - name: Lint with ruff
+        working-directory: typeinfer
+        run: |
+          ruff check typeinfer/ || true
+          # Don't fail CI on lint warnings, just report them

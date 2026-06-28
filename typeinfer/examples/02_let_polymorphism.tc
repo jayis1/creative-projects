@@ -1,0 +1,5 @@
+# Example: Let-polymorphism
+# The identity function can be used at different types in the same scope.
+# id is used at both Int and Bool — this works because let-polymorphism
+# generalises the type of `id` to `forall a. a -> a`.
+let id = \x. x in (id 1, id true)

@@ -1,0 +1,4 @@
+# Example: Type annotations
+# You can annotate lambda parameters and let bindings with types.
+# Annotations are checked against the inferred type.
+\x: Int. x + 1

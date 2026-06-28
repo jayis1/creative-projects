@@ -1,0 +1,4 @@
+# Example: Parallel let bindings
+# Multiple bindings in a single let are evaluated in parallel
+# (each binding is in scope only in the body, not in other bindings).
+let x = 1 and y = 2 and z = 3 in x + y + z

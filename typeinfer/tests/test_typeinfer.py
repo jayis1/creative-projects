@@ -483,9 +483,11 @@ class TestCLI:
 
     def test_cli_version(self, capsys):
         from typeinfer.__main__ import main
-        rc = main(["--version"])
+        with pytest.raises(SystemExit) as exc_info:
+            main(["--version"])
+        assert exc_info.value.code == 0
         out = capsys.readouterr().out.strip()
-        assert rc == 0 and "typeinfer" in out
+        assert "typeinfer" in out
 
     def test_cli_error(self, capsys):
         from typeinfer.__main__ import main
@@ -504,4 +506,4 @@ class TestCLI:
         from typeinfer.__main__ import main
         rc = main([])
         out = capsys.readouterr().out
-        assert rc == 1 and "Usage" in out
+        assert rc == 1 and ("usage" in out.lower() or "Usage" in out)

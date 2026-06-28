@@ -11,12 +11,20 @@ or ``Bool``.  A *function type* (TFun) is the arrow ``a -> b``.
 
 A *type scheme* (Scheme) generalises a type by quantifying over a set of
 type variables, e.g.  ``forall a. a -> a``.
+
+Type annotations parsed from the surface syntax are represented as a
+small AST (``TAnnNamed``, ``TAnnArrow``, ``TAnnVar``, ``TAnnTuple``) and
+resolved to the core ``Type`` structures via :func:`resolve_type`.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set
+
+from .parser import (
+    TAnnNamed, TAnnArrow, TAnnVar, TAnnTuple,
+)
 
 
 @dataclass(frozen=True)
@@ -78,8 +86,8 @@ class Scheme:
     def __str__(self) -> str:
         if not self.vars:
             return str(self.type)
-        names = " ".join(_tvar_name(v) for v in self.vars)
-        return f"∀ {names}. {self.type}"
+        names = " \u2200".join(_tvar_name(v) for v in self.vars)
+        return f"\u2200 {names}. {self.type}"
 
 
 # ---------------------------------------------------------------------------
@@ -144,6 +152,90 @@ def free_env_vars(env: Dict[str, Scheme]) -> Set[int]:
 
 
 # ---------------------------------------------------------------------------
+# Type annotation resolution
+# ---------------------------------------------------------------------------
+
+# Mapping from surface-syntax type names to core TCon constants.
+_BUILTIN_TYPES = {
+    "Int": INT,
+    "Bool": BOOL,
+    "String": STRING,
+    "Unit": UNIT,
+}
+
+
+class TypeError_(Exception):
+    """Raised when a type annotation cannot be resolved."""
+
+
+def resolve_type(
+    ann: object,
+    fresh_tvar,
+    type_var_map: Optional[Dict[str, TVar]] = None,
+    data_types: Optional[Dict[str, TCon]] = None,
+) -> object:
+    """Resolve a parsed type annotation (TAnn*) to a core Type.
+
+    Parameters
+    ----------
+    ann
+        The parsed type annotation AST node.
+    fresh_tvar
+        A zero-argument callable that returns a fresh :class:`TVar`.
+    type_var_map
+        A mapping from type-variable names (lowercase identifiers in
+        annotations) to :class:`TVar` instances, so that the same name
+        resolves to the same variable within one annotation.
+    data_types
+        A mapping from user-defined type names to their :class:`TCon`
+        templates, used for ``data`` declarations.
+    """
+    if type_var_map is None:
+        type_var_map = {}
+    if data_types is None:
+        data_types = {}
+
+    if isinstance(ann, TAnnNamed):
+        name = ann.name
+        # Check user-defined types first
+        if name in data_types:
+            template = data_types[name]
+            resolved_args = tuple(
+                resolve_type(a, fresh_tvar, type_var_map, data_types)
+                for a in ann.args
+            )
+            return TCon(template.name, resolved_args)
+        if name in _BUILTIN_TYPES and not ann.args:
+            return _BUILTIN_TYPES[name]
+        # Unknown named type — create a fresh TCon
+        resolved_args = tuple(
+            resolve_type(a, fresh_tvar, type_var_map, data_types)
+            for a in ann.args
+        )
+        return TCon(name, resolved_args)
+
+    if isinstance(ann, TAnnVar):
+        name = ann.name
+        if name not in type_var_map:
+            type_var_map[name] = fresh_tvar()
+        return type_var_map[name]
+
+    if isinstance(ann, TAnnArrow):
+        param = resolve_type(ann.param, fresh_tvar, type_var_map, data_types)
+        ret = resolve_type(ann.ret, fresh_tvar, type_var_map, data_types)
+        return TFun(param, ret)
+
+    if isinstance(ann, TAnnTuple):
+        items = tuple(
+            resolve_type(a, fresh_tvar, type_var_map, data_types)
+            for a in ann.items
+        )
+        return TCon("Tuple", items)
+
+    raise TypeError_(f"Cannot resolve type annotation: {ann!r}")
+
+
+# ---------------------------------------------------------------------------
 # Pretty printing
 # ---------------------------------------------------------------------------
 
@@ -174,7 +266,7 @@ def scheme_to_string(sc: Scheme) -> str:
         mapping.setdefault(v, _tvar_name(len(mapping)))
     body = _apply_names(sc.type, mapping)
     names = " ".join(mapping[v] for v in sc.vars)
-    return f"∀ {names}. {body}"
+    return f"\u2200 {names}. {body}"
 
 
 def _renumber_type(t: object, mapping: Optional[Dict[int, int]] = None) -> object:

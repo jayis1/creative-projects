@@ -1,0 +1,7 @@
+# Example: Data type declarations
+# Define your own algebraic data types and pattern match on them.
+data Color = Red | Green | Blue in
+match Red with
+| Red -> 1
+| Green -> 2
+| Blue -> 3
