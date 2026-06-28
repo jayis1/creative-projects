@@ -267,7 +267,10 @@ def _fm_check(
       - After eliminating all variables, check if remaining (constant)
         constraints are consistent.
 
-    For disequalities (!=), we use a branching approach.
+    For disequalities (!=), we use a branching approach with recursive
+    splitting. When a disequality is violated by the current model, we
+    try both < and > branches, and recursively handle remaining
+    disequalities in each branch.
     """
     if not constraints:
         return "sat", {v: 0.0 for v in all_vars}, None
@@ -287,37 +290,59 @@ def _fm_check(
     if model is None:
         return "unknown", None, None
 
-    # Check disequality constraints
+    # Check disequality constraints with recursive branching
+    result = _check_disequalities(
+        main_constraints, diseq_constraints, all_vars, model
+    )
+    if result == "sat":
+        return "sat", model, None
+    elif result == "unsat":
+        # All constraints conflict
+        conflict = list(range(len(constraints)))
+        return "unsat", None, conflict
+    else:
+        return "unknown", None, None
+
+
+def _check_disequalities(
+    main_constraints: List["LinearConstraint"],
+    diseq_constraints: List["LinearConstraint"],
+    all_vars: Set[str],
+    model: Dict[str, float],
+) -> str:
+    """Recursively check disequalities by branching when violated.
+
+    When a disequality a != b is violated (i.e., model has a == b),
+    we branch: try a < b and a > b, and recurse on remaining disequalities.
+    """
+    if not diseq_constraints:
+        return "sat"
+
+    # Check if any disequality is violated by the current model
     for i, dc in enumerate(diseq_constraints):
         val = dc.expr.evaluate(model)
         if abs(val) < _fm_EPS * max(1, abs(dc.expr.const)):
             # Disequality violated — try branching
-            main_idx = [j for j, c in enumerate(constraints) if c.op != "!="]
-            diseq_idx = [j for j, c in enumerate(constraints) if c.op == "!="]
-            orig_idx = diseq_idx[i]
-
-            # Try < and > branches
+            remaining = [dc2 for j, dc2 in enumerate(diseq_constraints) if j != i]
             for branch_op in ("<", ">"):
                 branch_c = LinearConstraint(dc.expr, branch_op, label=dc.label)
                 branch_main = main_constraints + [branch_c]
                 s2, m2 = _fm_feasibility(branch_main, all_vars)
                 if s2 == "sat" and m2 is not None:
-                    # Check other disequalities
-                    all_ok = True
-                    for j, dc2 in enumerate(diseq_constraints):
-                        if j == i:
-                            continue
-                        val2 = dc2.expr.evaluate(m2)
-                        if abs(val2) < _fm_EPS * max(1, abs(dc2.expr.const)):
-                            all_ok = False
-                            break
-                    if all_ok:
-                        return "sat", m2, None
-            # Both branches failed
-            conflict = main_idx + [orig_idx]
-            return "unsat", None, conflict
+                    # Recursively check remaining disequalities
+                    sub_result = _check_disequalities(
+                        branch_main, remaining, all_vars, m2
+                    )
+                    if sub_result == "sat":
+                        # Found a model! Update the original model
+                        model.clear()
+                        model.update(m2)
+                        return "sat"
+            # Both branches failed — return unsat
+            return "unsat"
 
-    return "sat", model, None
+    # No disequality violated — we're done
+    return "sat"
 
 
 _fm_EPS = 1e-9

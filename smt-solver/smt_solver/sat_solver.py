@@ -236,8 +236,11 @@ class CDCLSatSolver:
                 self.assignment[v] = None
                 self.reason[v] = None
                 self.level[v] = 0
-        if self._propagated > len(self.trail):
-            self._propagated = len(self.trail)
+        # Fix: reset _propagated pointer to match the trail length.
+        # This is critical for the DPLL(T) loop: after cancel_until(0),
+        # the trail is empty so _propagated must also be 0, ensuring
+        # the next solve() call starts a fresh search from level 0.
+        self._propagated = len(self.trail)
 
     # ------------------------------------------------------------------
     # Solve

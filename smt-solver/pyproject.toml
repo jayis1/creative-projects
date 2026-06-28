@@ -4,23 +4,36 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "smt-solver"
-version = "1.0.0"
-description = "DPLL(T)-based SMT solver with EUF and Linear Real Arithmetic theories"
+version = "2.0.0"
+description = "DPLL(T)-based SMT solver with EUF, LRA, and String theories"
 readme = "README.md"
 requires-python = ">=3.9"
 license = {text = "MIT"}
 authors = [{name = "AI-generated"}]
-keywords = ["smt", "sat", "solver", "dpll", "euf", "simplex", "theorem-proving"]
+keywords = ["smt", "sat", "solver", "dpll", "euf", "lra", "theorem-proving", "formal-verification"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
 ]
 
 [project.scripts]
 smt-solver = "smt_solver.__main__:main"
 
+[project.optional-dependencies]
+test = ["pytest>=7.0"]
+
 [tool.setuptools.packages.find]
 include = ["smt_solver*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v"

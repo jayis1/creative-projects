@@ -18,8 +18,8 @@ import re
 from typing import List, Optional, Tuple, Dict, Any
 
 from .ast import (
-    Term, Var, App, BoolConst, NumConst, Sort,
-    BOOL, REAL, INT,
+    Term, Var, App, BoolConst, NumConst, StrConst, Sort,
+    BOOL, REAL, INT, STRING,
     And, Or, Not, Implies, Iff, Eq, Lt, Le, Gt, Ge,
     Add, Sub, Mul, Neg, Ite,
 )
@@ -123,6 +123,7 @@ _SORT_MAP = {
     "Bool": BOOL,
     "Real": REAL,
     "Int": INT,
+    "String": STRING,
 }
 
 
@@ -305,6 +306,22 @@ class Parser:
             terms = [self.parse_term(c) for c in rest]
             return And(*[Ge(terms[i], terms[i + 1]) for i in range(len(terms) - 1)])
 
+        # String operations
+        _STRING_OPS = {
+            "str.len": INT,      # (str.len s) -> Int
+            "str.++": STRING,   # (str.++ s1 s2 ...) -> String
+            "str.at": STRING,   # (str.at s i) -> String
+            "str.substr": STRING,  # (str.substr s start len) -> String
+            "str.indexof": INT,    # (str.indexof s sub start) -> Int
+            "str.replace": STRING, # (str.replace s sub repl) -> String
+            "str.contains": BOOL,  # (str.contains s sub) -> Bool
+            "str.prefixof": BOOL, # (str.prefixof pre s) -> Bool
+            "str.suffixof": BOOL, # (str.suffixof suf s) -> Bool
+        }
+        if sym in _STRING_OPS:
+            args = tuple(self.parse_term(c) for c in rest)
+            return App(sym, args, _STRING_OPS[sym])
+
         # Uninterpreted function application
         decl = self.declarations.get(sym)
         if decl is None:
@@ -323,6 +340,13 @@ class Parser:
             return BoolConst(True)
         if value == "false":
             return BoolConst(False)
+
+        # String literal (already tokenized with quotes by tokenizer)
+        if value.startswith('"') and value.endswith('"'):
+            # Unescape: remove surrounding quotes, handle \\ and \"
+            inner = value[1:-1]
+            inner = inner.replace('\\"', '"').replace('\\\\', '\\')
+            return StrConst(inner)
 
         # let-bound variable?
         let_val = self.let_ctx.lookup(value)
@@ -416,10 +440,28 @@ class Parser:
             }
 
         if name == "assert":
-            if len(args) != 1:
+            if len(args) < 1:
                 raise ParseError("assert expects 1 argument")
+            # Check for named assertion: (assert (! formula :named label))
+            if args[0].kind == "list" and args[0].children and \
+               args[0].children[0].kind == "symbol" and args[0].children[0].value == "!":
+                # (! formula :named label [:attr val]...)
+                inner_args = args[0].children[1:]
+                assert_name = None
+                i = 0
+                while i < len(inner_args):
+                    if inner_args[i].kind == "symbol" and inner_args[i].value == ":named":
+                        if i + 1 < len(inner_args):
+                            assert_name = inner_args[i + 1].value
+                            i += 2
+                            continue
+                    i += 1
+                # The formula is the first non-keyword argument
+                formula_sexpr = inner_args[0] if inner_args else args[0]
+                term = self.parse_term(formula_sexpr)
+                return {"cmd": "assert", "term": term, "name": assert_name}
             term = self.parse_term(args[0])
-            return {"cmd": "assert", "term": term}
+            return {"cmd": "assert", "term": term, "name": None}
 
         if name == "check-sat":
             return {"cmd": "check-sat"}

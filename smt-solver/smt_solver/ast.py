@@ -40,6 +40,7 @@ class Sort:
 BOOL = Sort("Bool")
 REAL = Sort("Real")
 INT = Sort("Int")
+STRING = Sort("String")
 
 
 def function_sort(domain: Tuple[Sort, ...], rng: Sort) -> Sort:
@@ -99,6 +100,16 @@ class NumConst(Term):
     def __post_init__(self):
         if self.is_int and not float(self.value).is_integer():
             object.__setattr__(self, "value", float(int(self.value)))
+
+
+@dataclass(frozen=True)
+class StrConst(Term):
+    """String constant literal."""
+    value: str = ""
+    sort: Sort = field(default=STRING, repr=False)
+
+    def __str__(self) -> str:
+        return f'"{self.value}"'
 
 
 @dataclass(frozen=True)
@@ -236,13 +247,27 @@ def is_atom(term: Term) -> bool:
     """A *theory atom* is an App whose top symbol is a theory predicate.
 
     Boolean connectives and ite are not atoms.
+    Boolean equality (=) between Bool-sorted terms is NOT a theory atom;
+    it's handled by the Tseitin encoding.
     """
     if not isinstance(term, App):
         return False
-    return term.func in {"=", "<", "<=", ">", ">="}
+    if term.func not in {"=", "<", "<=", ">", ">="}:
+        return False
+    # Boolean equality: if either arg is Bool-sorted, it's a Boolean connective
+    if term.func == "=" and len(term.args) == 2:
+        if term.args[0].sort == BOOL or term.args[1].sort == BOOL:
+            return False
+    return True
 
 
 def is_bool_connective(term: Term) -> bool:
     if not isinstance(term, App):
         return False
-    return term.func in {"and", "or", "not", "=>", "ite", "xor", "distinct"}
+    if term.func in {"and", "or", "not", "=>", "ite", "xor", "distinct"}:
+        return True
+    # Boolean equality is also a connective
+    if term.func == "=" and len(term.args) == 2:
+        if term.args[0].sort == BOOL or term.args[1].sort == BOOL:
+            return True
+    return False

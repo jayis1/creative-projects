@@ -15,3 +15,11 @@ class TheoryError(SMTError):
 
 class TypeCheckError(SMTError):
     """Raised when a term has a type error."""
+
+
+class SATError(SMTError):
+    """Raised when the SAT solver encounters an internal error."""
+
+
+class TimeoutError(SMTError):
+    """Raised when the solver exceeds a time or conflict limit."""
