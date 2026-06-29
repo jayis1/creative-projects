@@ -5,14 +5,15 @@ A standalone Forth interpreter implemented in pure Python.
 
 Supports:
   • Integer and float arithmetic
-  • Stack manipulation (DUP, DROP, SWAP, OVER, ROT, ...)
-  • Variables, constants, and values
-  • Colon definitions with compilation
-  • Control flow: IF/ELSE/THEN, BEGIN/UNTIL, BEGIN/WHILE/REPEAT, DO/LOOP, DO/+LOOP, LEAVE
-  • String literals and output
-  • Memory operations (!, @, +!)
+  • Stack manipulation (DUP, DROP, SWAP, OVER, ROT, 2DUP, PICK, ROLL, ...)
+  • Variables, constants, values, and arrays
+  • Colon definitions with compilation to bytecode IR
+  • Control flow: IF/ELSE/THEN, BEGIN/UNTIL, BEGIN/WHILE/REPEAT, AGAIN,
+    DO/LOOP, DO/+LOOP, LEAVE, EXIT, RECURSE, CASE/OF/ENDOF/ENDCASE
+  • String literals and output (." text")
+  • Memory operations (!, @, +!, []!, []@)
   • Bitwise operations
-  • Interactive REPL
+  • Interactive REPL with error recovery
 """
 
 from __future__ import annotations
@@ -961,11 +962,198 @@ class ForthInterpreter:
         self.reg("TRUE", lambda i, t, n: i.push(-1), doc="Push true (-1)")
         self.reg("FALSE", lambda i, t, n: i.push(0), doc="Push false (0)")
 
+        # ── convenience arithmetic ──
+        self.reg("1+", lambda i, t, n: i.push(i.pop() + 1), doc="Add 1")
+        self.reg("1-", lambda i, t, n: i.push(i.pop() - 1), doc="Subtract 1")
+        self.reg("2+", lambda i, t, n: i.push(i.pop() + 2), doc="Add 2")
+        self.reg("2-", lambda i, t, n: i.push(i.pop() - 2), doc="Subtract 2")
+        self.reg("2*", lambda i, t, n: i.push(i.pop_int() * 2), doc="Multiply by 2")
+        self.reg("2/", lambda i, t, n: i.push(i.pop_int() >> 1), doc="Divide by 2 (shift right)")
+        self.reg("S>D", lambda i, t, n: None, doc="Sign-extend to double (no-op for Python ints)")
+
+        # ── PICK and ROLL ──
+        def _pick(i, t, n):
+            """PICK ( n -- item[n] )  Copy the nth item to top (0 = top)."""
+            idx = i.pop_int()
+            if idx < 0 or idx >= len(i.stack):
+                raise ForthError(f"PICK: index {idx} out of range")
+            i.push(i.stack[-1 - idx])
+        self.reg("PICK", _pick, doc="Copy nth stack item to top")
+
+        def _roll(i, t, n):
+            """ROLL ( n -- )  Remove the nth item and place it on top (0 = top, no-op)."""
+            idx = i.pop_int()
+            if idx < 0 or idx >= len(i.stack):
+                raise ForthError(f"ROLL: index {idx} out of range")
+            if idx == 0:
+                return
+            item = i.stack.pop(-1 - idx)
+            i.push(item)
+        self.reg("ROLL", _roll, doc="Rotate nth stack item to top")
+
+        # ── string printing (." immediate) ──
+        def _dot_quote(i, t, n):
+            # ." text" — compile/print a string at runtime.
+            # The tokenizer handles "..." as string literals (starting with "),
+            # so we expect the next token to be a quoted string.
+            if n + 1 >= len(t):
+                raise ForthError('." needs a string')
+            s = t[n + 1]
+            if not (s.startswith('"') and s.endswith('"') and len(s) >= 2):
+                # Fallback: collect tokens until one ends with "
+                parts = []
+                j = n + 1
+                while j < len(t):
+                    tok = t[j]
+                    if tok.endswith('"'):
+                        parts.append(tok[:-1])
+                        j += 1
+                        break
+                    parts.append(tok)
+                    j += 1
+                text = " ".join(parts)
+            else:
+                text = s[1:-1]
+                j = n + 2
+            if i.compiling:
+                i.current_def.append(("lit", text))
+                i.current_def.append(("call", "TYPE"))
+            else:
+                i.emit(text)
+            return _NextIdx(j)
+        self.reg('."', _dot_quote, immediate=True, doc='Print string at runtime')
+
+        # ── CASE/ENDCASE/ENDOF (immediate compilation words) ──
+        def _case(i, t, n):
+            """CASE ( n -- )  Start a case statement."""
+            i.return_stack.append(("case", 0))
+            return n + 1
+        self.reg("CASE", _case, immediate=True, doc="CASE statement")
+
+        def _of(i, t, n):
+            """OF ( test -- )  Compare top with case value; if equal, execute body."""
+            # Stack at runtime: case_val test  → if equal, drop both and run body
+            # We compile: OVER = IF DROP [body] DROP 0 ELSE DROP 1 THEN
+            # Simpler: compile as if-then-else pattern
+            i.current_def.append(["lit", "of-check"])
+            # Actually, compile: OVER = IF DROP ... ELSE DROP ... THEN
+            # Use a simpler approach: compile OVER = IF DROP (body) ELSE (skip) THEN
+            i.current_def.append(["call", "OVER"])
+            i.current_def.append(["call", "="])
+            i.current_def.append(["if", None])
+            i.return_stack.append(("of-fixup", len(i.current_def) - 1))
+            i.current_def.append(["call", "DROP"])  # drop the case value
+            return n + 1
+        self.reg("OF", _of, immediate=True, doc="OF clause")
+
+        def _endof(i, t, n):
+            """ENDOF — end of an OF clause, jump past ENDCASE."""
+            if not i.return_stack or i.return_stack[-1][0] != "of-fixup":
+                raise ForthError("ENDOF without OF")
+            if_pos = i.return_stack.pop()[1]
+            # Emit jump past ENDCASE (will be fixed up)
+            i.current_def.append(["jump", None])
+            jump_pos = len(i.current_def) - 1
+            # Fix up IF to skip to here (the ELSE part)
+            i.current_def[if_pos][1] = len(i.current_def)
+            # Push a new of-end-fixup to collect jumps
+            if i.return_stack and i.return_stack[-1][0] == "case":
+                i.return_stack[-1] = ("case", i.return_stack[-1][1] + 1)
+            i.return_stack.append(("of-end-fixup", jump_pos))
+            return n + 1
+        self.reg("ENDOF", _endof, immediate=True, doc="ENDOF clause")
+
+        def _endcase(i, t, n):
+            """ENDCASE — end of case statement, drop the case value."""
+            # Fix up all ENDOF jumps to point here
+            while i.return_stack and i.return_stack[-1][0] == "of-end-fixup":
+                pos = i.return_stack.pop()[1]
+                i.current_def[pos][1] = len(i.current_def)
+            # Pop the case marker
+            if i.return_stack and i.return_stack[-1][0] == "case":
+                i.return_stack.pop()
+            # Drop the case value
+            i.current_def.append(["call", "DROP"])
+            return n + 1
+        self.reg("ENDCASE", _endcase, immediate=True, doc="ENDCASE")
+
+        # ── ARRAY support ──
+        def _array(i, t, n):
+            """ARRAY <name> <size> — create an array of given size."""
+            if n + 2 >= len(t):
+                raise ForthError("ARRAY needs name and size")
+            name = t[n + 1].upper()
+            try:
+                size = int(t[n + 2])
+            except ValueError:
+                raise ForthError("ARRAY size must be a number")
+            if size < 0:
+                raise ForthError("ARRAY size must be non-negative")
+            arr = [0] * size
+            i.variables[name] = arr  # store list directly
+
+            def _push_arr(i2, t2, n2, _name=name):
+                i2.push(_name)
+            i.define(Word(name=name, native=_push_arr, doc=f"array {name}[{size}]"))
+            return _NextIdx(n + 3)
+        self._defining_words["ARRAY"] = _array
+
+        # ── array element access ──
+        def _arr_store(i, t, n):
+            """[]! ( val idx addr -- )  Store val at arr[idx]."""
+            addr = i.pop()
+            idx = i.pop_int()
+            val = i.pop()
+            if isinstance(addr, str) and addr in i.variables:
+                arr = i.variables[addr]
+                if isinstance(arr, list) and not isinstance(arr[0], list) if arr else True:
+                    pass
+                if idx < 0 or idx >= len(arr):
+                    raise ForthError(f"array index {idx} out of range [0,{len(arr)})")
+                arr[idx] = val
+            else:
+                raise ForthError(f"bad address: {addr}")
+        self.reg("[]!", _arr_store, doc="Array store ( val idx addr -- )")
+
+        def _arr_fetch(i, t, n):
+            """[]@ ( idx addr -- val )  Fetch arr[idx]."""
+            addr = i.pop()
+            idx = i.pop_int()
+            if isinstance(addr, str) and addr in i.variables:
+                arr = i.variables[addr]
+                if idx < 0 or idx >= len(arr):
+                    raise ForthError(f"array index {idx} out of range [0,{len(arr)})")
+                i.push(arr[idx])
+            else:
+                raise ForthError(f"bad address: {addr}")
+        self.reg("[]@", _arr_fetch, doc="Array fetch ( idx addr -- val )")
+
+        # ── SP@ (stack pointer) ──
+        self.reg("SP@", lambda i, t, n: i.push(len(i.stack)), doc="Push stack depth")
+        self.reg("SP!", lambda i, t, n: None, doc="Set stack pointer (no-op)")
+
+        # ── misc ──
+        self.reg("CELLS", lambda i, t, n: None, doc="Cell size (no-op, 1 cell = 1)")
+        self.reg("CELL+", lambda i, t, n: i.push(i.pop() + 1), doc="Add 1 cell")
+        self.reg("ALLOT", lambda i, t, n: i.pop(), doc="Allot memory (no-op)")
+
+        # ── DUMP (hex dump of stack) ──
+        def _dump(i, t, n):
+            """DUMP ( -- )  Print stack contents in hex."""
+            i.emit("<")
+            for v in i.stack:
+                if isinstance(v, int):
+                    i.emit(f"{v:#x} ")
+                else:
+                    i.emit(f"{v} ")
+            i.emit(">")
+        self.reg("DUMP", _dump, doc="Hex dump of stack")
+
     # ─── REPL ──────────────────────────────────────────────────────────────
     def repl(self, input_stream=None) -> None:
         """Run an interactive Read-Eval-Print Loop."""
         inp = input_stream if input_stream is not None else sys.stdin
-        self.emit_line("Forth Interpreter v1.0 — type BYE to exit")
+        self.emit_line("Forth Interpreter v2.0 — type BYE to exit, WORDS for word list")
         while True:
             self.emit("ok ")
             try:

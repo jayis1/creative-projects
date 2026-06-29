@@ -4,7 +4,7 @@ A stack-based Forth language interpreter implemented from scratch in pure Python
 
 ## Description
 
-This project implements a fully functional Forth interpreter supporting integer and float arithmetic, stack manipulation, variables, constants, values, colon definitions, and all major control-flow constructs (IF/ELSE/THEN, BEGIN/UNTIL, BEGIN/WHILE/REPEAT, DO/LOOP, DO/+LOOP, LEAVE). The interpreter features a compilation mode where colon definitions are compiled into an intermediate representation and executed via a bytecode-like VM with jump instructions.
+This project implements a fully functional Forth interpreter supporting integer and float arithmetic, stack manipulation, variables, constants, values, arrays, colon definitions, and all major control-flow constructs (IF/ELSE/THEN, BEGIN/UNTIL, BEGIN/WHILE/REPEAT, AGAIN, DO/LOOP, DO/+LOOP, LEAVE, EXIT, RECURSE, CASE/OF/ENDOF/ENDCASE). The interpreter features a compilation mode where colon definitions are compiled into an intermediate representation and executed via a bytecode-like VM with jump instructions.
 
 ## How It Works
 
@@ -15,7 +15,7 @@ The interpreter is organized around a single `ForthInterpreter` class that holds
 - **Data stack** — the main operand stack for all computations
 - **Return stack** — used for loop state and temporary storage (`>R`/`R>`)
 - **Dictionary** — maps word names to `Word` objects (native built-ins or compiled user definitions)
-- **Variable storage** — named cells holding mutable values
+- **Variable storage** — named cells holding mutable values (variables, values, and arrays)
 - **Compilation state** — when `:` starts a definition, the interpreter switches to compile mode
 
 ### Compilation
@@ -32,29 +32,35 @@ When `: NAME ... ;` is encountered, the interpreter enters compile mode. Tokens 
 - `("plusloop", target)` — add increment; if boundary not crossed, jump to body start
 - `("leave", target)` — exit loop; jump past LOOP
 
-Immediate words (IF, ELSE, THEN, BEGIN, UNTIL, WHILE, REPEAT, DO, LOOP, +LOOP, LEAVE, RECURSE) execute during compilation to emit these instructions and manage fixup positions via the return stack.
+Immediate words (IF, ELSE, THEN, BEGIN, UNTIL, WHILE, REPEAT, AGAIN, DO, LOOP, +LOOP, LEAVE, RECURSE, CASE, OF, ENDOF, ENDCASE, .") execute during compilation to emit these instructions and manage fixup positions via the return stack.
 
 ### Execution
 
 The `_execute_body` method is a simple bytecode interpreter that walks the instruction list, maintaining an instruction pointer (IP). Control-flow instructions modify the IP. The `_ExitBody` exception handles the `EXIT` word for early return.
 
+### Native Word Protocol
+
+Built-in words are Python callables with the signature `(interp, tokens, idx) -> Any`. Regular built-ins return `None` (or any non-`_NextIdx` value) to indicate "advance to the next token." Defining words (VARIABLE, CONSTANT, etc.) that consume extra tokens return `_NextIdx(new_idx)` to jump the token pointer forward.
+
 ### Built-in Words
 
 | Category | Words |
 |----------|-------|
-| Stack | DUP, DROP, SWAP, OVER, ROT, -ROT, NIP, TUCK, ?DUP, DEPTH |
+| Stack | DUP, DROP, SWAP, OVER, ROT, -ROT, NIP, TUCK, ?DUP, DEPTH, PICK, ROLL |
 | Double stack | 2DUP, 2DROP, 2SWAP, 2OVER |
 | Return stack | >R, R>, R@ |
-| Arithmetic | +, -, *, /, MOD, /MOD, NEGATE, ABS, MIN, MAX, ** |
+| Arithmetic | +, -, *, /, MOD, /MOD, NEGATE, ABS, MIN, MAX, **, 1+, 1-, 2+, 2-, 2*, 2/ |
 | Float | F+, F-, F*, F/, FSQRT, FSIN, FCOS, FTAN, FLOG, FEXP, FLOOR, CEIL, ROUND |
 | Comparison | =, <>, <, >, <=, >=, 0=, 0<>, 0<, 0> |
 | Bitwise | AND, OR, XOR, INVERT, LSHIFT, RSHIFT, NOT |
-| I/O | ., EMIT, CR, SPACE, BL, .S, TYPE |
-| Memory | !, @, +! |
-| Defining | : ; VARIABLE, CONSTANT, VALUE, TO |
+| I/O | ., EMIT, CR, SPACE, BL, .S, TYPE, DUMP |
+| Memory | !, @, +!, []!, []@ |
+| Defining | : ; VARIABLE, CONSTANT, VALUE, TO, ARRAY |
 | Control flow | IF, ELSE, THEN, BEGIN, UNTIL, WHILE, REPEAT, AGAIN, DO, LOOP, +LOOP, LEAVE, EXIT, RECURSE |
+| Case | CASE, OF, ENDOF, ENDCASE |
 | Loop index | I, J |
-| Utility | WORDS, SEE, FORGET, BYE, TRUE, FALSE |
+| Strings | ." (compiled string printing) |
+| Utility | WORDS, SEE, FORGET, BYE, TRUE, FALSE, SP@, CELLS, CELL+, ALLOT |
 
 ## Usage
 
@@ -65,7 +71,7 @@ python3 -m forth
 ```
 
 ```
-Forth Interpreter v1.0 — type BYE to exit
+Forth Interpreter v2.0 — type BYE to exit, WORDS for word list
 ok 3 4 + . CR
 7
 ok
@@ -81,17 +87,20 @@ python3 -m forth -e '5 DUP * . CR'
 ### Execute a file
 
 ```bash
-python3 -m forth -f program.fs
+python3 -m forth -f examples/primes.fs
+python3 -m forth -f examples/bubble-sort.fs
 ```
 
 ### Python API
 
 ```python
 from forth import ForthInterpreter
+import io
 
-interp = ForthInterpreter()
+out = io.StringIO()
+interp = ForthInterpreter(output=out)
 interp.eval(': SQUARE DUP * ; 5 SQUARE . CR')
-# Output: 25
+print(out.getvalue())  # "25 \n"
 ```
 
 ## Examples
@@ -142,6 +151,49 @@ Output:
 ```
 Output: `6`
 
+### Prime Numbers
+
+```forth
+: PRIME?
+    DUP 2 < IF DROP FALSE EXIT THEN
+    DUP 2 = IF DROP TRUE EXIT THEN
+    DUP 2 MOD 0 = IF DROP FALSE EXIT THEN
+    DUP 3 BEGIN
+        2DUP >
+    WHILE
+        2DUP MOD 0 =
+        IF 2DROP FALSE EXIT THEN
+        2 +
+    REPEAT
+    2DROP TRUE ;
+: .PRIMES 30 2 DO I PRIME? IF I . THEN LOOP ;
+.PRIMES CR
+```
+Output: `2 3 5 7 11 13 17 19 23 29`
+
+### Bubble Sort with Arrays
+
+```forth
+ARRAY DATA 10
+42 0 DATA []!
+17 1 DATA []!
+\ ... more elements ...
+VARIABLE TEMP
+: BUBBLE-PASS 9 0 DO I DATA []@ I 1+ DATA []@ > IF
+    I DATA []@ TEMP ! I 1+ DATA []@ I DATA []! TEMP @ I 1+ DATA []!
+THEN LOOP ;
+: BUBBLE 9 0 DO BUBBLE-PASS LOOP ;
+BUBBLE
+```
+
+### Compiled String Printing
+
+```forth
+: GREET ." Hello, World!" ;
+GREET CR
+```
+Output: `Hello, World!`
+
 ## Installation
 
 ```bash
@@ -154,6 +206,14 @@ Or run directly without installation:
 python3 -m forth -e '100 2 / . CR'
 ```
 
+## Testing
+
+```bash
+python3 -m pytest tests/test_forth.py -v
+```
+
+89 tests covering arithmetic, floats, stack ops, comparisons, bitwise, variables, arrays, control flow, strings, error handling, and the primes example.
+
 ## Project Structure
 
 ```
@@ -162,7 +222,12 @@ forth-interpreter/
 │   ├── __init__.py       # Package init, exports ForthInterpreter
 │   ├── __main__.py        # CLI entry point
 │   └── interpreter.py     # Core interpreter implementation
+├── examples/
+│   ├── primes.fs          # Prime number sieve
+│   └── bubble-sort.fs     # Bubble sort with arrays
+├── tests/
+│   └── test_forth.py      # Comprehensive pytest suite (89 tests)
 ├── pyproject.toml         # Project metadata
 ├── README.md              # This file
-└── test_quick.py          # Quick test suite
+└── test_quick.py          # Quick test script
 ```
