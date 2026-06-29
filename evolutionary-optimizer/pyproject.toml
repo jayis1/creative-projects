@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "evopt"
+version = "1.0.0"
+description = "Evolutionary optimization toolkit: GA, ES, DE, PSO, NSGA-II"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+authors = [{name = "EvOpt Contributors"}]
+
+[project.scripts]
+evopt = "evopt.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["evopt*"]
