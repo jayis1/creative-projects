@@ -96,9 +96,11 @@ class BaseAlgorithm(ABC):
         self.history.append(gen_stats)
         self.statistics.update(gen_stats)
         if self.verbose:
+            best_str = f"{gen_stats['best_fitness']:.6g}" if gen_stats['best_fitness'] is not None else "N/A"
+            avg_str = f"{gen_stats['avg_fitness']:.6g}" if gen_stats['avg_fitness'] is not None else "N/A"
             self.logger.info(
-                f"Gen {self.generation}: best={gen_stats['best_fitness']:.6g} "
-                f"avg={gen_stats['avg_fitness']:.6g} "
+                f"Gen {self.generation}: best={best_str} "
+                f"avg={avg_str} "
                 f"diversity={gen_stats['diversity']:.3f}"
             )
 

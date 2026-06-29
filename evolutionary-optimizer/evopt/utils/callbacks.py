@@ -64,6 +64,10 @@ class Stagnation(TerminationCriterion):
         self._stagnant = 0
 
     def __call__(self, algorithm) -> bool:
+        # Reset state at the start of a new run (generation 0)
+        if algorithm.generation == 0:
+            self._best = None
+            self._stagnant = 0
         if algorithm.best_individual is None or algorithm.best_individual.fitness is None:
             return False
         fit = algorithm.best_individual.fitness

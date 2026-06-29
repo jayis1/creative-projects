@@ -30,7 +30,12 @@ class Knapsack(CombinatorialProblem):
         self.n = len(items)
 
     def evaluate(self, genome: List[int]) -> float:
-        """Return total value of selected items, or -inf if over capacity."""
+        """Return total value of selected items, or heavily penalized value if over capacity.
+
+        For maximization (default): infeasible solutions get -1 - overweight penalty,
+        which is always worse than any feasible solution (value >= 0).
+        For minimization: infeasible solutions get a large positive penalty.
+        """
         total_weight = 0.0
         total_value = 0.0
         for i, bit in enumerate(genome):
@@ -39,8 +44,14 @@ class Knapsack(CombinatorialProblem):
                 total_weight += w
                 total_value += v
         if total_weight > self.capacity:
-            # Infeasible: return negative value proportional to overweight
-            return -(total_weight - self.capacity)
+            # Infeasible: penalize heavily so it's always worse than feasible solutions
+            overweight = total_weight - self.capacity
+            if self.maximize:
+                # Return negative value so it's worse than any feasible (value >= 0)
+                return -1.0 - overweight
+            else:
+                # Return large positive value so it's worse than any feasible minimization
+                return 1e6 + overweight
         return total_value
 
     def random_genome(self) -> List[int]:

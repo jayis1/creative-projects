@@ -176,6 +176,9 @@ def pmx_crossover(parent1: Sequence[int], parent2: Sequence[int]) -> Tuple[List[
     """Partially Mapped Crossover (PMX) for permutation-based genomes.
 
     Preserves a segment from each parent and resolves conflicts via mapping.
+    The mapping maps values in the segment from one parent to the other, so that
+    when a value outside the segment conflicts with a value inside the segment,
+    it is replaced by its mapping.
     """
     n = len(parent1)
     if n != len(parent2):
@@ -183,26 +186,41 @@ def pmx_crossover(parent1: Sequence[int], parent2: Sequence[int]) -> Tuple[List[
     if n < 2:
         return list(parent1), list(parent2)
     a, b = sorted(random.sample(range(n), 2))
-    c1 = list(parent2)  # start as copy of opposite parent
-    c2 = list(parent1)
-    # Copy segment
-    c1[a:b + 1] = parent1[a:b + 1]
-    c2[a:b + 1] = parent2[a:b + 1]
-    # Build mappings
-    map1 = {parent2[i]: parent1[i] for i in range(a, b + 1)}
-    map2 = {parent1[i]: parent2[i] for i in range(a, b + 1)}
-    # Fix conflicts outside the segment
+    # Child 1: copy segment [a..b] from parent1, fill rest from parent2
+    c1 = [None] * n
+    c2 = [None] * n
+    # Copy segments
+    for i in range(a, b + 1):
+        c1[i] = parent1[i]
+        c2[i] = parent2[i]
+    # Build mappings for conflict resolution:
+    # For c1 (segment from parent1): if a value from parent2 outside the segment
+    #   conflicts with a value in parent1's segment, we need to map it.
+    #   Map parent1[segment] -> parent2[segment] so we can follow the chain.
+    # For c2 (segment from parent2): map parent2[segment] -> parent1[segment].
+    map_for_c1 = {parent1[i]: parent2[i] for i in range(a, b + 1)}
+    map_for_c2 = {parent2[i]: parent1[i] for i in range(a, b + 1)}
+    # Fill c1: for positions outside segment, take from parent2 but resolve conflicts
+    segment_values_c1 = set(parent1[a:b + 1])
     for i in range(n):
         if a <= i <= b:
             continue
-        # Fix c1
-        val = c1[i]
-        while val in map1 and map1[val] != val:
-            val = map1[val]
+        val = parent2[i]
+        # If val is in c1's segment, follow the mapping chain to find a non-conflicting value
+        visited = set()
+        while val in segment_values_c1 and val in map_for_c1 and val not in visited:
+            visited.add(val)
+            val = map_for_c1[val]
         c1[i] = val
-        # Fix c2
-        val2 = c2[i]
-        while val2 in map2 and map2[val2] != val2:
-            val2 = map2[val2]
-        c2[i] = val2
-    return c1, c2
+    # Fill c2: for positions outside segment, take from parent1 but resolve conflicts
+    segment_values_c2 = set(parent2[a:b + 1])
+    for i in range(n):
+        if a <= i <= b:
+            continue
+        val = parent1[i]
+        visited = set()
+        while val in segment_values_c2 and val in map_for_c2 and val not in visited:
+            visited.add(val)
+            val = map_for_c2[val]
+        c2[i] = val
+    return c1, c2  # type: ignore

@@ -252,6 +252,12 @@ class NSGA2(BaseAlgorithm):
         selected = [combined.individuals[i] for i in new_pop]
         # Store Pareto front (front 0)
         self.pareto_front = [combined.individuals[i] for i in fronts[0]]
+
+        # Clean up objectives cache: keep only entries for surviving individuals
+        surviving_ids = {ind.id for ind in selected}
+        self._objectives_cache = {k: v for k, v in self._objectives_cache.items()
+                                    if k in surviving_ids}
+
         return Population(selected)
 
     def _tournament(self, population: Population, fronts: List[List[int]]) -> Individual:

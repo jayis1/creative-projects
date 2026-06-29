@@ -249,3 +249,21 @@ pip install -e .
 ```
 
 Or simply add the directory to your Python path — no dependencies required.
+
+## Known Issues (Resolved)
+
+The following bugs were identified during systematic bug hunting and have been fixed:
+
+1. **PMX crossover produced invalid permutations** — The mapping direction was inverted, causing duplicate values in children. Fixed by correcting the mapping chain: for child 1 (segment from parent1), map parent1's segment values to parent2's segment values; for child 2, map parent2's to parent1's. Added visited-set cycle detection to prevent infinite loops. Verified with 500-iteration stress test across permutation sizes 2-15.
+
+2. **Individual ID counter never reset** — `Individual._next_id` incremented indefinitely, causing NSGA2's objectives cache to grow unbounded. Fixed by adding `Individual.reset_id_counter()` class method and implementing automatic cache cleanup in NSGA2 (pruning entries for non-surviving individuals after each generation).
+
+3. **Stagnation callback didn't reset between runs** — `Stagnation._best` and `_stagnant` persisted across multiple algorithm runs, causing premature termination on the second run. Fixed by detecting new runs (generation == 0) and resetting internal state.
+
+4. **Verbose logging crashed on None fitness** — `record_statistics` used `:.6g` format specifier on potentially None values, causing `TypeError`. Fixed with None-safe string formatting.
+
+5. **Knapsack infeasible fitness was ambiguous** — `evaluate()` returned `-(overweight)` for infeasible solutions, which a minimizer would incorrectly prefer over feasible solutions (which have positive values). Fixed by returning `-1.0 - overweight` for maximization (always worse than any feasible value ≥ 0) and `1e6 + overweight` for minimization.
+
+6. **DE mutation could pick duplicate indices** — The original `pick()` function only excluded the target index, allowing `r1 == r2 == r3` in `rand/1` strategy, which created an infinite loop in the uniqueness check. Fixed by replacing with `pick_distinct()` that uses `random.sample()` on the available index set, guaranteeing distinct indices.
+
+7. **DE best/1 strategy re-evaluated the entire population** — Finding the best individual called `self.problem.evaluate()` for every genome on every mutation, causing extreme slowdown. Fixed by using already-computed fitness values from `Individual.fitness`.

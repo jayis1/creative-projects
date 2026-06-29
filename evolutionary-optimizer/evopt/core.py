@@ -24,6 +24,11 @@ class Individual:
 
     _next_id = 0
 
+    @classmethod
+    def reset_id_counter(cls):
+        """Reset the global ID counter to 0. Useful for testing and preventing unbounded memory growth."""
+        cls._next_id = 0
+
     def __init__(self, genome: Any, fitness: Optional[float] = None):
         self.genome = genome
         self.fitness = fitness
