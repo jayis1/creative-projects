@@ -1,0 +1,20 @@
+algorithm:
+  name: ga
+  params:
+    population_size: 50
+    max_generations: 100
+    crossover_rate: 0.9
+    mutation_rate: 0.05
+    elite_size: 2
+problem:
+  name: rastrigin
+  params:
+    dims: 5
+seed: 42
+verbose: false
+callbacks:
+- type: stagnation
+  params:
+    patience: 30
+- type: adaptive_mutation_rate
+  params: {}

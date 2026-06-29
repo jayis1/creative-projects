@@ -109,6 +109,11 @@ def sbx_crossover(parent1: Sequence[float], parent2: Sequence[float], eta: float
             beta = (1 / (2 * (1 - u))) ** (1 / (eta + 1))
         x1 = 0.5 * ((1 + beta) * a + (1 - beta) * b)
         x2 = 0.5 * ((1 - beta) * a + (1 + beta) * b)
+        # Guard against complex results from numerical edge cases
+        if isinstance(x1, complex):
+            x1 = x1.real
+        if isinstance(x2, complex):
+            x2 = x2.real
         c1.append(x1)
         c2.append(x2)
     return c1, c2

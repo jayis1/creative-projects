@@ -1,0 +1,16 @@
+{
+  "algorithm": {
+    "name": "cmaes",
+    "params": {
+      "max_generations": 50
+    }
+  },
+  "problem": {
+    "name": "sphere",
+    "params": {
+      "dims": 3
+    }
+  },
+  "seed": 42,
+  "verbose": false
+}

@@ -6,6 +6,8 @@ from .pso import ParticleSwarmOptimizer
 from .nsga2 import NSGA2, MultiObjectiveProblem, dominates, fast_non_dominated_sort, crowding_distance
 from .island_model import IslandModelGA
 from .memetic import MemeticAlgorithm
+from .cmaes import CMAES
+from .simulated_annealing import SimulatedAnnealing
 
 __all__ = [
     "BaseAlgorithm",
@@ -13,4 +15,5 @@ __all__ = [
     "ParticleSwarmOptimizer", "NSGA2", "MultiObjectiveProblem",
     "dominates", "fast_non_dominated_sort", "crowding_distance",
     "IslandModelGA", "MemeticAlgorithm",
+    "CMAES", "SimulatedAnnealing",
 ]

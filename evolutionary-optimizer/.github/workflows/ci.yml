@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "evolutionary-optimizer/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "evolutionary-optimizer/**"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          cd evolutionary-optimizer
+          pip install -e . pytest numpy pyyaml
+
+      - name: Run tests
+        run: |
+          cd evolutionary-optimizer
+          python -m pytest tests/ -v --tb=short
+
+      - name: Run examples (smoke test)
+        run: |
+          cd evolutionary-optimizer
+          python examples/01_basic_usage.py > /dev/null
+          python examples/05_custom_problem.py > /dev/null

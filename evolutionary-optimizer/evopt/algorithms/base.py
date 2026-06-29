@@ -113,6 +113,12 @@ class BaseAlgorithm(ABC):
         import random as _random
         if self.seed is not None:
             _random.seed(self.seed)
+            # Also seed numpy if available (for CMA-ES and other numpy-based algorithms)
+            try:
+                import numpy as _np
+                _np.random.seed(self.seed)
+            except ImportError:
+                pass
 
         self.population = self.initialize()
         self.evaluate_population(self.population)
@@ -128,8 +134,11 @@ class BaseAlgorithm(ABC):
             self.record_statistics()
             self._run_callbacks()
 
-        self.terminated = True
-        self.termination_reason = f"Reached max_generations={self.max_generations}"
+        # Respect termination reason set by should_terminate() or callbacks;
+        # only default to max_generations if no reason was set.
+        if not self.terminated or not self.termination_reason:
+            self.terminated = True
+            self.termination_reason = f"Reached max_generations={self.max_generations}"
         if self.verbose:
             self.logger.info(f"Algorithm terminated: {self.termination_reason}")
             self.logger.info(f"Best fitness: {self.best_individual.fitness if self.best_individual else 'N/A'}")

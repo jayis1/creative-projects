@@ -42,22 +42,30 @@ def polynomial_mutation(genome: Sequence[float], rate: float = 0.1, eta: float =
         if random.random() > rate:
             continue
         x = result[i]
+        # Guard against non-real inputs (can arise from SBX numerical issues)
+        if isinstance(x, complex):
+            x = x.real
         lo, hi = bounds[i] if bounds else (x - 1.0, x + 1.0)
         delta = hi - lo
         if delta <= 0:
             continue
+        # Clamp x to bounds to avoid complex exponentiation
+        x = max(lo, min(hi, x))
         u = random.random()
         delta1 = (x - lo) / delta
         delta2 = (hi - x) / delta
         mut_pow = 1.0 / (eta + 1)
         if u <= 0.5:
             xy = 1 - delta1
+            # Guard: xy must be >= 0 for real exponentiation
+            xy = max(xy, 0.0)
             val = 2 * u + (1 - 2 * u) * (xy ** (eta + 1))
-            deltaq = val ** mut_pow - 1
+            deltaq = abs(val) ** mut_pow - 1
         else:
             xy = 1 - delta2
+            xy = max(xy, 0.0)
             val = 2 * (1 - u) + (2 * u - 1) * (xy ** (eta + 1))
-            deltaq = 1 - val ** mut_pow
+            deltaq = 1 - abs(val) ** mut_pow
         x = x + deltaq * delta
         result[i] = max(lo, min(hi, x))
     return result

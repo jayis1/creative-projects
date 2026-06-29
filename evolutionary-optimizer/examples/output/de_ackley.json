@@ -1,0 +1,20 @@
+{
+  "algorithm": {
+    "name": "de",
+    "params": {
+      "population_size": 50,
+      "max_generations": 100,
+      "F": 0.6,
+      "CR": 0.9,
+      "strategy": "best/1"
+    }
+  },
+  "problem": {
+    "name": "ackley",
+    "params": {
+      "dims": 3
+    }
+  },
+  "seed": 42,
+  "verbose": false
+}
