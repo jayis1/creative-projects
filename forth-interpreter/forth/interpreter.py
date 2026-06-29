@@ -671,8 +671,6 @@ class ForthInterpreter:
                 i.emit(f"{v} ")
         self.reg(".", _dot, doc="Print top + space")
 
-        self.reg(".\"", lambda i, t, n: None, doc="Print string (compiled)", immediate=True)
-
         def _emit(i, t, n):
             i.emit(chr(i.pop_int()))
         self.reg("EMIT", _emit, doc="Print char")
@@ -738,7 +736,14 @@ class ForthInterpreter:
             addr = i.pop()
             val = i.pop()
             if isinstance(addr, str) and addr in i.variables:
-                i.variables[addr][0] = val
+                cell = i.variables[addr]
+                # Only allow storing to scalar variables (single-cell, not arrays)
+                if isinstance(cell, list) and len(cell) == 1:
+                    cell[0] = val
+                elif isinstance(cell, list) and len(cell) != 1:
+                    raise ForthError(f"{addr} is an array; use []!")
+                else:
+                    raise ForthError(f"bad variable: {addr}")
             else:
                 raise ForthError(f"bad address: {addr}")
         self.reg("!", _store, doc="Store ( val addr -- )")
@@ -746,7 +751,13 @@ class ForthInterpreter:
         def _fetch(i, t, n):
             addr = i.pop()
             if isinstance(addr, str) and addr in i.variables:
-                i.push(i.variables[addr][0])
+                cell = i.variables[addr]
+                if isinstance(cell, list) and len(cell) == 1:
+                    i.push(cell[0])
+                elif isinstance(cell, list) and len(cell) != 1:
+                    raise ForthError(f"{addr} is an array; use []@")
+                else:
+                    raise ForthError(f"bad variable: {addr}")
             else:
                 raise ForthError(f"bad address: {addr}")
         self.reg("@", _fetch, doc="Fetch ( addr -- val )")
@@ -755,7 +766,11 @@ class ForthInterpreter:
             addr = i.pop()
             val = i.pop()
             if isinstance(addr, str) and addr in i.variables:
-                i.variables[addr][0] += val
+                cell = i.variables[addr]
+                if isinstance(cell, list) and len(cell) == 1:
+                    cell[0] += val
+                else:
+                    raise ForthError(f"{addr} is not a scalar variable")
             else:
                 raise ForthError(f"bad address: {addr}")
         self.reg("+!", _plus_store, doc="Add to stored ( n addr -- )")
@@ -1024,20 +1039,25 @@ class ForthInterpreter:
         self.reg('."', _dot_quote, immediate=True, doc='Print string at runtime')
 
         # ── CASE/ENDCASE/ENDOF (immediate compilation words) ──
+        # CASE: pushes the case value, compares with each OF value.
+        # OF: compiles  OVER = IF DROP (body) ELSE (skip to next OF/ENDCASE) THEN
+        # ENDOF: jump past ENDCASE; fix up IF to skip to next OF
+        # ENDCASE: fix up all ENDOF jumps; DROP the case value
+
         def _case(i, t, n):
             """CASE ( n -- )  Start a case statement."""
-            i.return_stack.append(("case", 0))
+            i.return_stack.append(("case", []))  # collect ENDOF jump positions
             return n + 1
         self.reg("CASE", _case, immediate=True, doc="CASE statement")
 
         def _of(i, t, n):
-            """OF ( test -- )  Compare top with case value; if equal, execute body."""
-            # Stack at runtime: case_val test  → if equal, drop both and run body
-            # We compile: OVER = IF DROP [body] DROP 0 ELSE DROP 1 THEN
-            # Simpler: compile as if-then-else pattern
-            i.current_def.append(["lit", "of-check"])
-            # Actually, compile: OVER = IF DROP ... ELSE DROP ... THEN
-            # Use a simpler approach: compile OVER = IF DROP (body) ELSE (skip) THEN
+            """OF ( test -- )  Compare case_val with test; if equal, run body."""
+            # Compile: OVER = IF DROP (body) [jump past ENDCASE] ELSE (skip body) THEN
+            # At runtime: stack is [..., case_val, test]
+            # OVER copies case_val to top: [..., case_val, test, case_val]
+            # = compares test and case_val: [..., case_val, flag]
+            # IF flag true: DROP case_val, run body, then jump past ENDCASE
+            # IF flag false: skip to next OF/ENDCASE (case_val stays on stack)
             i.current_def.append(["call", "OVER"])
             i.current_def.append(["call", "="])
             i.current_def.append(["if", None])
@@ -1051,28 +1071,27 @@ class ForthInterpreter:
             if not i.return_stack or i.return_stack[-1][0] != "of-fixup":
                 raise ForthError("ENDOF without OF")
             if_pos = i.return_stack.pop()[1]
-            # Emit jump past ENDCASE (will be fixed up)
+            # Emit jump past ENDCASE (will be fixed up at ENDCASE)
             i.current_def.append(["jump", None])
             jump_pos = len(i.current_def) - 1
-            # Fix up IF to skip to here (the ELSE part)
+            # Fix up IF to skip to here (the else-branch: case_val still on stack)
             i.current_def[if_pos][1] = len(i.current_def)
-            # Push a new of-end-fixup to collect jumps
+            # Record this jump position in the case's list
             if i.return_stack and i.return_stack[-1][0] == "case":
-                i.return_stack[-1] = ("case", i.return_stack[-1][1] + 1)
-            i.return_stack.append(("of-end-fixup", jump_pos))
+                i.return_stack[-1][1].append(jump_pos)
             return n + 1
         self.reg("ENDOF", _endof, immediate=True, doc="ENDOF clause")
 
         def _endcase(i, t, n):
             """ENDCASE — end of case statement, drop the case value."""
-            # Fix up all ENDOF jumps to point here
-            while i.return_stack and i.return_stack[-1][0] == "of-end-fixup":
-                pos = i.return_stack.pop()[1]
-                i.current_def[pos][1] = len(i.current_def)
-            # Pop the case marker
+            # Fix up all ENDOF jumps to point past the DROP we're about to emit
             if i.return_stack and i.return_stack[-1][0] == "case":
+                # The DROP will be at len(current_def); jumps should go to len+1
+                drop_pos = len(i.current_def)
+                for pos in i.return_stack[-1][1]:
+                    i.current_def[pos][1] = drop_pos + 1  # jump past DROP
                 i.return_stack.pop()
-            # Drop the case value
+            # Drop the case value (only reached if no OF clause matched and jumped past)
             i.current_def.append(["call", "DROP"])
             return n + 1
         self.reg("ENDCASE", _endcase, immediate=True, doc="ENDCASE")
@@ -1106,8 +1125,8 @@ class ForthInterpreter:
             val = i.pop()
             if isinstance(addr, str) and addr in i.variables:
                 arr = i.variables[addr]
-                if isinstance(arr, list) and not isinstance(arr[0], list) if arr else True:
-                    pass
+                if not isinstance(arr, list):
+                    raise ForthError(f"{addr} is not an array")
                 if idx < 0 or idx >= len(arr):
                     raise ForthError(f"array index {idx} out of range [0,{len(arr)})")
                 arr[idx] = val
@@ -1175,6 +1194,7 @@ class ForthInterpreter:
         self.stack.clear()
         self.compiling = False
         self.current_def = []
+        self.current_name = ""
         self.return_stack.clear()
 
 

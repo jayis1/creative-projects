@@ -351,3 +351,47 @@ class TestPrimes:
         '''
         result = run(interp, code)
         assert result == "2 3 5 7 11 13 17 19 23 29 \n"
+
+
+class TestCaseOf:
+    """Test CASE/OF/ENDOF/ENDCASE."""
+    def test_case_match(self, interp):
+        code = '''
+        : GRADE
+            CASE
+                0 OF ." F" ENDOF
+                1 OF ." D" ENDOF
+                2 OF ." C" ENDOF
+                3 OF ." B" ENDOF
+                4 OF ." A" ENDOF
+                ." ?"
+            ENDCASE ;
+        3 GRADE CR
+        '''
+        result = run(interp, code)
+        assert "B" in result
+
+    def test_case_default(self, interp):
+        code = '''
+        : GRADE
+            CASE
+                0 OF ." F" ENDOF
+                1 OF ." D" ENDOF
+                ." ?"
+            ENDCASE ;
+        99 GRADE CR
+        '''
+        result = run(interp, code)
+        assert "?" in result
+
+    def test_case_first_match(self, interp):
+        code = '''
+        : TEST
+            CASE
+                1 OF ." one" ENDOF
+                2 OF ." two" ENDOF
+            ENDCASE ;
+        1 TEST CR
+        '''
+        result = run(interp, code)
+        assert "one" in result

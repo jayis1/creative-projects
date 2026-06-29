@@ -212,7 +212,24 @@ python3 -m forth -e '100 2 / . CR'
 python3 -m pytest tests/test_forth.py -v
 ```
 
-89 tests covering arithmetic, floats, stack ops, comparisons, bitwise, variables, arrays, control flow, strings, error handling, and the primes example.
+102 tests covering arithmetic, floats, stack ops, comparisons, bitwise, variables, arrays, control flow, CASE/OF, strings, error handling, and the primes example.
+
+## Known Issues (Resolved)
+
+### Bug 1: CASE/OF/ENDOF/ENDCASE — bogus literal instruction (Fixed)
+The `OF` word pushed a `("lit", "of-check")` instruction into the compiled body, corrupting the data stack at runtime. Additionally, `ENDCASE`'s DROP instruction was not jumped over by matching OF clauses, causing a stack underflow. Fixed by removing the bogus literal and correctly fixing up ENDOF jump targets to skip past ENDCASE's DROP.
+
+### Bug 2: `_arr_store` dead code (Fixed)
+The `[]!` word contained confusing dead code (`if isinstance(arr, list) and not isinstance(arr[0], list) if arr else True: pass`) that served no purpose. Replaced with a proper type check that raises an error if the target is not an array.
+
+### Bug 3: `_reset_state` didn't clear `current_name` (Fixed)
+After a compilation error, `current_name` was not cleared. This could cause `RECURSE` in a subsequent definition to accidentally call the failed word's name. Fixed by clearing `current_name` in `_reset_state`.
+
+### Bug 4: `@` and `!` didn't validate scalar vs array access (Fixed)
+Using `@` on an array variable would push the entire list, and `!` on an array would overwrite it with a single value. Fixed by checking that the variable is a scalar (single-cell) before allowing `@`/`!` access, with a helpful error message directing the user to `[]@`/`[]!`.
+
+### Bug 5: Duplicate `."` registration (Fixed)
+The `."` word was registered twice — first as a no-op lambda, then as the real implementation. While the second registration overrode the first, the duplicate was confusing dead code. Removed the no-op registration.
 
 ## Project Structure
 
