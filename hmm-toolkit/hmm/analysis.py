@@ -10,7 +10,7 @@ import math
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from .hmm import HMM
-from .algorithms import forward, backward
+from .algorithms import forward, backward, _HMMLike
 
 
 def sequence_log_likelihood(hmm: HMM, obs: Sequence[int]) -> float:

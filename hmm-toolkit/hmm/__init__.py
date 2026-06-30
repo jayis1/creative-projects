@@ -2,8 +2,11 @@
 
 Provides HMM construction, the three canonical algorithms (Forward, Backward,
 Viterbi), Baum-Welch parameter estimation (single and multi-sequence), sequence
-generation, analysis utilities (classification, entropy, dwell time), and JSON
-serialization — all in pure Python with no third-party dependencies.
+generation, analysis utilities (classification, entropy, dwell time), JSON
+serialization, Gaussian-emission HMMs, Profile HMMs for bioinformatics,
+text-based visualisation, advanced training (cross-validation, restarts,
+constrained EM, grid search), and a CLI — all in pure Python with no
+third-party dependencies.
 """
 
 from .hmm import HMM
@@ -32,6 +35,24 @@ from .analysis import (
     state_durations,
     expected_state_dwell_time,
 )
+from .gaussian import GaussianHMM, random_gaussian_hmm
+from .profile import ProfileHMM, build_profile_hmm
+from .viz import (
+    transition_diagram,
+    viterbi_path_visualization,
+    posterior_heatmap,
+    entropy_sparkline,
+    format_model,
+)
+from .training import (
+    k_fold_cross_validation,
+    summarize_cv_results,
+    train_with_restarts,
+    constrained_baum_welch,
+    grid_search,
+)
+from .config import load_config, save_config
+from .logging_config import get_logger, configure_logging
 
 __all__ = [
     # Core
@@ -58,6 +79,29 @@ __all__ = [
     "symmetric_kl",
     "state_durations",
     "expected_state_dwell_time",
+    # Gaussian HMM
+    "GaussianHMM",
+    "random_gaussian_hmm",
+    # Profile HMM
+    "ProfileHMM",
+    "build_profile_hmm",
+    # Visualisation
+    "transition_diagram",
+    "viterbi_path_visualization",
+    "posterior_heatmap",
+    "entropy_sparkline",
+    "format_model",
+    # Advanced training
+    "k_fold_cross_validation",
+    "summarize_cv_results",
+    "train_with_restarts",
+    "constrained_baum_welch",
+    "grid_search",
+    # Config & logging
+    "load_config",
+    "save_config",
+    "get_logger",
+    "configure_logging",
 ]
 
-__version__ = "2.0.0"
+__version__ = "3.0.0"

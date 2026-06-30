@@ -7,12 +7,24 @@ formulations to avoid numerical underflow on long sequences.
 from __future__ import annotations
 
 import math
-from typing import Dict, List, Optional, Sequence, Tuple
-
-from .hmm import HMM
+from typing import Dict, List, Optional, Protocol, Sequence, Tuple
 
 
-def _validate_observations(hmm: HMM, obs: Sequence[int]) -> None:
+class _HMMLike(Protocol):
+    """Structural protocol satisfied by both ``HMM`` and ``ProfileHMM``."""
+    n_states: int
+    n_symbols: int
+    A: Sequence[Sequence[float]]
+    B: Sequence[Sequence[float]]
+    pi: Sequence[float]
+    log_A: Sequence[Sequence[float]]
+    log_B: Sequence[Sequence[float]]
+    log_pi: Sequence[float]
+
+    def set_parameters(self, *args, **kwargs) -> None: ...
+
+
+def _validate_observations(hmm: _HMMLike, obs: Sequence[int]) -> None:
     """Check that all observation indices are in [0, n_symbols)."""
     M = hmm.n_symbols
     for t, o in enumerate(obs):
@@ -26,7 +38,7 @@ def _validate_observations(hmm: HMM, obs: Sequence[int]) -> None:
 # Forward algorithm (scaled) — returns alpha scaling factors and log-likelihood
 # ---------------------------------------------------------------------------
 
-def forward(hmm: HMM, obs: Sequence[int]) -> Tuple[List[List[float]], List[float], float]:
+def forward(hmm: _HMMLike, obs: Sequence[int]) -> Tuple[List[List[float]], List[float], float]:
     """Scaled forward algorithm.
 
     Parameters
@@ -90,7 +102,7 @@ def forward(hmm: HMM, obs: Sequence[int]) -> Tuple[List[List[float]], List[float
 # ---------------------------------------------------------------------------
 
 def backward(
-    hmm: HMM, obs: Sequence[int], scales: Optional[Sequence[float]] = None
+    hmm: _HMMLike, obs: Sequence[int], scales: Optional[Sequence[float]] = None
 ) -> List[List[float]]:
     """Scaled backward algorithm.
 
@@ -131,7 +143,7 @@ def backward(
 # Viterbi algorithm (log-space) — best state path
 # ---------------------------------------------------------------------------
 
-def viterbi(hmm: HMM, obs: Sequence[int]) -> Tuple[List[int], float]:
+def viterbi(hmm: _HMMLike, obs: Sequence[int]) -> Tuple[List[int], float]:
     """Viterbi algorithm in log-space.
 
     Returns
@@ -200,7 +212,7 @@ def viterbi(hmm: HMM, obs: Sequence[int]) -> Tuple[List[int], float]:
 # ---------------------------------------------------------------------------
 
 def baum_welch(
-    hmm: HMM,
+    hmm: _HMMLike,
     obs: Sequence[int],
     iterations: int = 100,
     tol: float = 1e-6,
@@ -313,7 +325,7 @@ def baum_welch(
 
 
 def baum_welch_multi(
-    hmm: HMM,
+    hmm: _HMMLike,
     obs_list: Sequence[Sequence[int]],
     iterations: int = 100,
     tol: float = 1e-6,
@@ -423,7 +435,7 @@ def baum_welch_multi(
 # Convenience: posterior decoding
 # ---------------------------------------------------------------------------
 
-def posterior_decode(hmm: HMM, obs: Sequence[int]) -> Tuple[List[int], List[List[float]]]:
+def posterior_decode(hmm: _HMMLike, obs: Sequence[int]) -> Tuple[List[int], List[List[float]]]:
     """Posterior (forward-backward) decoding.
 
     Returns the per-timestep argmax-posterior state path and the full gamma
