@@ -658,6 +658,12 @@ def encode_interleaved(data: bytes, nsym: int, depth: int) -> bytes:
         data = data + b"\x00" * pad
 
     block_size = len(data) // depth
+    # Validate that each block fits within GF(2^8) codeword limits
+    if block_size + nsym > 255:
+        raise ValueError(
+            f"Block too large: block_size {block_size} + nsym {nsym} = {block_size + nsym} "
+            f"> 255 (GF(2^8) max). Use a larger depth or smaller nsym."
+        )
     codewords = []
     for i in range(depth):
         block = list(data[i * block_size:(i + 1) * block_size])
@@ -702,6 +708,12 @@ def decode_interleaved(data: bytes, nsym: int, depth: int,
     #                               cw0[1], cw1[1], ..., cw{depth-1}[1], ...]
     # So codeword i, symbol j = data_list[j * depth + i]
     cw_len = len(data_list) // depth
+    if cw_len < nsym:
+        raise ValueError(
+            f"Interleaved data too short: each codeword needs at least nsym={nsym} "
+            f"symbols, but only {cw_len} available (total {len(data_list)} bytes, "
+            f"depth {depth})"
+        )
     codewords = []
     for i in range(depth):
         cw = [data_list[j * depth + i] for j in range(cw_len)]

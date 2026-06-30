@@ -285,6 +285,24 @@ The test suite covers:
 - Edge cases and boundary conditions (9 tests)
 - Stress tests with 150+ random round-trips (2 tests)
 
+## Known Issues (Resolved)
+
+The following bugs were found during systematic code review and fixed:
+
+1. **`gf_poly_mul` crash on empty inputs** — Calling `gf_poly_mul([], [1])` returned `[]` (empty list) instead of `[0]`, because `len([]) + len([1]) - 1 = 0` and `[0] * 0 = []`. **Fix:** Added an early return `[0]` when either input is empty.
+
+2. **`GF256.pow` accepts negative exponents** — Passing a negative exponent `e` to `GF256.pow()` silently produced incorrect results instead of raising an error. **Fix:** Added validation that raises `ValueError` for negative exponents and `TypeError` for non-integer exponents.
+
+3. **`decode_interleaved` missing minimum data length validation** — When given data shorter than `nsym * depth` bytes, the function would compute a negative `msg_len` and produce incorrect output instead of raising a clear error. **Fix:** Added explicit length validation with a descriptive error message.
+
+4. **`encode_interleaved` missing block size validation** — When `block_size + nsym > 255`, the underlying `rs_encode` would raise, but with a confusing error message that didn't mention the interleaving context. **Fix:** Added explicit validation with a clear error message explaining the interleaving constraint.
+
+5. **CLI `decode` command replaces all `.rs` occurrences in path** — The `cmd_decode` function used `args.input.replace(".rs", "")` which replaces ALL occurrences of ".rs" in the path, not just the file extension. For example, `path/to.rs/file.rs` would become `path/to/file` (losing a directory name). **Fix:** Changed to check `args.input.endswith(".rs")` and strip only the trailing extension.
+
+6. **`gf_poly_div` incorrect remainder extraction** — The original polynomial division algorithm used an incorrect separator index (`-(len(rev_divisor) - 1)`) for extracting the remainder, which caused wrong results for degree-0 divisors (like `[1]`) and self-division. **Fix:** Rewrote the division algorithm to properly track the quotient length and extract the remainder from the correct position, with a precomputed divisor leading coefficient inverse for efficiency.
+
+7. **`deinterleave` function was identical to `interleave`** — The `deinterleave` function used the same formula as `interleave` (mapping `data[i]` to `result[r*cols + c]`), making it NOT the inverse of interleaving. **Fix:** Changed `deinterleave` to use the inverse mapping: `result[i] = data[(i%rows)*cols + (i//rows)]`.
+
 ## Algorithm References
 
 - Reed, I. S.; Solomon, G. (1960). "Polynomial Codes Over Certain Finite Fields"

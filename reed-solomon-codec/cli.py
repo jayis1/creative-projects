@@ -51,8 +51,12 @@ def cmd_decode(args: argparse.Namespace) -> int:
     except ValueError as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 1
-    outfile = args.output or args.input.replace(".rs", "")
-    if outfile == args.input:
+    # Strip .rs extension only if it's the actual extension, not any occurrence
+    if args.output:
+        outfile = args.output
+    elif args.input.endswith(".rs"):
+        outfile = args.input[:-3]  # strip the .rs extension
+    else:
         outfile = args.input + ".decoded"
     with open(outfile, "wb") as f:
         f.write(decoded)

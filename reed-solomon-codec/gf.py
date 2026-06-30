@@ -72,7 +72,19 @@ class GF256:
 
     @classmethod
     def pow(cls, a: int, e: int) -> int:
-        """Raise field element a to power e."""
+        """Raise field element a to power e.
+
+        Args:
+            a: Field element (0-255).
+            e: Non-negative integer exponent.
+
+        Raises:
+            ValueError: If e is negative.
+        """
+        if not isinstance(e, int):
+            raise TypeError(f"exponent must be an integer, got {type(e).__name__}")
+        if e < 0:
+            raise ValueError(f"negative exponent {e} not supported in GF(256) pow")
         if a == 0:
             return 0 if e != 0 else 1
         if e == 0:
@@ -115,6 +127,10 @@ def gf_poly_add(p: List[int], q: List[int]) -> List[int]:
 
 def gf_poly_mul(p: List[int], q: List[int]) -> List[int]:
     """Multiply two polynomials (lowest-degree-first)."""
+    # Handle empty inputs: the product of anything with the zero polynomial
+    # (or empty) is [0]. This prevents [0]*-1 which gives [].
+    if not p or not q:
+        return [0]
     r = [0] * (len(p) + len(q) - 1)
     for j in range(len(q)):
         for i in range(len(p)):
