@@ -4,14 +4,25 @@ A Hidden Markov Model (HMM) toolkit implemented **from scratch** in pure Python 
 
 ## Features
 
+### Core Algorithms
 - **Forward algorithm** (scaled) — computes P(observations | model) with numerical stability
 - **Backward algorithm** (scaled) — companion backward probabilities
 - **Viterbi algorithm** (log-space) — most likely hidden state path
-- **Baum-Welch** — EM parameter estimation / training
+- **Baum-Welch** — EM parameter estimation / training (single sequence)
+- **Multi-sequence Baum-Welch** — train on multiple i.i.d. observation sequences
 - **Posterior decoding** — forward-backward marginal decoding
+
+### Analysis Utilities
+- **Sequence classification** — classify observations by selecting the best-matching model
+- **State entropy** — per-timestep Shannon entropy of the state posterior
+- **Symmetric KL divergence** — compare two HMMs via log-likelihood ratio
+- **State durations** — segment a state path into consecutive runs
+- **Expected dwell time** — theoretical mean residence time per state (1/(1-A[i][i]))
+
+### Other
 - **Sequence generation** — sample state + observation sequences from a model
 - **JSON serialization** — save/load models and observation sequences
-- **CLI** — 7 subcommands (generate, viterbi, forward, train, posterior, random, info)
+- **CLI** — 9 subcommands (generate, viterbi, forward, train, posterior, random, info, classify, entropy)
 - Pure Python (stdlib only), Python ≥ 3.8
 
 ## Quick Start
@@ -40,6 +51,26 @@ fresh = HMM.random(states, symbols, seed=0)
 final_ll, iters = baum_welch(fresh, obs_idx, iterations=200)
 ```
 
+### Multi-sequence training
+
+```python
+from hmm import baum_welch_multi
+
+# Train on multiple observation sequences
+obs_list = [model.observation_sequence(generate_sequence(model, 50, seed=i)[1]) for i in range(10)]
+fresh = HMM.random(states, symbols, seed=0)
+final_ll, iters = baum_welch_multi(fresh, obs_list, iterations=100)
+```
+
+### Classification
+
+```python
+from hmm import classify_sequence
+
+# Classify an observation sequence against multiple models
+idx, name, ll = classify_sequence([model_a, model_b], obs, model_names=["A", "B"])
+```
+
 ## CLI
 
 ```bash
@@ -60,6 +91,12 @@ python3 -m hmm train --model model.json --obs observations.json --out trained.js
 
 # Posterior decoding
 python3 -m hmm posterior --model model.json --obs observations.json
+
+# Classify against multiple models
+python3 -m hmm classify --models model_a.json,model_b.json --obs observations.json
+
+# Per-timestep entropy
+python3 -m hmm entropy --model model.json --obs observations.json
 ```
 
 ## How It Works
@@ -78,7 +115,12 @@ The forward variable α_t(i) = P(O₁...O_t, q_t = S_i | model) is computed recu
 
 ### Baum-Welch (EM)
 
-E-step: compute γ (state posteriors) and ξ (transition posteriors) via forward-backward. M-step: re-estimate A, B, π as normalized expected counts with additive smoothing. Converges to a local optimum.
+E-step: compute γ (state posteriors) and ξ (transition posteriors) via forward-backward. M-step: re-estimate A, B, π as normalized expected counts with additive smoothing. Converges to a local optimum. The multi-sequence variant accumulates expected counts across all sequences before the M-step.
+
+## Examples
+
+- `examples/dishonest_casino.py` — The classic Dishonest Casino HMM (fair/loaded die)
+- `examples/weather_prediction.py` — Weather prediction (Sunny/Cloudy/Rainy → Walk/Shop/Clean)
 
 ## Project Structure
 
@@ -88,15 +130,24 @@ hmm-toolkit/
 │   ├── __init__.py      # Public API exports
 │   ├── __main__.py      # CLI entry point
 │   ├── hmm.py           # HMM data structure + validation
-│   ├── algorithms.py     # Forward, Backward, Viterbi, Baum-Welch, posterior
+│   ├── algorithms.py    # Forward, Backward, Viterbi, Baum-Welch, posterior
+│   ├── analysis.py       # Classification, entropy, KL, dwell time
 │   ├── sequences.py      # Generation + JSON I/O
-│   └── cli.py           # Argparse CLI
+│   └── cli.py           # Argparse CLI (9 subcommands)
 ├── examples/
-│   └── dishonest_casino.py
+│   ├── dishonest_casino.py
+│   └── weather_prediction.py
 ├── tests/
-│   └── test_hmm.py
+│   └── test_hmm.py      # 40 tests
 ├── pyproject.toml
 └── README.md
+```
+
+## Testing
+
+```bash
+cd hmm-toolkit
+PYTHONPATH=. python3 -m pytest tests/ -v
 ```
 
 ## License

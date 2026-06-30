@@ -298,6 +298,113 @@ def baum_welch(
     return final_ll, iters_run
 
 
+def baum_welch_multi(
+    hmm: HMM,
+    obs_list: Sequence[Sequence[int]],
+    iterations: int = 100,
+    tol: float = 1e-6,
+    smooth: float = 1e-10,
+    verbose: bool = False,
+) -> Tuple[float, int]:
+    """Baum-Welch EM training on **multiple** independent observation sequences.
+
+    Accumulates expected counts across all sequences before the M-step, which
+    is the correct way to train on multiple i.i.d. observation sequences.
+
+    Returns (total_final_log_likelihood, iterations_run).
+    """
+    N = hmm.n_states
+    M = hmm.n_symbols
+    if not obs_list:
+        raise ValueError("obs_list must not be empty")
+    for o in obs_list:
+        if len(o) < 2:
+            raise ValueError("Each observation sequence needs at least 2 observations")
+
+    prev_total_ll = -math.inf
+    iters_run = 0
+
+    for it in range(iterations):
+        iters_run = it + 1
+        # accumulators
+        pi_num = [0.0] * N
+        A_num = [[0.0] * N for _ in range(N)]
+        A_denom = [0.0] * N
+        B_num = [[0.0] * M for _ in range(N)]
+        B_denom = [0.0] * N
+        total_ll = 0.0
+
+        for obs in obs_list:
+            alpha, scales, ll = forward(hmm, obs)
+            if ll == -math.inf:
+                continue
+            beta = backward(hmm, obs, scales)
+            total_ll += ll
+
+            T = len(obs)
+            # gamma
+            gamma = [[0.0] * N for _ in range(T)]
+            for t in range(T):
+                denom = sum(alpha[t][i] * beta[t][i] for i in range(N))
+                if denom <= 0:
+                    denom = smooth
+                for i in range(N):
+                    gamma[t][i] = (alpha[t][i] * beta[t][i]) / denom
+
+            # xi
+            for t in range(T - 1):
+                ot1 = obs[t + 1]
+                denom = 0.0
+                for i in range(N):
+                    for j in range(N):
+                        denom += (
+                            alpha[t][i] * hmm.A[i][j] * hmm.B[j][ot1] * beta[t + 1][j]
+                        )
+                if denom <= 0:
+                    denom = smooth
+                for i in range(N):
+                    for j in range(N):
+                        xi_tij = (
+                            alpha[t][i] * hmm.A[i][j] * hmm.B[j][ot1] * beta[t + 1][j]
+                        ) / denom
+                        A_num[i][j] += xi_tij
+                        A_denom[i] += gamma[t][i]
+
+            for t in range(T):
+                for i in range(N):
+                    B_num[i][obs[t]] += gamma[t][i]
+                    B_denom[i] += gamma[t][i]
+
+            # pi: use first-timestep gamma of each sequence
+            for i in range(N):
+                pi_num[i] += gamma[0][i]
+
+        # re-estimate
+        n_seqs = len(obs_list)
+        new_pi = [(pi_num[i] + smooth) / (n_seqs + smooth * N) for i in range(N)]
+        new_A = [[(A_num[i][j] + smooth) / (A_denom[i] + smooth * N) for j in range(N)]
+                 for i in range(N)]
+        new_B = [[(B_num[i][k] + smooth) / (B_denom[i] + smooth * M) for k in range(M)]
+                 for i in range(N)]
+
+        hmm.set_parameters(A=new_A, B=new_B, pi=new_pi)
+
+        if verbose:
+            print(f"  iter {it + 1}: total log-likelihood = {total_ll:.6f}")
+
+        if abs(total_ll - prev_total_ll) < tol:
+            break
+        prev_total_ll = total_ll
+
+    # final total ll
+    final_total = 0.0
+    for obs in obs_list:
+        _, _, ll = forward(hmm, obs)
+        if ll != -math.inf:
+            final_total += ll
+    return final_total, iters_run
+
+
 # ---------------------------------------------------------------------------
 # Convenience: posterior decoding
 # ---------------------------------------------------------------------------

@@ -241,5 +241,118 @@ class TestPosteriorDecode:
         assert all(abs(sum(row) - 1.0) < 0.1 for row in gamma)
 
 
+# --- Analysis utilities (Phase 2) ---
+
+class TestAnalysis:
+    def test_sequence_log_likelihood(self):
+        from hmm import sequence_log_likelihood
+        hmm = casino_hmm()
+        obs = [0, 1, 2]
+        ll = sequence_log_likelihood(hmm, obs)
+        assert ll < 0 and ll != -math.inf
+
+    def test_classify_sequence(self):
+        from hmm import classify_sequence
+        # fair model: starts in fair state, uniform emissions
+        hmm_fair = HMM(["F", "L"], ["1", "2", "3", "4", "5", "6"],
+                       [[1, 0], [0, 1]], [[1/6]*6, [1/6]*6], [1, 0])
+        # loaded model: starts in loaded state, 6-biased emissions
+        hmm_loaded = HMM(["F", "L"], ["1", "2", "3", "4", "5", "6"],
+                         [[1, 0], [0, 1]], [[0.01]*5 + [0.95], [1/6]*6], [1, 0])
+        # all 6s should prefer the loaded model
+        obs = [5] * 10
+        idx, name, ll = classify_sequence([hmm_fair, hmm_loaded], obs)
+        assert idx == 1  # loaded model
+
+    def test_state_entropy(self):
+        from hmm import state_entropy
+        hmm = casino_hmm()
+        obs = [0, 1, 2, 3, 4, 5]
+        entropies = state_entropy(hmm, obs)
+        assert len(entropies) == 6
+        assert all(e >= 0 for e in entropies)
+
+    def test_symmetric_kl(self):
+        from hmm import symmetric_kl
+        hmm_a = casino_hmm()
+        hmm_b = HMM(["F", "L"], ["1", "2", "3", "4", "5", "6"],
+                    [[0.5, 0.5], [0.5, 0.5]], [[1/6]*6, [1/6]*6], [0.5, 0.5])
+        obs = [0, 1, 2, 3, 4, 5]
+        kl = symmetric_kl(hmm_a, hmm_b, obs)
+        assert kl >= 0
+
+    def test_symmetric_kl_different_symbols_raises(self):
+        from hmm import symmetric_kl
+        hmm_a = HMM(["a"], ["x"], [[1.0]], [[1.0]], [1.0])
+        hmm_b = HMM(["a"], ["y"], [[1.0]], [[1.0]], [1.0])
+        with pytest.raises(ValueError):
+            symmetric_kl(hmm_a, hmm_b, [0])
+
+    def test_state_durations(self):
+        from hmm import state_durations
+        path = ["Sunny", "Sunny", "Rainy", "Rainy", "Rainy", "Cloudy"]
+        durations = state_durations(path)
+        assert durations == [("Sunny", 2), ("Rainy", 3), ("Cloudy", 1)]
+
+    def test_state_durations_empty(self):
+        from hmm import state_durations
+        assert state_durations([]) == []
+
+    def test_expected_state_dwell_time(self):
+        from hmm import expected_state_dwell_time
+        hmm = HMM(["a", "b"], ["x"],
+                  [[0.75, 0.25], [0.5, 0.5]], [[1.0], [1.0]], [0.5, 0.5])
+        dwell = expected_state_dwell_time(hmm)
+        assert abs(dwell[0] - 4.0) < 1e-9  # 1 / (1 - 0.75) = 4
+        assert abs(dwell[1] - 2.0) < 1e-9  # 1 / (1 - 0.5) = 2
+
+    def test_expected_state_dwell_time_absorbing(self):
+        from hmm import expected_state_dwell_time
+        hmm = HMM(["a", "b"], ["x"],
+                  [[1.0, 0.0], [0.5, 0.5]], [[1.0], [1.0]], [1.0, 0.0])
+        dwell = expected_state_dwell_time(hmm)
+        assert dwell[0] == math.inf
+
+
+# --- Multi-sequence Baum-Welch (Phase 2) ---
+
+class TestBaumWelchMulti:
+    def test_multi_improves_likelihood(self):
+        from hmm import baum_welch_multi
+        hmm_true = casino_hmm()
+        rng = random.Random(42)
+        obs_list = []
+        for _ in range(5):
+            _, obs_syms = generate_sequence(hmm_true, length=50, rng=rng)
+            obs_list.append(hmm_true.observation_sequence(obs_syms))
+        fresh = HMM.random(["F", "L"], ["1", "2", "3", "4", "5", "6"], seed=7)
+        _, _, ll_before = forward(fresh, obs_list[0])
+        final_ll, iters = baum_welch_multi(fresh, obs_list, iterations=50)
+        _, _, ll_after = forward(fresh, obs_list[0])
+        assert ll_after >= ll_before
+
+    def test_multi_empty_raises(self):
+        from hmm import baum_welch_multi
+        hmm = casino_hmm()
+        with pytest.raises(ValueError):
+            baum_welch_multi(hmm, [])
+
+    def test_multi_short_raises(self):
+        from hmm import baum_welch_multi
+        hmm = casino_hmm()
+        with pytest.raises(ValueError):
+            baum_welch_multi(hmm, [[0]])
+
+    def test_multi_preserves_valid_probabilities(self):
+        from hmm import baum_welch_multi
+        hmm = casino_hmm()
+        obs_list = [[0, 1, 2, 3, 4, 5] * 3, [5, 4, 3, 2, 1, 0] * 3]
+        baum_welch_multi(hmm, obs_list, iterations=10)
+        for row in hmm.A:
+            assert abs(sum(row) - 1.0) < 1e-6
+        for row in hmm.B:
+            assert abs(sum(row) - 1.0) < 1e-6
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

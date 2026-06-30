@@ -70,6 +70,16 @@ def _build_parser() -> argparse.ArgumentParser:
     info = sub.add_parser("info", help="Print model parameters")
     info.add_argument("--model", required=True)
 
+    # classify
+    cls = sub.add_parser("classify", help="Classify observations against multiple models")
+    cls.add_argument("--models", required=True, help="Comma-separated list of HMM JSON files")
+    cls.add_argument("--obs", required=True, help="Path to observation JSON file")
+
+    # entropy
+    ent = sub.add_parser("entropy", help="Print per-timestep posterior entropy")
+    ent.add_argument("--model", required=True)
+    ent.add_argument("--obs", required=True)
+
     return p
 
 
@@ -158,6 +168,33 @@ def cmd_info(args) -> int:
     return 0
 
 
+def cmd_classify(args) -> int:
+    from .analysis import classify_sequence
+    model_paths = [p.strip() for p in args.models.split(",")]
+    models = [load_hmm(p) for p in model_paths]
+    obs_symbols = load_observation_sequence(args.obs)
+    # use the first model to convert symbols to indices (assume same symbol set)
+    obs = models[0].observation_sequence(obs_symbols)
+    best_idx, best_name, best_ll = classify_sequence(models, obs, model_names=model_paths)
+    print(f"Best model: {best_name} (index {best_idx})")
+    print(f"Log-likelihood: {best_ll:.6f}")
+    return 0
+
+
+def cmd_entropy(args) -> int:
+    from .analysis import state_entropy
+    hmm = load_hmm(args.model)
+    obs_symbols = load_observation_sequence(args.obs)
+    obs = hmm.observation_sequence(obs_symbols)
+    entropies = state_entropy(hmm, obs)
+    print("Per-timestep posterior entropy (nats):")
+    for t, h in enumerate(entropies):
+        print(f"  t={t:>3}: {h:.6f}")
+    avg = sum(entropies) / len(entropies) if entropies else 0.0
+    print(f"\nAverage entropy: {avg:.6f}")
+    return 0
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
@@ -169,6 +206,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         "posterior": cmd_posterior,
         "random": cmd_random,
         "info": cmd_info,
+        "classify": cmd_classify,
+        "entropy": cmd_entropy,
     }
     return handlers[args.command](args)
 
