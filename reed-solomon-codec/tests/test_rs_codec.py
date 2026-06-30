@@ -18,8 +18,8 @@ from __future__ import annotations
 import random
 import pytest
 
-from gf import GF256, gf_poly_mul, gf_poly_eval, gf_poly_add, gf_poly_div, gf_poly_scale
-from rs_codec import (
+from reed_solomon.gf import GF256, gf_poly_mul, gf_poly_eval, gf_poly_add, gf_poly_div, gf_poly_scale
+from reed_solomon.codec import (
     generator_poly,
     rs_encode,
     rs_decode,

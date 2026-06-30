@@ -7,13 +7,15 @@ from __future__ import annotations
 
 import pytest
 
-from gf import GF256, gf_poly_mul, gf_poly_div, gf_poly_eval
-from rs_codec import (
+from reed_solomon.gf import GF256, gf_poly_mul, gf_poly_div, gf_poly_eval
+from reed_solomon.codec import (
     rs_encode,
     rs_decode,
     encode_interleaved,
     decode_interleaved,
     RSCode,
+    berlekamp_massey,
+    calc_syndromes,
 )
 
 
@@ -120,7 +122,7 @@ class TestBugBMDegree:
 
     def test_bm_degree_never_exceeds_nsym_half(self):
         """BM with valid syndromes should produce locator of degree <= nsym//2."""
-        from rs_codec import berlekamp_massey
+        from reed_solomon.codec import berlekamp_massey
         msg = list(range(20))
         encoded = rs_encode(msg, nsym=10)
         corrupted = list(encoded)
@@ -149,7 +151,7 @@ class TestBugEmptyMessageEncode:
 
     def test_empty_message_valid(self):
         """Encoding empty message should produce valid codeword."""
-        from rs_codec import calc_syndromes
+        from reed_solomon.codec import calc_syndromes
         encoded = rs_encode([], nsym=10)
         synd = calc_syndromes(encoded, 10)
         assert all(s == 0 for s in synd), "Empty message encoding has nonzero syndromes"
