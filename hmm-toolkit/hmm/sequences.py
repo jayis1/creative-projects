@@ -44,8 +44,14 @@ def generate_sequence(
 
 
 def _sample_categorical(probs: Sequence[float], rng: random.Random) -> int:
-    """Sample an index from a categorical distribution given by ``probs``."""
-    r = rng.random()
+    """Sample an index from a categorical distribution given by ``probs``.
+
+    Raises ValueError if all probabilities are zero (degenerate distribution).
+    """
+    total = sum(probs)
+    if total <= 0:
+        raise ValueError("Cannot sample: probabilities sum to zero")
+    r = rng.random() * total  # scale by total in case probs aren't normalised
     cum = 0.0
     for i, p in enumerate(probs):
         cum += p

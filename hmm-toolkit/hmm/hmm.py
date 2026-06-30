@@ -74,6 +74,18 @@ class HMM:
         self.n_states: int = len(self.states)
         self.n_symbols: int = len(self.symbols)
 
+        # Bug fix: reject empty states/symbols (degenerate, causes div-by-zero)
+        if self.n_states == 0:
+            raise ValueError("HMM must have at least one state")
+        if self.n_symbols == 0:
+            raise ValueError("HMM must have at least one symbol")
+
+        # Bug fix: reject duplicate state/symbol names (silently breaks index maps)
+        if len(set(self.states)) != self.n_states:
+            raise ValueError("Duplicate state names are not allowed")
+        if len(set(self.symbols)) != self.n_symbols:
+            raise ValueError("Duplicate symbol names are not allowed")
+
         self._state_index: Dict[str, int] = {s: i for i, s in enumerate(self.states)}
         self._symbol_index: Dict[str, int] = {s: i for i, s in enumerate(self.symbols)}
 

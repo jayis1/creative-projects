@@ -150,6 +150,17 @@ cd hmm-toolkit
 PYTHONPATH=. python3 -m pytest tests/ -v
 ```
 
+## Known Issues (Resolved)
+
+| # | Bug | Fix |
+|---|-----|-----|
+| 1 | `forward`/`backward`/`viterbi` accepted out-of-range observation indices, causing confusing `IndexError` | Added `_validate_observations()` that raises `ValueError` with a descriptive message |
+| 2 | Duplicate state names silently accepted — `state_index()` would return wrong index (last duplicate) | Constructor now rejects duplicate state/symbol names |
+| 3 | Empty states/symbols not rejected — caused `ZeroDivisionError` in normalisation | Constructor now requires ≥1 state and ≥1 symbol |
+| 4 | `viterbi()` returned `[0]*T` for impossible sequences, misleading callers into thinking a valid path exists | Now returns `[], -inf` for impossible sequences |
+| 5 | `_sample_categorical` silently returned last index for all-zero probability vectors | Now raises `ValueError` with clear message |
+| 6 | `state_durations` type annotation restricted to `str` but function works with any hashable type | Relaxed to accept `Sequence` of any type |
+
 ## License
 
 MIT

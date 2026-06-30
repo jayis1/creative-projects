@@ -73,13 +73,13 @@ def symmetric_kl(hmm_a: HMM, hmm_b: HMM, obs: Sequence[int]) -> float:
     return abs(ll_a - ll_b)
 
 
-def state_durations(states: Sequence[str]) -> List[Tuple[str, int]]:
-    """Given a sampled state path (as state names), return the duration of each
-    consecutive run.
+def state_durations(states: Sequence) -> List[Tuple]:
+    """Given a sampled state path (as state names or indices), return the
+    duration of each consecutive run.
 
-    Returns a list of (state_name, duration) tuples.
+    Returns a list of (state, duration) tuples.
     """
-    durations: List[Tuple[str, int]] = []
+    durations: List[Tuple] = []
     if not states:
         return durations
     current = states[0]

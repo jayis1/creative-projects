@@ -12,6 +12,16 @@ from typing import Dict, List, Optional, Sequence, Tuple
 from .hmm import HMM
 
 
+def _validate_observations(hmm: HMM, obs: Sequence[int]) -> None:
+    """Check that all observation indices are in [0, n_symbols)."""
+    M = hmm.n_symbols
+    for t, o in enumerate(obs):
+        if o < 0 or o >= M:
+            raise ValueError(
+                f"observation at t={t} is {o}, must be in [0, {M})"
+            )
+
+
 # ---------------------------------------------------------------------------
 # Forward algorithm (scaled) — returns alpha scaling factors and log-likelihood
 # ---------------------------------------------------------------------------
@@ -23,7 +33,7 @@ def forward(hmm: HMM, obs: Sequence[int]) -> Tuple[List[List[float]], List[float
     ----------
     hmm : HMM
     obs : sequence of int
-        Observation sequence as integer symbol indices.
+        Observation sequence as integer indices.
 
     Returns
     -------
@@ -34,6 +44,7 @@ def forward(hmm: HMM, obs: Sequence[int]) -> Tuple[List[List[float]], List[float
     log_likelihood : float
         log P(O | model).
     """
+    _validate_observations(hmm, obs)
     N = hmm.n_states
     T = len(obs)
     if T == 0:
@@ -88,6 +99,7 @@ def backward(
 
     Returns ``beta``, shape (T, N), scaled backward probabilities.
     """
+    _validate_observations(hmm, obs)
     N = hmm.n_states
     T = len(obs)
     if T == 0:
@@ -130,6 +142,7 @@ def viterbi(hmm: HMM, obs: Sequence[int]) -> Tuple[List[int], float]:
         Log-probability of the best path. ``-inf`` if the sequence is
         impossible under the model.
     """
+    _validate_observations(hmm, obs)
     N = hmm.n_states
     T = len(obs)
     if T == 0:
@@ -170,7 +183,8 @@ def viterbi(hmm: HMM, obs: Sequence[int]) -> Tuple[List[int], float]:
             best_last = i
 
     if best_log_prob == -math.inf:
-        return [0] * T, -math.inf
+        # Impossible sequence: return empty path rather than a misleading [0]*T
+        return [], -math.inf
 
     # backtrace
     path = [0] * T
