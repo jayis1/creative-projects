@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hmm-toolkit"
+version = "1.0.0"
+description = "Hidden Markov Model toolkit from scratch: Forward, Backward, Viterbi, Baum-Welch"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+authors = [{name = "creative-projects"}]
+dependencies = []
+
+[project.scripts]
+hmm-toolkit = "hmm.cli:main"
+
+[tool.setuptools]
+packages = ["hmm"]
