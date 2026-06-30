@@ -139,20 +139,50 @@ def gf_poly_div(dividend: List[int], divisor: List[int]) -> tuple:
     Returns (quotient, remainder) as lowest-degree-first coefficient lists.
     dividend = quotient * divisor + remainder, deg(remainder) < deg(divisor).
     """
-    # Reverse to highest-degree-first for the division algorithm
+    if not divisor or all(c == 0 for c in divisor):
+        raise ZeroDivisionError("polynomial division by zero")
+
+    # Work with copies in highest-degree-first for the standard long-division algorithm
     rev_div = list(reversed(dividend))
     rev_divisor = list(reversed(divisor))
 
-    msg_out = list(rev_div)
+    # Trim leading zeros from divisor
+    while len(rev_divisor) > 1 and rev_divisor[0] == 0:
+        rev_divisor.pop(0)
+
+    divisor_lead_inv = GF256.inv(rev_divisor[0])
+
+    quotient_rev = []
+    remainder = list(rev_div)
+
     for i in range(len(rev_div) - len(rev_divisor) + 1):
-        coef = msg_out[i]
-        if coef != 0:
-            for j in range(1, len(rev_divisor)):
-                msg_out[i + j] ^= GF256.mul(rev_divisor[j], coef)
-    separator = -(len(rev_divisor) - 1)
-    quotient = list(reversed(msg_out[:separator]))
-    remainder = list(reversed(msg_out[separator:]))
-    return quotient, remainder
+        if remainder[i] == 0:
+            quotient_rev.append(0)
+            continue
+        # Scale factor: make remainder[i] cancel with divisor[0]
+        scale = GF256.mul(remainder[i], divisor_lead_inv)
+        quotient_rev.append(scale)
+        for j in range(len(rev_divisor)):
+            remainder[i + j] ^= GF256.mul(rev_divisor[j], scale)
+
+    # The quotient has degree (deg(dividend) - deg(divisor))
+    # After the loop, the first len(quotient_rev) elements of remainder
+    # have been zeroed (they were the quotient coefficients). The actual
+    # polynomial remainder is the remaining low-order coefficients, which
+    # has degree < deg(divisor), i.e., len(rev_divisor) - 1 coefficients.
+    quotient = list(reversed(quotient_rev))
+    # Remainder is the part of 'remainder' after the processed quotient coefficients
+    rem_start = len(quotient_rev)
+    rem_rev = remainder[rem_start:]  # low-order coefficients (still in reversed order)
+    remainder_low = list(reversed(rem_rev))
+
+    # Trim trailing zeros from quotient (high-degree zero coefficients)
+    while len(quotient) > 1 and quotient[-1] == 0:
+        quotient.pop()
+    # Note: do NOT trim the remainder — callers may depend on its length
+    # being deg(divisor) - 1.
+
+    return quotient, remainder_low
 
 
 def gf_poly_scale(poly: List[int], x: int) -> List[int]:

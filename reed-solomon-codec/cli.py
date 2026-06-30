@@ -5,19 +5,27 @@ Usage:
     python3 cli.py encode <input_file> [output_file] [--nsym N]
     python3 cli.py decode <input_file> [output_file] [--nsym N]
     python3 cli.py demo
+    python3 cli.py burst-demo [--nsym N] [--depth D]
     python3 cli.py info [--nsym N]
 
 Examples:
     python3 cli.py encode mydata.txt encoded.bin --nsym 16
     python3 cli.py decode encoded.bin recovered.txt --nsym 16
     python3 cli.py demo
+    python3 cli.py burst-demo --nsym 10 --depth 5
 """
 from __future__ import annotations
 
 import argparse
 import sys
 
-from rs_codec import encode, decode, encode_message, decode_message
+from rs_codec import (
+    encode_message,
+    decode_message,
+    RSCode,
+    encode_interleaved,
+    decode_interleaved,
+)
 
 
 def cmd_encode(args: argparse.Namespace) -> int:
@@ -56,6 +64,7 @@ def cmd_decode(args: argparse.Namespace) -> int:
 def cmd_demo(args: argparse.Namespace) -> int:
     """Run an interactive demo showing error correction."""
     nsym = args.nsym
+    rs = RSCode(nsym)
     message = b"The quick brown fox jumps over the lazy dog!"
 
     print("=" * 60)
@@ -63,30 +72,30 @@ def cmd_demo(args: argparse.Namespace) -> int:
     print("=" * 60)
     print(f"Message: {message.decode()}")
     print(f"Message length: {len(message)} bytes")
-    print(f"Parity symbols (nsym): {nsym}")
-    print(f"Max correctable errors: {nsym // 2}")
-    print(f"Max correctable erasures: {nsym}")
+    print(rs)
     print()
 
     # Encode
-    codeword = bytearray(encode_message(message, nsym))
+    codeword = bytearray(rs.encode_bytes(message))
     print(f"Codeword ({len(codeword)} bytes): {codeword.hex()}")
 
     # Simulate channel errors
     errors = min(nsym // 2, 5)
     error_positions = [5, 12, 20, 30, len(codeword) - 3][:errors]
     print(f"\nInjecting {len(error_positions)} errors at positions: {error_positions}")
-    original_bytes = []
     for pos in error_positions:
-        original_bytes.append(codeword[pos])
-        codeword[pos] ^= 0xAB  # corrupt
-        print(f"  Position {pos}: {original_bytes[-1]:3d} (0x{original_bytes[-1]:02x}) -> {codeword[pos]:3d} (0x{codeword[pos]:02x})")
+        old = codeword[pos]
+        codeword[pos] ^= 0xAB
+        print(f"  Position {pos}: {old:3d} (0x{old:02x}) -> {codeword[pos]:3d} (0x{codeword[pos]:02x})")
 
     # Decode
     print(f"\nCorrupted codeword: {bytes(codeword).hex()}")
     try:
-        recovered = decode_message(bytes(codeword), nsym)
+        result = rs.decode_detailed(list(codeword))
+        recovered = bytes(result.corrected[nsym:])
         print(f"Recovered message: {recovered.decode()}")
+        print(f"Errors corrected:  {result.errors_corrected}")
+        print(f"Error positions:   {result.error_positions}")
         if recovered == message:
             print("\n✓ SUCCESS: Message perfectly recovered!")
         else:
@@ -100,16 +109,17 @@ def cmd_demo(args: argparse.Namespace) -> int:
     print("\n" + "-" * 60)
     print("Erasure Correction Demo")
     print("-" * 60)
-    codeword2 = bytearray(encode_message(message, nsym))
+    codeword2 = bytearray(rs.encode_bytes(message))
     erasure_positions = [3, 8, 15, 25, len(codeword2) - 5][:nsym]
     print(f"Erasing {len(erasure_positions)} positions: {erasure_positions}")
     for pos in erasure_positions:
-        codeword2[pos] = 0  # erased (value unknown)
-        print(f"  Position {pos}: erased")
+        codeword2[pos] = 0
 
     try:
-        recovered = decode_message(bytes(codeword2), nsym, erasures=erasure_positions)
+        result = rs.decode_detailed(list(codeword2), erasures=erasure_positions)
+        recovered = bytes(result.corrected[nsym:])
         print(f"Recovered message: {recovered.decode()}")
+        print(f"Total corrections: {len(result.error_positions) + len(result.erasure_positions)}")
         if recovered == message:
             print("\n✓ SUCCESS: Erasures perfectly recovered!")
         else:
@@ -124,23 +134,55 @@ def cmd_demo(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_burst_demo(args: argparse.Namespace) -> int:
+    """Demonstrate burst-error correction via interleaving."""
+    nsym = args.nsym
+    depth = args.depth
+    message = b"Interleaving spreads burst errors across multiple codewords!"
+
+    print("=" * 60)
+    print("Burst Error Correction Demo (Interleaved RS)")
+    print("=" * 60)
+    print(f"Message: {message.decode()}")
+    print(f"Message length: {len(message)} bytes")
+    print(f"nsym: {nsym}, interleaving depth: {depth}")
+    print(f"Without interleaving: max burst = {nsym // 2} symbols")
+    print(f"With interleaving:    max burst = {depth * (nsym // 2)} symbols")
+    print()
+
+    # Encode with interleaving
+    encoded = bytearray(encode_interleaved(message, nsym, depth))
+    print(f"Encoded: {len(encoded)} bytes")
+
+    # Inject a burst error of length depth * (nsym//2) - should be correctable
+    burst_len = depth * (nsym // 2)
+    burst_start = 10
+    print(f"\nInjecting burst error of length {burst_len} at position {burst_start}")
+    for i in range(burst_len):
+        if burst_start + i < len(encoded):
+            encoded[burst_start + i] ^= 0xFF
+
+    # Decode
+    try:
+        recovered = decode_interleaved(bytes(encoded), nsym, depth, original_len=len(message))
+        print(f"Recovered: {recovered.decode()}")
+        if recovered == message:
+            print(f"\n✓ SUCCESS: Burst of {burst_len} symbols corrected via interleaving!")
+        else:
+            print("\n✗ FAILURE: Recovered message does not match!")
+            return 1
+    except ValueError as e:
+        print(f"\n✗ FAILED: {e}")
+        return 1
+
+    print("\n" + "=" * 60)
+    return 0
+
+
 def cmd_info(args: argparse.Namespace) -> int:
     """Print codec information."""
-    nsym = args.nsym
-    n = 255
-    k = n - nsym
-    rate = k / n * 100
-    print(f"Reed-Solomon Code Parameters (GF(2^8))")
-    print(f"  Symbol size:       8 bits")
-    print(f"  Field:             GF(2^8) with primitive poly 0x11D")
-    print(f"  Generator:         α = 2")
-    print(f"  nsym (parity):     {nsym}")
-    print(f"  Max codeword (n):  255 symbols")
-    print(f"  Max data (k):      {k} symbols")
-    print(f"  Code rate:         {rate:.1f}%")
-    print(f"  Correctable errors: {nsym // 2}")
-    print(f"  Correctable erasures: {nsym}")
-    print(f"  Error+erasure bound: 2e + s <= {nsym}")
+    rs = RSCode(args.nsym)
+    print(rs)
     return 0
 
 
@@ -168,6 +210,12 @@ def main() -> int:
     demo = subparsers.add_parser("demo", help="Run an interactive demo")
     demo.add_argument("--nsym", type=int, default=10, help="Number of parity symbols (default: 10)")
     demo.set_defaults(func=cmd_demo)
+
+    # burst demo
+    bdemo = subparsers.add_parser("burst-demo", help="Demonstrate burst-error correction via interleaving")
+    bdemo.add_argument("--nsym", type=int, default=10, help="Number of parity symbols (default: 10)")
+    bdemo.add_argument("--depth", type=int, default=5, help="Interleaving depth (default: 5)")
+    bdemo.set_defaults(func=cmd_burst_demo)
 
     # info
     info = subparsers.add_parser("info", help="Print code parameters")
