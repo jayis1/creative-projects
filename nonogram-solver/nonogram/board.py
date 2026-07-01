@@ -176,7 +176,20 @@ class Board:
     def from_dict(cls, d: dict) -> "Board":
         b = cls(d["row_clues"], d["col_clues"])
         if "grid" in d:
-            for r, row in enumerate(d["grid"]):
+            grid = d["grid"]
+            # Validate grid dimensions match clue dimensions.
+            if len(grid) != b.height:
+                raise ValueError(
+                    f"Grid has {len(grid)} rows but row_clues has "
+                    f"{b.height} entries"
+                )
+            for r, row in enumerate(grid):
+                if len(row) != b.width:
+                    raise ValueError(
+                        f"Grid row {r} has {len(row)} cells but col_clues "
+                        f"has {b.width} entries"
+                    )
+            for r, row in enumerate(grid):
                 for c, v in enumerate(row):
                     b.grid[r][c] = Cell(v)
         return b

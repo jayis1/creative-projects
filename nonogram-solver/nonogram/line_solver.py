@@ -86,6 +86,14 @@ class LineSolver:
         n = len(line)
         result = list(line)
 
+        # Special case: empty clue → all cells must be EMPTY.
+        if not clue:
+            for pos in range(n):
+                if result[pos] is Cell.FILLED:
+                    return None  # contradiction: filled cell but clue is empty
+                result[pos] = Cell.EMPTY
+            return result
+
         # Compute leftmost and rightmost placement positions.
         left = self._leftmost_positions(line, clue)
         if left is None:
@@ -163,37 +171,150 @@ class LineSolver:
     def _leftmost_positions(
         self, line: List[Cell], clue: List[int]
     ) -> Optional[List[int]]:
-        """Pack blocks as far left as possible, respecting existing decisions.
+        """Compute the leftmost valid start position for each block.
+
+        Uses a greedy approach that respects both EMPTY cells (blocks can't
+        overlap them) and FILLED cells (every FILLED cell must be covered by
+        some block).  The algorithm packs blocks left-to-right, but when a
+        FILLED cell is encountered before the next block's position, the
+        block is shifted right to cover it.
 
         Returns the start index of each block, or ``None`` if impossible.
         """
         n = len(line)
+        if not clue:
+            # No blocks — all cells must be EMPTY (no FILLED allowed).
+            for j in range(n):
+                if line[j] is Cell.FILLED:
+                    return None
+            return []
+
+        positions: List[int] = []
+        pos = 0  # current scan position
+        for i, block in enumerate(clue):
+            remaining = clue[i:]
+            min_space = Board.clue_sum(remaining)
+            placed = False
+            # Try each start position from pos up to the rightmost valid.
+            while pos <= n - min_space:
+                if not self._can_place(line, pos, block):
+                    pos += 1
+                    continue
+                # Cell after block must not be forced FILLED (would merge blocks).
+                after = pos + block
+                if after < n and line[after] is Cell.FILLED:
+                    pos += 1
+                    continue
+                # Check: are there any FILLED cells between pos and the end
+                # of this block that would be left uncovered if we place
+                # the block here?  Actually we need to check that there are
+                # no FILLED cells *before* pos that aren't covered by a
+                # previous block.
+                # The critical check: if there's a FILLED cell at some position
+                # j < pos, it must have been covered by a previous block.
+                # Since we pack left-to-right and advance pos past each block,
+                # any FILLED cell before pos that wasn't covered is a problem.
+                # We check this after all blocks are placed (below).
+                positions.append(pos)
+                pos = pos + block + 1  # +1 for mandatory gap
+                placed = True
+                break
+            if not placed:
+                return None
+
+        # Post-verification: check that every FILLED cell is covered by some
+        # block in the leftmost arrangement.  If any FILLED cell is not
+        # covered (it falls in a gap or before/after all blocks), we need to
+        # reposition blocks to cover it.  We find the first uncovered FILLED
+        # cell and retry with that constraint.
+        if positions:
+            # Build a set of covered positions.
+            covered = set()
+            for i, start in enumerate(positions):
+                for j in range(start, start + clue[i]):
+                    covered.add(j)
+            # Find first uncovered FILLED cell.
+            for j in range(n):
+                if line[j] is Cell.FILLED and j not in covered:
+                    # Find which block should cover this cell.
+                    # It's the first block whose range can include j.
+                    for i in range(len(clue)):
+                        # Check if block i can cover position j
+                        if positions[i] <= j < positions[i] + clue[i]:
+                            break  # already covered (shouldn't happen)
+                        # Can block i be repositioned to cover j?
+                        # Block i starts at positions[i], covers [positions[i], positions[i]+clue[i]-1]
+                        # To cover j, start in [j-clue[i]+1, j]
+                        # Check if this is feasible (start >= end of previous block + gap)
+                        prev_end = positions[i-1] + clue[i-1] if i > 0 else -1
+                        next_start = positions[i+1] if i+1 < len(clue) else n
+                        lo = max(prev_end + 1, j - clue[i] + 1)
+                        hi = min(j, next_start - 1 - clue[i] + 1)
+                        if lo <= hi:
+                            return self._leftmost_positions_covering(
+                                line, clue, j, i
+                            )
+                    # No block can cover this FILLED cell — infeasible.
+                    return None
+        return positions
+
+    def _leftmost_positions_covering(
+        self, line: List[Cell], clue: List[int], filled_pos: int,
+        block_idx: int
+    ) -> Optional[List[int]]:
+        """Compute leftmost positions where block *block_idx* covers
+        *filled_pos*. Used as a fallback when the greedy leftmost packing
+        leaves a FILLED cell uncovered."""
+        n = len(line)
+        block = clue[block_idx]
+        # The block must cover filled_pos, so its start is in
+        # [filled_pos - block + 1, filled_pos], clamped to valid range.
+        start_min = max(0, filled_pos - block + 1)
+        # Recompute all positions with this constraint.
+        # We rebuild from scratch: pack blocks 0..block_idx-1 as left as
+        # possible, then place block_idx to cover filled_pos, then pack
+        # the rest as left as possible.
         positions: List[int] = []
         pos = 0
-        for i, block in enumerate(clue):
-            placed = False
-            while pos <= n - (sum(clue[i:]) + len(clue[i:]) - 1):
-                if self._can_place(line, pos, block):
-                    # Ensure the cell after the block (if any) can be a gap.
-                    after = pos + block
+        for i in range(len(clue)):
+            blk = clue[i]
+            remaining = clue[i:]
+            min_space = Board.clue_sum(remaining)
+            if i == block_idx:
+                # Place this block to cover filled_pos.
+                # Start must be >= pos, <= filled_pos, and >= filled_pos - blk + 1.
+                lo = max(pos, filled_pos - blk + 1)
+                placed = False
+                for start in range(lo, filled_pos + 1):
+                    if start + blk > n:
+                        break
+                    if not self._can_place(line, start, blk):
+                        continue
+                    after = start + blk
+                    if after < n and line[after] is Cell.FILLED:
+                        continue
+                    positions.append(start)
+                    pos = start + blk + 1
+                    placed = True
+                    break
+                if not placed:
+                    return None
+            else:
+                placed = False
+                while pos <= n - min_space:
+                    if not self._can_place(line, pos, blk):
+                        pos += 1
+                        continue
+                    after = pos + blk
                     if after < n and line[after] is Cell.FILLED:
                         pos += 1
                         continue
-                    # Ensure cells before pos that are FILLED are covered.
-                    # (handled by caller via contradiction check)
                     positions.append(pos)
-                    pos = pos + block + 1  # +1 for mandatory gap
+                    pos = pos + blk + 1
                     placed = True
                     break
-                else:
-                    pos += 1
-            if not placed:
-                return None
-        # Verify no FILLED cell is left uncovered to the left of first block.
-        first_start = positions[0] if positions else n
-        for j in range(first_start):
-            if line[j] is Cell.FILLED:
-                return None
+                if not placed:
+                    return None
         return positions
 
     def _rightmost_positions(

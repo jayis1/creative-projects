@@ -48,6 +48,13 @@ class PuzzleIO:
         if len(lines) < 2:
             raise ValueError("NON file too short")
         w, h = (int(x) for x in lines[0].split())
+        # Validate we have enough lines: 1 header + h row clues + w col clues
+        expected_lines = 1 + h + w
+        if len(lines) < expected_lines:
+            raise ValueError(
+                f"NON file has {len(lines)} lines but needs "
+                f"{expected_lines} (1 + {h} rows + {w} cols)"
+            )
         idx = 1
         row_clues: List[List[int]] = []
         for _ in range(h):
@@ -83,28 +90,11 @@ class PuzzleIO:
         img_w = w * cell_size
         img_h = h * cell_size
 
-        # Build raw pixel data (RGB).
-        raw = bytearray()
-        for r in range(h):
-            raw.append(0)  # filter byte (0 = None)
-            for c in range(w):
-                cell = board.grid[r][c]
-                if cell is Cell.FILLED:
-                    color = filled_color
-                elif cell is Cell.EMPTY:
-                    color = empty_color
-                else:
-                    color = unknown_color
-                # Fill the cell_size×cell_size block.
-                for _ in range(cell_size):
-                    pass  # placeholder — we build row-by-row below
-                raw.extend(color * cell_size)
-
-        # Actually rebuild properly: PNG requires full image rows.
+        # Build raw pixel data (RGB) — one filter byte per image row.
         raw = bytearray()
         for r in range(h):
             for sub in range(cell_size):
-                raw.append(0)  # filter byte
+                raw.append(0)  # filter byte (0 = None)
                 for c in range(w):
                     cell = board.grid[r][c]
                     if cell is Cell.FILLED:

@@ -17,7 +17,20 @@ class Player:
     """Interactive nonogram player (non-interactive mode for testing)."""
 
     def __init__(self, board: Board) -> None:
-        self.solution = board.copy()
+        # Store the solution: if the board has a grid (from JSON), use it;
+        # otherwise, solve the clues to find the solution.
+        if board.is_complete():
+            self.solution = board.copy()
+        else:
+            # Try to solve the board to get the solution.
+            solver = Solver()
+            solved_board = board.copy()
+            result = solver.solve(solved_board)
+            if result.solved:
+                self.solution = solved_board
+            else:
+                # Can't solve — use the board as-is (check() will be limited).
+                self.solution = board.copy()
         # Reset the play board to all-unknown.
         self.board = Board(board.row_clues, board.col_clues)
         self.solver = Solver()

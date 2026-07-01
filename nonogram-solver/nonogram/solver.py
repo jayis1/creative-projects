@@ -142,8 +142,9 @@ class Solver:
     def _propagate(self, board: Board) -> bool:
         """Iterate line-solving over all rows and columns until fixpoint.
 
-        Uses a dirty-set optimisation: after the first full pass, only
-        re-solve lines that intersect cells changed in the previous pass.
+        On each iteration, applies ``LineSolver`` to every row and column
+        that still has unknown cells. Repeats until a full pass makes no
+        changes (fixpoint) or ``max_iterations`` is exceeded.
 
         Returns ``True`` if no contradiction, ``False`` if contradiction found.
         Raises ``ValueError`` via ``LineSolver`` on infeasible lines.

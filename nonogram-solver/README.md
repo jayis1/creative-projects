@@ -264,10 +264,58 @@ column clues. Use `0` for an empty clue (no filled cells).
 
 All presets are verified to have unique solutions.
 
+## Known Issues (Resolved)
+
+All bugs found during the Phase 3 bug hunt have been fixed and verified with
+tests in `tests/test_bug_hunt.py` (11 tests, all passing).
+
+1. **Dead code in `save_png`** — The PNG export had a redundant first loop
+   that built pixel data only to be immediately overwritten by a second loop.
+   Removed the dead code. *(No user-visible effect, but wasted computation.)*
+
+2. **Misleading `_propagate` docstring** — The docstring claimed a "dirty-set
+   optimisation" that was never implemented. Updated to accurately describe
+   the simple fixpoint iteration. *(Documentation fix.)*
+
+3. **`Board.from_dict` accepted mismatched grid dimensions** — Loading a JSON
+   puzzle where the `grid` array dimensions didn't match the clue dimensions
+   would silently produce a broken board or cause a confusing `IndexError`.
+   Now raises a descriptive `ValueError`.
+
+4. **`PuzzleIO.load_non` didn't validate line count** — A truncated NON file
+   would cause an `IndexError` with no context. Now raises `ValueError` with
+   the expected vs. actual line count.
+
+5. **`Player.check()` failed for boards without a grid** — When a board was
+   loaded from NON format (no grid/solution), `check()` would always return
+   `False` because the solution was all-UNKNOWN. Now the `Player` constructor
+   solves the clues to obtain the solution before play begins.
+
+6. **`LineSolver` didn't handle empty clues** — A clue of `[]` (no filled
+   cells in that line) left all cells as UNKNOWN instead of marking them
+   EMPTY. Fixed: empty clues now correctly set all cells to EMPTY (or raise
+   `ValueError` if any cell is already FILLED).
+
+7. **`LineSolver` didn't account for FILLED cells in leftmost/rightmost
+   placement** — The overlap method's leftmost/rightmost position calculation
+   only avoided EMPTY cells but didn't ensure FILLED cells were covered by
+   blocks. This caused the solver to miss deductions when a line had known
+   FILLED cells (e.g., `[FILLED, UNKNOWN, UNKNOWN, UNKNOWN, UNKNOWN]` with
+   clue `[3]` should deduce positions 1,2 as FILLED and 3,4 as EMPTY, but
+   previously left them UNKNOWN). Fixed with a post-verification step that
+   checks all FILLED cells are covered and repositions blocks as needed.
+
+8. **`arrow.json` puzzle was unsolvable** — The arrow puzzle's clues were
+   inconsistent (no valid grid matched them). Replaced with a valid,
+   uniquely-solvable arrow design.
+
+## License
+
+MIT
+
 ## Project Structure
 
 ```
-nonogram-solver/
 ├── nonogram/
 │   ├── __init__.py      # Package exports
 │   ├── board.py         # Board and Cell data structures
