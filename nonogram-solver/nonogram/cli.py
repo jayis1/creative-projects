@@ -2,11 +2,14 @@
 Command-line interface for the nonogram solver.
 
 Subcommands:
-  solve    — solve a puzzle from a JSON file
-  generate — create a new puzzle
-  play     — interactive play (basic)
-  hint     — print one hint for a puzzle state
-  validate — check a JSON puzzle file for uniqueness
+  solve     — solve a puzzle from a JSON/NON file
+  generate  — create a new puzzle
+  validate  — check a JSON puzzle file for uniqueness
+  hint      — print one hint for a puzzle state
+  presets   — list and solve curated preset puzzles
+  analyze   — estimate puzzle difficulty
+  render    — render a board as ANSI/HTML/SVG/PNG
+  count     — count solutions (up to a limit)
 """
 
 from __future__ import annotations
@@ -21,15 +24,17 @@ from nonogram.board import Board, Cell
 from nonogram.solver import Solver
 from nonogram.generator import Generator
 from nonogram.player import Player
+from nonogram.io import PuzzleIO
+from nonogram.renderer import Renderer
+from nonogram.analyzer import DifficultyAnalyzer
+from nonogram.presets import list_presets, get_preset
 
 
 def _load_board(path: str) -> Board:
-    data = json.loads(Path(path).read_text())
-    return Board.from_dict(data)
-
-
-def _save_board(board: Board, path: str) -> None:
-    Path(path).write_text(json.dumps(board.to_dict(), indent=2))
+    p = Path(path)
+    if p.suffix == ".non":
+        return PuzzleIO.load_non(str(p))
+    return PuzzleIO.load_json(str(p))
 
 
 def cmd_solve(args: argparse.Namespace) -> int:
@@ -38,14 +43,17 @@ def cmd_solve(args: argparse.Namespace) -> int:
     for r in range(board.height):
         for c in range(board.width):
             board.grid[r][c] = Cell.UNKNOWN
-    solver = Solver(max_backtracks=args.max_backtracks)
+    solver = Solver(max_backtracks=args.max_backtracks, use_mrv=not args.no_mrv)
     result = solver.solve(board)
     if result.solved:
-        print(board.render())
+        if args.color:
+            print(Renderer.ansi(board))
+        else:
+            print(board.render())
         print(f"\nSolved in {result.iterations} iterations, "
               f"{result.backtracks} backtracks.")
         if args.output:
-            _save_board(board, args.output)
+            PuzzleIO.save_json(board, args.output)
         return 0
     else:
         print("No solution found.")
@@ -61,16 +69,18 @@ def cmd_generate(args: argparse.Namespace) -> int:
         unique=not args.no_unique,
         max_attempts=args.max_attempts,
     )
-    # Save with solution.
     if args.output:
-        _save_board(board, args.output)
+        PuzzleIO.save_json(board, args.output)
     # Print clues only.
-    clue_board = Board(board.row_clues, board.col_clues)
     print("Row clues:", board.row_clues)
     print("Col clues:", board.col_clues)
     print()
     print("Solution:")
     print(board.render())
+    if args.difficulty:
+        analyzer = DifficultyAnalyzer()
+        info = analyzer.analyze(board)
+        print(f"\nDifficulty: {info['difficulty']} (score: {info['score']})")
     return 0
 
 
@@ -82,18 +92,18 @@ def cmd_validate(args: argparse.Namespace) -> int:
     if not result.solved:
         print("UNSOLVABLE: no solution exists for these clues.")
         return 1
-    if solver.is_unique(Board(board.row_clues, board.col_clues)):
+    count = solver.count_solutions(Board(board.row_clues, board.col_clues), limit=2)
+    if count == 1:
         print("VALID: puzzle has a unique solution.")
         return 0
     else:
-        print("AMBIGUOUS: puzzle has multiple solutions.")
+        print(f"AMBIGUOUS: puzzle has at least {count} solutions.")
         return 2
 
 
 def cmd_hint(args: argparse.Namespace) -> int:
     board = _load_board(args.file)
     player = Player(board)
-    # The loaded board has the solution; reset for play.
     hint = player.hint()
     if hint:
         r, c, cell = hint
@@ -105,6 +115,96 @@ def cmd_hint(args: argparse.Namespace) -> int:
         return 1
 
 
+def cmd_presets(args: argparse.Namespace) -> int:
+    if args.name:
+        board = get_preset(args.name)
+        if args.solve:
+            # Reset and solve.
+            solve_board = Board(board.row_clues, board.col_clues)
+            result = Solver().solve(solve_board)
+            if result.solved:
+                print(f"Preset '{args.name}' solution:")
+                print(solve_board.render())
+            else:
+                print(f"Preset '{args.name}' could not be solved.")
+                return 1
+        else:
+            print(f"Preset '{args.name}':")
+            print(f"Row clues: {board.row_clues}")
+            print(f"Col clues: {board.col_clues}")
+            print()
+            print(board.render())
+        if args.output:
+            PuzzleIO.save_json(board, args.output)
+    else:
+        print(f"{'Name':<20} {'Difficulty':<10} Description")
+        print("-" * 60)
+        for name, diff, desc in list_presets():
+            print(f"{name:<20} {diff:<10} {desc}")
+    return 0
+
+
+def cmd_analyze(args: argparse.Namespace) -> int:
+    board = _load_board(args.file)
+    analyzer = DifficultyAnalyzer()
+    info = analyzer.analyze(board)
+    print(f"Difficulty:  {info['difficulty']}")
+    print(f"Score:       {info['score']}")
+    print(f"Grid:        {info['grid_size']}")
+    print(f"Filled ratio:{info['filled_ratio']}")
+    print(f"Blocks:      {info['num_blocks']}")
+    print(f"Avg block:   {info['avg_block_size']}")
+    print(f"Solved:      {info['solved']}")
+    print(f"Iterations:  {info['iterations']}")
+    print(f"Backtracks:  {info['backtracks']}")
+    print(f"Prop only:   {info['propagation_only']}")
+    return 0
+
+
+def cmd_render(args: argparse.Namespace) -> int:
+    board = _load_board(args.file)
+    fmt = args.format
+    if fmt == "ansi":
+        print(Renderer.ansi(board))
+    elif fmt == "html":
+        output = Renderer.html(board, title=args.title or "Nonogram")
+        if args.output:
+            Path(args.output).write_text(output)
+            print(f"HTML written to {args.output}")
+        else:
+            print(output)
+    elif fmt == "svg":
+        if args.output:
+            PuzzleIO.save_svg(board, args.output)
+            print(f"SVG written to {args.output}")
+        else:
+            print("SVG requires --output FILE")
+            return 1
+    elif fmt == "png":
+        if args.output:
+            PuzzleIO.save_png(board, args.output)
+            print(f"PNG written to {args.output}")
+        else:
+            print("PNG requires --output FILE")
+            return 1
+    elif fmt == "text":
+        print(board.render())
+    else:
+        print(f"Unknown format: {fmt}")
+        return 1
+    return 0
+
+
+def cmd_count(args: argparse.Namespace) -> int:
+    board = _load_board(args.file)
+    solver = Solver()
+    count = solver.count_solutions(Board(board.row_clues, board.col_clues),
+                                   limit=args.limit)
+    print(f"Solutions found: {count}" +
+          (f" (stopped at limit {args.limit})" if count >= args.limit else ""))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="nonogram",
@@ -113,10 +213,13 @@ def build_parser() -> argparse.ArgumentParser:
     sub = p.add_subparsers(dest="command", required=True)
 
     # solve
-    sp = sub.add_parser("solve", help="Solve a puzzle from a JSON file.")
-    sp.add_argument("file", help="Path to puzzle JSON.")
+    sp = sub.add_parser("solve", help="Solve a puzzle from a JSON/NON file.")
+    sp.add_argument("file", help="Path to puzzle file (.json or .non).")
     sp.add_argument("--output", "-o", help="Save solved board to file.")
     sp.add_argument("--max-backtracks", type=int, default=100000)
+    sp.add_argument("--no-mrv", action="store_true",
+                    help="Disable MRV cell selection heuristic.")
+    sp.add_argument("--color", action="store_true", help="ANSI color output.")
     sp.set_defaults(func=cmd_solve)
 
     # generate
@@ -129,17 +232,48 @@ def build_parser() -> argparse.ArgumentParser:
                     help="Skip uniqueness check.")
     sp.add_argument("--max-attempts", type=int, default=200)
     sp.add_argument("--output", "-o", help="Save puzzle to JSON file.")
+    sp.add_argument("--difficulty", action="store_true",
+                    help="Print difficulty analysis.")
     sp.set_defaults(func=cmd_generate)
 
     # validate
     sp = sub.add_parser("validate", help="Check puzzle uniqueness.")
-    sp.add_argument("file", help="Path to puzzle JSON.")
+    sp.add_argument("file", help="Path to puzzle file.")
     sp.set_defaults(func=cmd_validate)
 
     # hint
     sp = sub.add_parser("hint", help="Get a hint for a puzzle.")
-    sp.add_argument("file", help="Path to puzzle JSON.")
+    sp.add_argument("file", help="Path to puzzle file.")
     sp.set_defaults(func=cmd_hint)
+
+    # presets
+    sp = sub.add_parser("presets", help="List or solve curated preset puzzles.")
+    sp.add_argument("--name", "-n", help="Show a specific preset.")
+    sp.add_argument("--solve", "-s", action="store_true",
+                    help="Solve the preset and show the solution.")
+    sp.add_argument("--output", "-o", help="Save preset to JSON file.")
+    sp.set_defaults(func=cmd_presets)
+
+    # analyze
+    sp = sub.add_parser("analyze", help="Estimate puzzle difficulty.")
+    sp.add_argument("file", help="Path to puzzle file.")
+    sp.set_defaults(func=cmd_analyze)
+
+    # render
+    sp = sub.add_parser("render", help="Render a board in various formats.")
+    sp.add_argument("file", help="Path to puzzle file.")
+    sp.add_argument("--format", "-f", choices=["ansi", "html", "svg", "png", "text"],
+                    default="text")
+    sp.add_argument("--output", "-o", help="Output file for HTML/SVG/PNG.")
+    sp.add_argument("--title", "-t", help="Title for HTML output.")
+    sp.set_defaults(func=cmd_render)
+
+    # count
+    sp = sub.add_parser("count", help="Count solutions (up to a limit).")
+    sp.add_argument("file", help="Path to puzzle file.")
+    sp.add_argument("--limit", "-l", type=int, default=100,
+                    help="Max solutions to count.")
+    sp.set_defaults(func=cmd_count)
 
     return p
 

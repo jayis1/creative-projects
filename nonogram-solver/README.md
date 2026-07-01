@@ -1,6 +1,7 @@
 # Nonogram Solver
 
-A from-scratch nonogram (Picross / Hanjie / Griddlers) solver, generator, and player.
+A from-scratch nonogram (Picross / Hanjie / Griddlers) solver, generator, and
+player — pure Python, no external dependencies.
 
 Nonograms are logic puzzles where you fill cells in a grid based on numbered
 clues given for each row and column. The numbers indicate the lengths of
@@ -9,14 +10,31 @@ cell. The goal is to determine which cells are filled and which are left blank.
 
 ## Features
 
+### Core
 - **Line solver** with the overlap method and constraint propagation
 - **Full-board solver** combining iterative propagation with backtracking
+- **MRV heuristic** for smarter cell selection during backtracking
+- **Solution counter** — count all solutions up to a limit
+- **Unique-solution checker** — robust multi-solution detection
 - **Puzzle generator** with unique-solution verification
 - **Interactive player** with hints and progress checking
+
+### I/O & Rendering
 - **JSON serialization** for puzzles and solutions
-- **CLI** with `solve`, `generate`, `validate`, and `hint` subcommands
-- **Sample puzzles** included (heart, smiley, arrow)
-- Pure Python, no external dependencies
+- **NON format** support (compact text format)
+- **PNG export** (pure stdlib — no Pillow needed)
+- **SVG export** for scalable vector graphics
+- **ANSI colored terminal rendering** with clue display
+- **HTML rendering** with styled tables
+
+### Extras
+- **10 curated preset puzzles** (heart, smiley, cross, letter-A, tree, house,
+  ship, cat, space invader, key) — all verified solvable and unique
+- **Difficulty analyzer** — grades puzzles as trivial/easy/medium/hard/expert
+  based on grid size, clue complexity, propagation efficiency, and
+  backtracking effort
+- **CLI** with 8 subcommands: `solve`, `generate`, `validate`, `hint`,
+    `presets`, `analyze`, `render`, `count`
 
 ## How It Works
 
@@ -47,15 +65,27 @@ valid arrangement exists consistent with the known cells.
 
 The board solver applies the line solver to every row and column iteratively
 until no more progress is made (constraint propagation). If the board is not
-yet complete, it falls back to **depth-first backtracking**: pick an unknown
-cell, try filling it, propagate, and recurse. If a contradiction is found,
-backtrack and try the other value.
+yet complete, it falls back to **depth-first backtracking** with the **MRV
+(Minimum Remaining Values)** heuristic: it picks the cell in the row or column
+with the fewest unknown cells, which tends to produce immediate deductions or
+contradictions, reducing the search tree.
 
 ### Generator (`Generator`)
 
 The generator creates random grids at a given density, derives the clues, and
 verifies (via the solver) that the clues produce a unique solution. It retries
 up to `max_attempts` times if uniqueness is required but not achieved.
+
+### Difficulty Analyzer (`DifficultyAnalyzer`)
+
+Estimates puzzle difficulty based on:
+- Grid size and total cells
+- Clue complexity (number of blocks, average block size)
+- Filled-cell ratio
+- Whether constraint propagation alone solves the puzzle
+- Backtracking effort (number of backtracks, backtrack ratio)
+
+Produces a score and classifies as: trivial / easy / medium / hard / expert.
 
 ## Installation
 
@@ -85,22 +115,50 @@ Output:
 Solved in 17 iterations, 9 backtracks.
 ```
 
+With ANSI color:
+```bash
+python -m nonogram.cli solve puzzles/heart.json --color
+```
+
 ### Generate a puzzle
 
 ```bash
-python -m nonogram.cli generate --width 10 --height 10 --seed 42
+python -m nonogram.cli generate --width 10 --height 10 --seed 42 --difficulty
 ```
 
 ### Validate uniqueness
 
 ```bash
 python -m nonogram.cli validate puzzles/heart.json
+# VALID: puzzle has a unique solution.
 ```
 
-### Get a hint
+### List and solve presets
 
 ```bash
-python -m nonogram.cli hint puzzles/heart.json
+python -m nonogram.cli presets
+python -m nonogram.cli presets --name ship --solve
+```
+
+### Analyze difficulty
+
+```bash
+python -m nonogram.cli analyze puzzles/heart.json
+```
+
+### Count solutions
+
+```bash
+python -m nonogram.cli count puzzles/heart.json --limit 10
+```
+
+### Render in various formats
+
+```bash
+python -m nonogram.cli render puzzles/heart.json --format ansi
+python -m nonogram.cli render puzzles/heart.json --format html --output heart.html
+python -m nonogram.cli render puzzles/heart.json --format svg --output heart.svg
+python -m nonogram.cli render puzzles/heart.json --format png --output heart.png
 ```
 
 ### Python API
@@ -109,6 +167,10 @@ python -m nonogram.cli hint puzzles/heart.json
 from nonogram.board import Board, Cell
 from nonogram.solver import Solver
 from nonogram.generator import Generator
+from nonogram.presets import get_preset, list_presets
+from nonogram.analyzer import DifficultyAnalyzer
+from nonogram.io import PuzzleIO
+from nonogram.renderer import Renderer
 
 # Solve a puzzle
 board = Board(
@@ -122,6 +184,26 @@ print(board.render())
 gen = Generator(seed=42)
 puzzle = gen.generate(10, 10, density=0.5, unique=True)
 
+# Check uniqueness
+solver = Solver()
+print(solver.is_unique(puzzle))  # True
+
+# Count solutions
+print(solver.count_solutions(puzzle, limit=5))  # 1
+
+# Analyze difficulty
+info = DifficultyAnalyzer().analyze(puzzle)
+print(info["difficulty"])  # "medium"
+
+# Use a preset
+ship = get_preset("ship")
+print(ship.render())
+
+# Export to PNG/SVG/HTML
+PuzzleIO.save_png(board, "output.png")
+PuzzleIO.save_svg(board, "output.svg")
+html = Renderer.html(board, title="My Puzzle")
+
 # Interactive player
 from nonogram.player import Player
 player = Player(puzzle)
@@ -131,7 +213,9 @@ hint = player.hint()
 print(hint)  # (row, col, Cell)
 ```
 
-## Puzzle JSON Format
+## Puzzle File Formats
+
+### JSON
 
 ```json
 {
@@ -144,6 +228,42 @@ print(hint)  # (row, col, Cell)
 - `row_clues` / `col_clues`: list of clue lists (integers)
 - `grid` (optional): 2D array of cell values (`-1`=unknown, `0`=empty, `1`=filled)
 
+### NON (compact text)
+
+```
+5 5
+1
+3
+5
+3
+1
+1
+3
+5
+3
+1
+```
+
+First line: `width height`. Next `height` lines: row clues. Next `width` lines:
+column clues. Use `0` for an empty clue (no filled cells).
+
+## Preset Puzzles
+
+| Name | Size | Difficulty | Description |
+|------|------|------------|-------------|
+| heart | 5×5 | easy | A heart shape |
+| smiley | 5×5 | easy | A smiley face |
+| cross | 7×7 | easy | A plus sign |
+| letter-a | 5×5 | easy | The letter A |
+| tree | 7×7 | medium | A tree |
+| house | 5×5 | medium | A house |
+| ship | 10×10 | medium | A ship with mast and hull |
+| cat | 8×8 | hard | A cat face |
+| space-invader | 8×8 | hard | A classic space invader |
+| key | 10×10 | hard | A key |
+
+All presets are verified to have unique solutions.
+
 ## Project Structure
 
 ```
@@ -152,13 +272,18 @@ nonogram-solver/
 │   ├── __init__.py      # Package exports
 │   ├── board.py         # Board and Cell data structures
 │   ├── line_solver.py   # Per-line constraint propagation solver
-│   ├── solver.py        # Full-board solver (propagation + backtracking)
+│   ├── solver.py        # Full-board solver (propagation + MRV backtracking)
 │   ├── generator.py     # Random puzzle generator
-│   ├── player.py        # Interactive player
-│   └── cli.py           # Command-line interface
+│   ├── player.py        # Interactive player with hints
+│   ├── presets.py       # 10 curated preset puzzles
+│   ├── analyzer.py      # Difficulty analyzer
+│   ├── io.py            # File I/O (JSON, NON, PNG, SVG)
+│   ├── renderer.py      # ANSI and HTML renderers
+│   └── cli.py           # Command-line interface (8 subcommands)
 ├── puzzles/
-│   ├── heart.json       # 5×5 heart shape
-│   ├── smiley.json      # 5×5 smiley face
+│   ├── heart.json       # 5×5 heart
+│   ├── heart.non        # Same in NON format
+│   ├── smiley.json      # 5×5 smiley
 │   └── arrow.json       # 10×10 arrow
 ├── pyproject.toml
 └── README.md

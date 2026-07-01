@@ -74,10 +74,10 @@ class Generator:
                     board.grid[r][c] = Cell.FILLED if grid[r][c] else Cell.EMPTY
             if not unique:
                 return board
-            # Check uniqueness by solving from scratch.
+            # Check uniqueness: the clues must have exactly one solution.
             test = Board(row_clues, col_clues)
-            result = self.solver.solve(test)
-            if result.solved and test.is_solved():
+            count = self.solver.count_solutions(test, limit=2)
+            if count == 1:
                 return board
         raise RuntimeError(
             f"Could not generate a unique {width}x{height} nonogram "
