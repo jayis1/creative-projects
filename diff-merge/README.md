@@ -13,18 +13,32 @@ A from-scratch text diff, patch, and three-way merge toolkit implemented in pure
   - **Unified diff** (`@@ -start,count +start,count @@` with ` `/`-`/`+` prefixes)
   - **Context diff** (RCS-style with `***`/`---` headers and `- `/`+ `/`  ` prefixes)
   - **Normal diff** (classic `Nd`, `Na`, `Nc` change commands with `<`/`>` content)
+- **Intra-line (word-level) diff highlighting:**
+  - Tokenize lines into words and compute word-level diffs
+  - ANSI color output (red for deletions, green for insertions)
+  - Plain-text bracket mode (`[-deleted-]`/`[+inserted+]`)
+- **Diff statistics (diffstat):**
+  - Count additions, deletions, unchanged lines
+  - Net change and change ratio
+  - ASCII bar chart histogram visualization
+  - One-line summary strings
 - **Patch parsing and application:**
   - Parse unified-diff patches into structured `Hunk` objects
   - Apply patches with configurable fuzz tolerance and max line offset
   - Automatic offset search when hunk position doesn't match exactly
   - Reject file (`.rej`) generation for unapplied hunks
+  - Reverse patch support (undo)
 - **Three-way merge (diff3):**
   - Merge two derived versions against a common ancestor
   - Automatic conflict detection with standard `<<<<<<<`/`=======`/`>>>>>>>` markers
   - Clean merge when only one side changes, or both sides make identical changes
   - Configurable conflict marker size
-- **CLI tool** with 4 subcommands: `diff`, `patch`, `merge`, `lcs`
-- **Comprehensive test suite** (20 tests)
+  - Proper newline handling in conflict markers
+- **Binary file detection** (null-byte and non-text-ratio heuristic)
+- **Whitespace and blank-line filtering** options
+- **Configuration system** (JSON/TOML/YAML) with 11 configurable parameters
+- **CLI tool** with 8 subcommands: `diff`, `patch`, `merge`, `lcs`, `stat`, `reverse`, `inline`, `config`
+- **Comprehensive test suite** (52 tests across 2 files)
 
 ## Installation
 
@@ -54,6 +68,15 @@ python3 -m diff_merge.cli diff old.txt new.txt --format normal
 
 # Use patience diff algorithm
 python3 -m diff_merge.cli diff old.txt new.txt --algorithm patience
+
+# Colorized output
+python3 -m diff_merge.cli diff old.txt new.txt --color
+
+# Ignore whitespace changes
+python3 -m diff_merge.cli diff old.txt new.txt --ignore-whitespace
+
+# Use a config file
+python3 -m diff_merge.cli diff old.txt new.txt --config myconfig.json
 ```
 
 ### Apply a patch
@@ -67,6 +90,9 @@ python3 -m diff_merge.cli patch source.txt --patchfile patch.diff --fuzz 2
 
 # Write rejected hunks to .rej file
 python3 -m diff_merge.cli patch source.txt --patchfile patch.diff --reject
+
+# Reverse (undo) a patch
+python3 -m diff_merge.cli patch source.txt --patchfile patch.diff --reverse
 ```
 
 ### Three-way merge
@@ -76,6 +102,41 @@ python3 -m diff_merge.cli merge base.txt ours.txt theirs.txt
 ```
 
 Exit code 0 = clean merge, exit code 1 = conflicts present.
+
+### Show diff statistics
+
+```bash
+python3 -m diff_merge.cli stat old.txt new.txt
+```
+
+### Generate reverse (undo) diff
+
+```bash
+python3 -m diff_merge.cli reverse old.txt new.txt > undo.diff
+```
+
+### Word-level inline diff
+
+```bash
+# Plain text
+python3 -m diff_merge.cli inline file1.txt file2.txt
+
+# Colorized
+python3 -m diff_merge.cli inline file1.txt file2.txt --color
+```
+
+### Configuration management
+
+```bash
+# Show default config
+python3 -m diff_merge.cli config show
+
+# Save config to file
+python3 -m diff_merge.cli config save --output myconfig.json
+
+# Set specific values
+python3 -m diff_merge.cli config set algorithm=patience context=5 --output myconfig.toml
+```
 
 ### Longest common subsequence
 
@@ -91,6 +152,9 @@ from diff_merge import (
     unified_diff, context_diff, normal_diff,
     parse_unified_diff, apply_patch,
     three_way_merge,
+    word_diff, highlight_inline,
+    compute_diffstat,
+    Config, load_config, save_config,
 )
 
 a = ["line1\n", "line2\n", "line3\n"]
@@ -110,13 +174,26 @@ hunks = parse_unified_diff(patch_lines)
 result = apply_patch(a, hunks)
 print(result.patched)  # == b
 
+# Word-level inline diff
+ha, hb = highlight_inline("hello world", "hello earth")
+# ha = "hello [-world-]", hb = "hello [+earth+]"
+
+# Diff statistics
+stat = compute_diffstat(ops, a, b)
+print(stat.summary())  # "1 insertion(s), 1 deletion(s), 2 unchanged"
+print(stat.histogram())  # "+- (1+/1-)"
+
 # Three-way merge
 base = ["line1\n", "line2\n", "line3\n"]
 ours = ["line1\n", "line2 ours\n", "line3\n"]
 theirs = ["line1\n", "line2 theirs\n", "line3\n"]
 merge_result = three_way_merge(base, ours, theirs)
 # merge_result.clean == False (conflict on line 2)
-# merge_result.lines contains the merged output with conflict markers
+
+# Configuration
+config = Config(algorithm="patience", context=5, color=True)
+save_config(config, "myconfig.json")
+loaded = load_config("myconfig.json")
 ```
 
 ## How It Works
@@ -135,7 +212,7 @@ Patience diff finds unique lines that appear exactly once in each sequence, uses
 
 Histogram diff enhances patience diff by using the *least frequent* common lines as anchors rather than only unique lines. When all lines are non-unique, it picks the rarest lines (minimum combined frequency in both sequences) and recurses. This further improves diff quality for code with repeated boilerplate patterns.
 
-### Three-Way Merge
+### Three-Way Merge (diff3)
 
 The diff3 algorithm:
 1. Compute diff(base → ours) and diff(base → theirs)
@@ -145,6 +222,12 @@ The diff3 algorithm:
    - Both sides identical → take either (clean)
    - Only one side changed → take that side (clean)
    - Both sides changed differently → conflict
+
+Only truly overlapping regions (not merely adjacent) are merged, so non-overlapping changes on different sides produce clean merges.
+
+### Intra-Line Diff
+
+The word-level diff tokenizer splits lines into word tokens and separators, then runs the Myers algorithm on the token sequences. The result is a per-word change highlighting that shows exactly which words changed within a line, rather than just marking the entire line as changed.
 
 ## Architecture
 
@@ -158,8 +241,36 @@ diff_merge/
 ├── format.py      — Unified/context/normal diff formatters
 ├── patch.py       — Patch parser and applier
 ├── merge.py       — Three-way merge (diff3)
-└── cli.py         — Command-line interface
+├── inline.py      — Word-level intra-line diff highlighting
+├── stat.py        — Diff statistics (diffstat)
+├── config.py       — Configuration system (JSON/TOML/YAML)
+├── utils.py        — Preprocessing, binary detection, reverse ops
+├── cli.py         — Command-line interface (8 subcommands)
+└── examples/      — Usage examples
 ```
+
+## Test Suite
+
+```bash
+# Run all 52 tests
+python3 tests/test_diff_merge.py
+python3 tests/test_enhanced.py
+```
+
+Tests cover:
+- Basic diffing (Myers, LCS, Patience, Histogram)
+- Edge cases (empty inputs, identical inputs, completely different inputs)
+- Large-scale random stress testing
+- Unified/context/normal format output
+- Patch roundtrip (generate → parse → apply → verify)
+- Patch with offset and fuzz tolerance
+- Reverse patch application
+- Three-way merge (clean, conflict, same change, insertions, empty base)
+- Word-level inline diff highlighting
+- Diff statistics computation
+- Configuration system (JSON/TOML roundtrip)
+- Binary file detection
+- Whitespace/blank-line preprocessing
 
 ## License
 
