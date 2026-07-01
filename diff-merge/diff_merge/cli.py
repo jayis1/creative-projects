@@ -2,14 +2,17 @@
 Command-line interface for the diff_merge toolkit.
 
 Subcommands:
-    diff    — Compute diff between two files
-    patch   — Apply a patch to a file
-    merge   — Three-way merge
-    lcs     — Print longest common subsequence
-    stat    — Show diff statistics (diffstat)
-    reverse — Reverse a diff (generate undo patch)
-    inline  — Show word-level inline diff
-    config  — Show/save/load configuration
+    diff       — Compute diff between two files
+    patch      — Apply a patch to a file
+    merge      — Three-way merge
+    lcs        — Print longest common subsequence
+    stat       — Show diff statistics (diffstat)
+    reverse    — Reverse a diff (generate undo patch)
+    inline     — Show word-level inline diff
+    sidebyside — Show side-by-side visual diff
+    html       — Generate HTML diff output
+    dirdiff    — Compare two directories
+    config     — Show/save/load configuration
 """
 
 from __future__ import annotations
@@ -30,6 +33,11 @@ from .inline import highlight_inline
 from .stat import compute_diffstat
 from .config import Config, load_config, save_config
 from .utils import preprocess_lines, reverse_ops, is_binary
+from .sidebyside import side_by_side
+from .htmlout import html_diff_document
+from .dirdiff import diff_directories
+from .optimizer import optimize_diff
+from .logging_config import get_logger, setup_logging
 
 
 # ---------------------------------------------------------------------------
@@ -367,6 +375,68 @@ def cmd_inline(args: argparse.Namespace) -> None:
                 print(f"+ {hb}")
 
 
+def cmd_sidebyside(args: argparse.Namespace) -> None:
+    """Show a side-by-side visual diff."""
+    a = _read_lines(args.file1)
+    b = _read_lines(args.file2)
+    a_s = _strip_lines(a)
+    b_s = _strip_lines(b)
+
+    lines = side_by_side(
+        a_s, b_s,
+        width=args.width,
+        algorithm=args.algorithm,
+        color=args.color,
+    )
+    for line in lines:
+        print(line)
+
+
+def cmd_html(args: argparse.Namespace) -> None:
+    """Generate an HTML diff document."""
+    a = _read_lines(args.file1)
+    b = _read_lines(args.file2)
+    a_s = _strip_lines(a)
+    b_s = _strip_lines(b)
+
+    doc = html_diff_document(
+        a_s, b_s,
+        fromfile=args.file1,
+        tofile=args.file2,
+        algorithm=args.algorithm,
+        inline=not args.no_inline,
+        title=f"Diff: {args.file1} → {args.file2}",
+    )
+
+    if args.output:
+        Path(args.output).write_text(doc, encoding="utf-8")
+        print(f"HTML diff written to {args.output}", file=sys.stderr)
+    else:
+        print(doc)
+
+
+def cmd_dirdiff(args: argparse.Namespace) -> None:
+    """Compare two directories."""
+    result = diff_directories(args.dir_a, args.dir_b, compute_stats=True)
+
+    for change in result.changes:
+        if change.change_type.value == "added":
+            print(f"  + {change.path}")
+        elif change.change_type.value == "removed":
+            print(f"  - {change.path}")
+        elif change.change_type.value == "modified":
+            ds = change.diffstat
+            if ds:
+                print(f"  ~ {change.path}  ({ds.summary()})")
+            else:
+                print(f"  ~ {change.path}")
+
+    print(f"\n{result.summary()}", file=sys.stderr)
+
+    if not result.has_changes:
+        print("No changes found.", file=sys.stderr)
+
+
 def cmd_config(args: argparse.Namespace) -> None:
     """Show, save, or load configuration."""
     if args.action == "show":
@@ -414,6 +484,11 @@ def main() -> None:
         prog="diff_merge",
         description="Text diff, patch, and merge toolkit",
     )
+    parser.add_argument("--verbose", action="store_true",
+                        help="Enable debug logging")
+    parser.add_argument("--log-level", default=None,
+                        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+                        help="Set logging level")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     # --- diff ---
@@ -483,6 +558,36 @@ def main() -> None:
     inline_parser.add_argument("--color", action="store_true", help="Colorized output")
     inline_parser.set_defaults(func=cmd_inline)
 
+    # --- sidebyside ---
+    sbs_parser = subparsers.add_parser("sidebyside",
+                                       help="Side-by-side visual diff")
+    sbs_parser.add_argument("file1", help="First file")
+    sbs_parser.add_argument("file2", help="Second file")
+    sbs_parser.add_argument("--algorithm", choices=["myers", "patience", "histogram", "lcs"],
+                            default="myers", help="Diff algorithm")
+    sbs_parser.add_argument("--width", type=int, default=80, help="Total output width")
+    sbs_parser.add_argument("--color", action="store_true", help="Colorized output")
+    sbs_parser.set_defaults(func=cmd_sidebyside)
+
+    # --- html ---
+    html_parser = subparsers.add_parser("html",
+                                         help="Generate HTML diff output")
+    html_parser.add_argument("file1", help="First file")
+    html_parser.add_argument("file2", help="Second file")
+    html_parser.add_argument("--algorithm", choices=["myers", "patience", "histogram", "lcs"],
+                             default="myers", help="Diff algorithm")
+    html_parser.add_argument("--output", default=None, help="Output HTML file (default: stdout)")
+    html_parser.add_argument("--no-inline", action="store_true",
+                              help="Disable word-level inline diff")
+    html_parser.set_defaults(func=cmd_html)
+
+    # --- dirdiff ---
+    dirdiff_parser = subparsers.add_parser("dirdiff",
+                                           help="Compare two directories")
+    dirdiff_parser.add_argument("dir_a", help="First directory")
+    dirdiff_parser.add_argument("dir_b", help="Second directory")
+    dirdiff_parser.set_defaults(func=cmd_dirdiff)
+
     # --- config ---
     config_parser = subparsers.add_parser("config", help="Show/save/load configuration")
     config_parser.add_argument("action", choices=["show", "save", "set"],
@@ -493,6 +598,16 @@ def main() -> None:
     config_parser.set_defaults(func=cmd_config)
 
     args = parser.parse_args()
+
+    # Set up logging if requested
+    if getattr(args, "verbose", False):
+        setup_logging("DEBUG")
+    elif getattr(args, "log_level", None):
+        setup_logging(args.log_level)
+
+    logger = get_logger()
+    logger.debug("CLI invoked: %s", " ".join(sys.argv[1:]))
+
     args.func(args)
 
 

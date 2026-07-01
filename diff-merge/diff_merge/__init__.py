@@ -34,8 +34,13 @@ from .inline import word_diff, highlight_inline
 from .stat import DiffStat, compute_diffstat
 from .config import Config, load_config, save_config
 from .utils import preprocess_lines, reverse_ops, is_binary
+from .sidebyside import side_by_side, render_side_by_side
+from .htmlout import html_diff, html_diff_document
+from .dirdiff import diff_directories, DirDiff, FileChange, ChangeType
+from .optimizer import optimize_diff, optimize_blanks, optimize_common_edges
+from .logging_config import get_logger, setup_logging
 
-__version__ = "2.0.0"
+__version__ = "3.0.0"
 __all__ = [
     # Algorithms
     "myers_diff",
@@ -73,4 +78,22 @@ __all__ = [
     "preprocess_lines",
     "reverse_ops",
     "is_binary",
+    # Side-by-side
+    "side_by_side",
+    "render_side_by_side",
+    # HTML output
+    "html_diff",
+    "html_diff_document",
+    # Directory diff
+    "diff_directories",
+    "DirDiff",
+    "FileChange",
+    "ChangeType",
+    # Optimizer
+    "optimize_diff",
+    "optimize_blanks",
+    "optimize_common_edges",
+    # Logging
+    "get_logger",
+    "setup_logging",
 ]

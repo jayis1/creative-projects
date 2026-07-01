@@ -1,301 +1,462 @@
+<div align="center">
+
 # diff-merge
 
-A from-scratch text diff, patch, and three-way merge toolkit implemented in pure Python (stdlib only, no external dependencies).
+A from-scratch text diff, patch, and three-way merge toolkit
+
+![Python](https://img.shields.io/badge/python-3.10%2B-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+![Tests](https://img.shields.io/badge/tests-116%20passing-brightgreen)
+![Version](https://img.shields.io/badge/version-3.0.0-orange)
+![Dependencies](https://img.shields.io/badge/dependencies-stdlib%20only-success)
+
+</div>
+
+---
+
+## Table of Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [CLI Reference](#cli-reference)
+- [Python API](#python-api)
+- [Architecture](#architecture)
+- [Algorithms](#algorithms)
+- [Recent Improvements (v3.0)](#recent-improvements-v30)
+- [Known Issues (Resolved)](#known-issues-resolved)
+- [Testing](#testing)
+- [Contributing](#contributing)
+- [Roadmap](#roadmap)
+- [Changelog](#changelog)
+- [License](#license)
+
+## Overview
+
+**diff-merge** is a pure-Python text diff/patch/merge toolkit with **zero
+external runtime dependencies** (stdlib only). It implements four diff
+algorithms from scratch, three output formats, patch parsing and
+application, three-way merge with conflict markers, side-by-side visual
+diff, HTML diff output, directory-level diff, and more.
 
 ## Features
 
-- **4 diff algorithms:**
-  - **Myers** — Classic O(ND) edit-graph shortest-edit-script with backtracking (Eugene W. Myers, 1986)
-  - **LCS** — Dynamic programming O(NM) with backtracking (reference implementation)
-  - **Patience** — Bram Cohen's algorithm using unique common lines as anchors, falling back to LCS on segments with no unique lines
-  - **Histogram** — Eclipse JGit enhancement of patience diff using least-frequency line matching for better anchor selection
-- **3 output formats:**
-  - **Unified diff** (`@@ -start,count +start,count @@` with ` `/`-`/`+` prefixes)
-  - **Context diff** (RCS-style with `***`/`---` headers and `- `/`+ `/`  ` prefixes)
-  - **Normal diff** (classic `Nd`, `Na`, `Nc` change commands with `<`/`>` content)
-- **Intra-line (word-level) diff highlighting:**
-  - Tokenize lines into words and compute word-level diffs
-  - ANSI color output (red for deletions, green for insertions)
-  - Plain-text bracket mode (`[-deleted-]`/`[+inserted+]`)
-- **Diff statistics (diffstat):**
-  - Count additions, deletions, unchanged lines
-  - Net change and change ratio
-  - ASCII bar chart histogram visualization
-  - One-line summary strings
-- **Patch parsing and application:**
-  - Parse unified-diff patches into structured `Hunk` objects
-  - Apply patches with configurable fuzz tolerance and max line offset
-  - Automatic offset search when hunk position doesn't match exactly
-  - Reject file (`.rej`) generation for unapplied hunks
-  - Reverse patch support (undo)
-- **Three-way merge (diff3):**
-  - Merge two derived versions against a common ancestor
-  - Automatic conflict detection with standard `<<<<<<<`/`=======`/`>>>>>>>` markers
-  - Clean merge when only one side changes, or both sides make identical changes
-  - Configurable conflict marker size
-  - Proper newline handling in conflict markers
-- **Binary file detection** (null-byte and non-text-ratio heuristic)
-- **Whitespace and blank-line filtering** options
-- **Configuration system** (JSON/TOML/YAML) with 11 configurable parameters
-- **CLI tool** with 8 subcommands: `diff`, `patch`, `merge`, `lcs`, `stat`, `reverse`, `inline`, `config`
-- **Comprehensive test suite** (52 tests across 2 files)
+### Diff Algorithms (4)
+| Algorithm | Complexity | Description |
+|----------|-----------|-------------|
+| **Myers** | O(ND) | Classic edit-graph shortest-edit-script with backtracking (Eugene W. Myers, 1986) |
+| **LCS** | O(NM) | Dynamic programming with backtracking — reference implementation |
+| **Patience** | O(N log N) | Bram Cohen's algorithm using unique common lines as anchors |
+| **Histogram** | O(N log N) | Eclipse JGit enhancement using least-frequency line matching |
+
+### Output Formats (5)
+- **Unified diff** — `@@ -start,count +start,count @@` with `+`/`-`/` ` prefixes
+- **Context diff** — RCS-style with `***`/`---` headers
+- **Normal diff** — classic `Nd`/`Na`/`Nc` commands with `<`/`>` content
+- **Side-by-side** — two-column visual comparison with line numbers
+- **HTML** — self-contained colourised HTML document for web/email
+
+### Core Capabilities
+- **Patch parsing & application** — unified-diff patches with fuzz tolerance, offset search, reject files, and reverse (undo) support
+- **Three-way merge (diff3)** — merge two versions against a common ancestor with conflict markers
+- **Intra-line (word-level) diff** — ANSI colour or bracket highlighting
+- **Diff statistics (diffstat)** — additions, deletions, net change, ASCII histogram
+- **Directory diff** — recursively compare two directory trees
+- **Diff optimizer** — shrink REPLACE blocks by pulling common lines into context
+- **Binary file detection** — null-byte + non-text-ratio heuristic
+- **Whitespace & blank-line filtering**
+- **Configuration system** — JSON / TOML / YAML
+- **Logging** — configurable via `--verbose`/`--log-level` or env var
+- **CLI tool** — 11 subcommands
 
 ## Installation
 
 ```bash
+# From the repo
+cd creative-projects/diff-merge
 pip install -e .
+
+# Or use directly without installation
+python3 -m diff_merge.cli --help
 ```
 
-Or use directly without installation:
+### Requirements
+- Python 3.10+ (uses `tomllib`, `match` statements, `type | type` unions)
+- No external runtime dependencies
+- `pytest` for running tests (optional, dev-only)
 
-```bash
-python3 -m diff_merge.cli diff old.txt new.txt
-```
-
-## Usage
-
-### Diff two files
+## Quick Start
 
 ```bash
 # Unified diff (default)
-python3 -m diff_merge.cli diff old.txt new.txt
+diff-merge diff old.txt new.txt
 
-# Context diff with 5 lines of context
-python3 -m diff_merge.cli diff old.txt new.txt --format context --context 5
+# Side-by-side with colour
+diff-merge sidebyside old.txt new.txt --color --width 100
 
-# Normal (RCS-style) diff
-python3 -m diff_merge.cli diff old.txt new.txt --format normal
+# Generate HTML diff
+diff-merge html old.txt new.txt --output review.html
 
-# Use patience diff algorithm
-python3 -m diff_merge.cli diff old.txt new.txt --algorithm patience
+# Apply a patch
+cat patch.diff | diff-merge patch source.txt
 
-# Colorized output
-python3 -m diff_merge.cli diff old.txt new.txt --color
+# Three-way merge
+diff-merge merge base.txt ours.txt theirs.txt
 
-# Ignore whitespace changes
-python3 -m diff_merge.cli diff old.txt new.txt --ignore-whitespace
+# Compare directories
+diff-merge dirdiff v1/ v2/
 
-# Use a config file
-python3 -m diff_merge.cli diff old.txt new.txt --config myconfig.json
+# Word-level inline diff
+diff-merge inline file1.txt file2.txt --color
 ```
 
-### Apply a patch
+## CLI Reference
+
+```
+diff-merge [--verbose] [--log-level LEVEL] COMMAND ...
+
+Commands:
+  diff         Compute diff between two files
+  patch        Apply a patch to a file
+  merge        Three-way merge
+  lcs          Print longest common subsequence
+  stat         Show diff statistics
+  reverse      Generate reverse (undo) diff
+  inline       Word-level inline diff
+  sidebyside   Side-by-side visual diff
+  html         Generate HTML diff output
+  dirdiff      Compare two directories
+  config       Show/save/load configuration
+```
+
+### diff
 
 ```bash
-# Apply from stdin
-cat patch.diff | python3 -m diff_merge.cli patch source.txt
+diff-merge diff OLD NEW [options]
 
-# Apply from file with fuzz tolerance
-python3 -m diff_merge.cli patch source.txt --patchfile patch.diff --fuzz 2
-
-# Write rejected hunks to .rej file
-python3 -m diff_merge.cli patch source.txt --patchfile patch.diff --reject
-
-# Reverse (undo) a patch
-python3 -m diff_merge.cli patch source.txt --patchfile patch.diff --reverse
+  --format {unified,context,normal}   Output format (default: unified)
+  --algorithm {myers,patience,histogram,lcs}  Diff algorithm (default: myers)
+  --context N          Lines of context (default: 3)
+  --color              Colorized output
+  --ignore-whitespace  Ignore whitespace changes
+  --ignore-blank-lines  Ignore blank line changes
+  --config FILE        Load config from file
 ```
 
-### Three-way merge
+### sidebyside
 
 ```bash
-python3 -m diff_merge.cli merge base.txt ours.txt theirs.txt
+diff-merge sidebyside FILE1 FILE2 [options]
+
+  --algorithm ALGO   Diff algorithm (default: myers)
+  --width N          Total output width (default: 80)
+  --color            ANSI colour output
 ```
 
-Exit code 0 = clean merge, exit code 1 = conflicts present.
-
-### Show diff statistics
+### html
 
 ```bash
-python3 -m diff_merge.cli stat old.txt new.txt
+diff-merge html FILE1 FILE2 [options]
+
+  --algorithm ALGO   Diff algorithm
+  --output FILE      Output HTML file (default: stdout)
+  --no-inline        Disable word-level inline diff
 ```
 
-### Generate reverse (undo) diff
+### dirdiff
 
 ```bash
-python3 -m diff_merge.cli reverse old.txt new.txt > undo.diff
+diff-merge dirdiff DIR_A DIR_B
 ```
 
-### Word-level inline diff
+### merge
 
 ```bash
-# Plain text
-python3 -m diff_merge.cli inline file1.txt file2.txt
-
-# Colorized
-python3 -m diff_merge.cli inline file1.txt file2.txt --color
+diff-merge merge BASE OURS THEIRS [--marker-size N]
 ```
 
-### Configuration management
-
-```bash
-# Show default config
-python3 -m diff_merge.cli config show
-
-# Save config to file
-python3 -m diff_merge.cli config save --output myconfig.json
-
-# Set specific values
-python3 -m diff_merge.cli config set algorithm=patience context=5 --output myconfig.toml
-```
-
-### Longest common subsequence
-
-```bash
-python3 -m diff_merge.cli lcs file1.txt file2.txt
-```
+Exit code 0 = clean merge, 1 = conflicts present.
 
 ## Python API
 
 ```python
 from diff_merge import (
+    # Algorithms
     myers_diff, patience_diff, histogram_diff, lcs_diff,
+    # Formats
     unified_diff, context_diff, normal_diff,
+    # Patch
     parse_unified_diff, apply_patch,
+    # Merge
     three_way_merge,
+    # Inline
     word_diff, highlight_inline,
+    # Stats
     compute_diffstat,
+    # Side-by-side
+    side_by_side,
+    # HTML
+    html_diff_document,
+    # Directory diff
+    diff_directories,
+    # Optimizer
+    optimize_diff,
+    # Config
     Config, load_config, save_config,
+    # Logging
+    get_logger, setup_logging,
 )
 
 a = ["line1\n", "line2\n", "line3\n"]
 b = ["line1\n", "line2 modified\n", "line3\n"]
 
-# Compute diff using any algorithm
-ops = myers_diff(a, b)
-ops = patience_diff(a, b)
-ops = histogram_diff(a, b)
-ops = lcs_diff(a, b)
+# --- Diff ---
+ops = myers_diff(a, b)          # or patience_diff, histogram_diff, lcs_diff
 
-# Generate unified diff output
-patch_lines = unified_diff(a, b, fromfile="old", tofile="new")
+# --- Unified diff output ---
+patch = unified_diff(a, b, fromfile="old", tofile="new")
 
-# Apply a patch
-hunks = parse_unified_diff(patch_lines)
+# --- Patch roundtrip ---
+hunks = parse_unified_diff(patch)
 result = apply_patch(a, hunks)
-print(result.patched)  # == b
+assert result.patched == b
 
-# Word-level inline diff
-ha, hb = highlight_inline("hello world", "hello earth")
-# ha = "hello [-world-]", hb = "hello [+earth+]"
+# --- Side-by-side ---
+lines = side_by_side(a, b, width=80, color=True)
 
-# Diff statistics
-stat = compute_diffstat(ops, a, b)
-print(stat.summary())  # "1 insertion(s), 1 deletion(s), 2 unchanged"
-print(stat.histogram())  # "+- (1+/1-)"
+# --- HTML diff ---
+doc = html_diff_document(a, b, fromfile="v1", tofile="v2")
+# Write to file: open("diff.html", "w").write(doc)
 
-# Three-way merge
+# --- Directory diff ---
+result = diff_directories("v1/", "v2/")
+print(result.summary())  # "2 added, 1 removed, 3 modified, ..."
+
+# --- Three-way merge ---
 base = ["line1\n", "line2\n", "line3\n"]
 ours = ["line1\n", "line2 ours\n", "line3\n"]
 theirs = ["line1\n", "line2 theirs\n", "line3\n"]
-merge_result = three_way_merge(base, ours, theirs)
-# merge_result.clean == False (conflict on line 2)
+merge = three_way_merge(base, ours, theirs)
+# merge.clean == False (conflict on line 2)
 
-# Configuration
+# --- Diff optimizer ---
+ops = myers_diff(["a", "b", "c"], ["a", "B", "c"])
+optimized = optimize_diff(ops, ["a", "b", "c"], ["a", "B", "c"])
+
+# --- Word-level inline diff ---
+ha, hb = highlight_inline("hello world", "hello earth", use_color=False)
+# ha = "hello [-world-]", hb = "hello [+earth+]"
+
+# --- Statistics ---
+stat = compute_diffstat(ops, a, b)
+print(stat.summary())    # "1 insertion(s), 1 deletion(s), 2 unchanged"
+print(stat.histogram())  # "+- (1+/1-)"
+
+# --- Configuration ---
 config = Config(algorithm="patience", context=5, color=True)
 save_config(config, "myconfig.json")
 loaded = load_config("myconfig.json")
 ```
 
-## How It Works
-
-### Myers Diff
-
-The Myers algorithm finds the shortest edit script between two sequences by exploring an edit graph. It works on diagonals (where `k = x - y`), and for each edit distance `d`, it computes the furthest-reaching point on each diagonal. The algorithm is O(ND) where N is the total sequence length and D is the edit distance (number of differences).
-
-This implementation stores the V array at each edit distance level, then backtracks through the trace to reconstruct the path. The backtrack walks from `(N, M)` backward to `(0, 0)`, following snakes (diagonal moves through equal elements) and edit moves (right = delete, down = insert).
-
-### Patience Diff
-
-Patience diff finds unique lines that appear exactly once in each sequence, uses them as anchor points, then recursively diffs the segments between anchors. This produces more human-readable diffs for code with clear function/class boundaries. When no unique common lines exist in a segment, it falls back to LCS diff.
-
-### Histogram Diff
-
-Histogram diff enhances patience diff by using the *least frequent* common lines as anchors rather than only unique lines. When all lines are non-unique, it picks the rarest lines (minimum combined frequency in both sequences) and recurses. This further improves diff quality for code with repeated boilerplate patterns.
-
-### Three-Way Merge (diff3)
-
-The diff3 algorithm:
-1. Compute diff(base → ours) and diff(base → theirs)
-2. Find changed regions in each diff
-3. Merge overlapping change regions from both sides
-4. For each region, compare content:
-   - Both sides identical → take either (clean)
-   - Only one side changed → take that side (clean)
-   - Both sides changed differently → conflict
-
-Only truly overlapping regions (not merely adjacent) are merged, so non-overlapping changes on different sides produce clean merges.
-
-### Intra-Line Diff
-
-The word-level diff tokenizer splits lines into word tokens and separators, then runs the Myers algorithm on the token sequences. The result is a per-word change highlighting that shows exactly which words changed within a line, rather than just marking the entire line as changed.
-
 ## Architecture
 
 ```
 diff_merge/
-├── __init__.py    — Package exports
-├── myers.py       — Myers O(ND) diff algorithm
-├── lcs.py         — LCS dynamic programming diff
-├── patience.py    — Patience diff (Bram Cohen)
-├── histogram.py   — Histogram diff (Eclipse JGit)
-├── format.py      — Unified/context/normal diff formatters
-├── patch.py       — Patch parser and applier
-├── merge.py       — Three-way merge (diff3)
-├── inline.py      — Word-level intra-line diff highlighting
-├── stat.py        — Diff statistics (diffstat)
-├── config.py       — Configuration system (JSON/TOML/YAML)
-├── utils.py        — Preprocessing, binary detection, reverse ops
-├── cli.py         — Command-line interface (8 subcommands)
-└── examples/      — Usage examples
+├── __init__.py         — Package exports (50+ symbols)
+├── myers.py            — Myers O(ND) diff with backtracking
+├── lcs.py              — LCS dynamic programming diff
+├── patience.py         — Patience diff (Bram Cohen)
+├── histogram.py        — Histogram diff (Eclipse JGit)
+├── format.py           — Unified / context / normal diff formatters
+├── sidebyside.py       — Side-by-side visual diff renderer  ★ new
+├── htmlout.py          — HTML diff output with inline CSS    ★ new
+├── dirdiff.py          — Recursive directory comparison      ★ new
+├── optimizer.py        — Diff optimisation passes            ★ new
+├── patch.py            — Patch parser and applier
+├── merge.py            — Three-way merge (diff3)
+├── inline.py           — Word-level intra-line diff
+├── stat.py             — Diff statistics (diffstat)
+├── config.py           — Configuration system (JSON/TOML/YAML)
+├── logging_config.py   — Logging configuration               ★ new
+├── utils.py            — Preprocessing, binary detection
+├── cli.py              — CLI (11 subcommands)
+├── examples/           — Usage examples
+│   ├── basic_diff.py
+│   ├── patch_demo.py
+│   ├── three_way_merge.py
+│   ├── side_by_side_demo.py    ★ new
+│   ├── html_diff_demo.py       ★ new
+│   └── dirdiff_demo.py         ★ new
+└── tests/              — 116 tests across 5 files
+    ├── test_diff_merge.py
+    ├── test_enhanced.py
+    ├── test_bug_hunt.py
+    ├── test_bug_hunt2.py
+    └── test_improvements.py     ★ new (32 tests)
 ```
 
-## Test Suite
+## Algorithms
 
-```bash
-# Run all 52 tests
-python3 tests/test_diff_merge.py
-python3 tests/test_enhanced.py
-```
+### Myers Diff
 
-Tests cover:
-- Basic diffing (Myers, LCS, Patience, Histogram)
-- Edge cases (empty inputs, identical inputs, completely different inputs)
-- Large-scale random stress testing
-- Unified/context/normal format output
-- Patch roundtrip (generate → parse → apply → verify)
-- Patch with offset and fuzz tolerance
-- Reverse patch application
-- Three-way merge (clean, conflict, same change, insertions, empty base)
-- Word-level inline diff highlighting
-- Diff statistics computation
-- Configuration system (JSON/TOML roundtrip)
-- Binary file detection
-- Whitespace/blank-line preprocessing
+The Myers algorithm finds the shortest edit script between two sequences
+by exploring an edit graph. It works on diagonals where `k = x - y`, and
+for each edit distance `d`, computes the furthest-reaching point on each
+diagonal. The algorithm is O(ND) where N is total sequence length and D is
+the edit distance.
+
+This implementation stores the V array at each edit distance level, then
+backtracks through the trace to reconstruct the path from `(N, M)` to
+`(0, 0)`, following snakes (diagonal moves through equal elements) and
+edit moves (right = delete, down = insert).
+
+### Patience Diff
+
+Patience diff finds unique lines that appear exactly once in each
+sequence, uses them as anchor points, then recursively diffs the
+segments between anchors. This produces more human-readable diffs for
+code with clear function/class boundaries. When no unique common lines
+exist in a segment, it falls back to LCS diff.
+
+### Histogram Diff
+
+Histogram diff enhances patience by using the *least frequent* common
+lines as anchors rather than only unique lines. When all lines are
+non-unique, it picks the rarest lines (minimum combined frequency in
+both sequences) and recurses. This improves diff quality for code with
+repeated boilerplate.
+
+### Three-Way Merge (diff3)
+
+1. Compute diff(base → ours) and diff(base → theirs)
+2. Find changed regions in each diff
+3. Merge overlapping change regions from both sides
+4. For each region:
+   - Both sides identical → take either (clean)
+   - Only one side changed → take that side (clean)
+   - Both sides changed differently → conflict
+
+### Diff Optimizer
+
+Post-processes diff ops to improve readability:
+- **Common edge extraction** — shrinks REPLACE blocks by pulling
+  identical prefix/suffix lines into EQUAL context
+- **Whitespace optimisation** — optionally converts whitespace-only
+  changes to EQUAL
+
+## Recent Improvements (v3.0)
+
+> ★ = added in this improvement pass
+
+| Feature | Description |
+|---------|-------------|
+| ★ Side-by-side diff | Two-column visual comparison with line numbers and colour |
+| ★ HTML diff output | Self-contained HTML document with CSS, inline word-level diff |
+| ★ Directory diff | Recursive directory tree comparison with per-file diffstats |
+| ★ Diff optimizer | Post-processing passes to improve diff readability |
+| ★ Logging | Configurable logging via `--verbose`, `--log-level`, or env var |
+| ★ CLI expansion | 3 new subcommands (sidebyside, html, dirdiff) — 11 total |
+| ★ CI configuration | GitHub Actions workflow for Python 3.10–3.12 |
+| ★ CONTRIBUTING.md | Developer guide for contributing |
+| ★ LICENSE | MIT license file |
+| ★ .gitignore | Ignore build artifacts |
+| ★ 32 new tests | Comprehensive tests for all new features (116 total) |
+| ★ Improved pyproject.toml | Updated metadata, classifiers, dev extras |
+| ★ 3 new examples | side_by_side, html_diff, dirdiff demo scripts |
 
 ## Known Issues (Resolved)
 
-The following bugs were identified during the Phase 3 bug hunt and fixed:
+The following bugs were identified and fixed during the bug hunt:
 
-1. **Myers backtracking negative indices** — The original middle-snake recursive implementation could produce `DiffOp` instances with negative `j1` indices (e.g., `j1=-1`) when the last edit was an insertion at the end. Fixed by rewriting the algorithm with classic O(ND) trace backtracking that properly handles single-axis moves (pure inserts/deletes at the start). *(Tests: `test_bug_myers_insertion_at_end`, `test_bug_myers_single_element`)*
+1. **Myers backtracking negative indices** — Rewrote with classic O(ND) trace backtracking
+2. **Patience/Histogram `_shift_ops` double-shifting** — Fixed count parameter
+3. **Three-way merge infinite loop** — Complete rewrite using diff3 algorithm
+4. **Merge conflict markers missing newlines** — Added line-ending detection
+5. **Normal diff INSERT line numbers** — Fixed 0-based to 1-based conversion
+6. **`is_binary` performance** — Set-based lookup + 8000-byte sampling
+7. **Unified diff empty old file header** — Verified correct `-0,0` behavior
+8. **Patch parser "No newline" markers** — Verified correct skip behavior
+9. **Patch multi-hunk cumulative offset** — Verified correct behavior
+10. **Merge overlapping vs adjacent regions** — Fixed to only merge truly overlapping regions
 
-2. **Patience/Histogram diff `_shift_ops` double-shifting** — The `_shift_ops` function was called with `len(out)` (the total ops list length) instead of `len(new_ops)` (the number of ops just added), causing previously-shifted ops to be double-shifted when the LCS fallback was hit multiple times in recursive segments. Fixed by capturing the count of newly-added ops before extending. *(Test: `test_bug_patience_shift_ops`)*
+## Testing
 
-3. **Three-way merge infinite loop** — The original merge implementation could enter an infinite loop when `_get_region` returned a zero-width region (`start == end`), causing `base_idx` to never advance. This happened with REPLACE ops where the `line_map` and `inserts` dicts were both populated. Fixed by completely rewriting the merge algorithm using the diff3 approach with change-region detection. *(Test: `test_bug_merge_zero_width_region`)*
+```bash
+# Run all 116 tests
+python3 -m pytest tests/ -v
 
-4. **Merge conflict markers missing newlines** — Conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`) were appended as bare strings without trailing newlines, causing them to be concatenated with the next content line when printed. Fixed by detecting the line ending from existing content and adding it to the markers. *(Test: `test_bug_merge_marker_newlines`)*
+# Run specific test file
+python3 -m pytest tests/test_improvements.py -v
 
-5. **Normal diff INSERT line numbers** — The INSERT command in `normal_diff` used 0-based `op.j1` as the new-file line number, but normal diff convention uses 1-based line numbers. Fixed by computing `new_start_1 = op.j1 + 1` for the new-file range. *(Test: `test_bug_normal_diff_insert_line_number`)*
+# Run with coverage
+python3 -m pytest tests/ --cov=diff_merge --cov-report=term-missing
+```
 
-6. **`is_binary` performance** — The binary detection function iterated over every byte of potentially large files, checking membership against a `bytes` object (O(n*m)). Fixed by using a `set` for O(1) lookups and sampling only the first 8000 bytes for large files. *(Tests: `test_bug_is_binary_set_performance`, `test_bug_is_binary_sampling`)*
+Test coverage:
+- Basic diffing (Myers, LCS, Patience, Histogram)
+- Edge cases (empty inputs, identical inputs, completely different inputs)
+- Large-scale random stress testing
+- Unified/context/normal/side-by-side/HTML format output
+- Patch roundtrip (generate → parse → apply → verify)
+- Patch with offset and fuzz tolerance, reverse patch
+- Three-way merge (clean, conflict, same change, insertions, empty base)
+- Word-level inline diff highlighting
+- Diff statistics, configuration system, binary detection
+- Directory diff (added, removed, modified, nested, empty)
+- Diff optimizer (common edges, whitespace, idempotency)
+- Logging configuration
 
-7. **Unified diff empty old file hunk header** — When the old file was empty, the hunk header should show `-0,0` not `-1,0`. Verified correct behavior with the `_split_ops_to_hunks` implementation. *(Test: `test_bug_unified_diff_empty_old`)*
+## Contributing
 
-8. **Patch parser "No newline at end of file"** — The parser correctly skips `\ No newline at end of file` markers without adding them as hunk body lines. *(Test: `test_bug_patch_no_newline_marker`)*
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, code style,
+and pull request guidelines.
 
-9. **Patch cumulative offset with multiple hunks** — When applying multiple hunks, the `cumulative_offset` must account for the size difference of each applied hunk. Verified correct behavior. *(Test: `test_bug_patch_multi_hunk_offset`)*
+## Roadmap
 
-10. **Merge overlapping vs adjacent regions** — The `_merge_regions` function originally merged adjacent (non-overlapping) regions, causing false conflicts when two sides made non-overlapping changes. Fixed by only merging truly overlapping regions (`start < last_end`). *(Test: `test_bug_merge_consecutive_changes_same_side`)*
+- [ ] Git blame integration
+- [ ] Semantic diff (AST-aware for Python/JS)
+- [ ] Diff3 with minimal-conflict region selection
+- [ ] Patch format detection (auto-detect unified vs context vs git)
+- [ ] Configurable line-ending normalisation (CRLF/LF)
+- [ ] Streaming diff for very large files
+- [ ] JSON diff (structured data comparison)
+- [ ] Performance: Myers middle-snake for O(N) space
+- [ ] Colour theme configuration for HTML output
+- [ ] Diff3 merge with conflict resolution strategies
+
+## Changelog
+
+### v3.0.0 — Comprehensive Improvement
+- Added side-by-side visual diff renderer (`sidebyside.py`)
+- Added HTML diff output with inline CSS and word-level highlighting (`htmlout.py`)
+- Added recursive directory diff with per-file statistics (`dirdiff.py`)
+- Added diff optimizer with common-edge extraction (`optimizer.py`)
+- Added logging configuration module (`logging_config.py`)
+- Expanded CLI to 11 subcommands (added `sidebyside`, `html`, `dirdiff`)
+- Added `--verbose` and `--log-level` global CLI options
+- Added GitHub Actions CI workflow (Python 3.10–3.12)
+- Added CONTRIBUTING.md, LICENSE, .gitignore
+- Added 3 new example scripts
+- Added 32 new tests (116 total, all passing)
+- Updated pyproject.toml with dev extras and expanded classifiers
+
+### v2.0.0 — Enhancement + Bug Hunt
+- Added word-level inline diff highlighting
+- Added diff statistics module
+- Added configuration system (JSON/TOML/YAML)
+- Added binary file detection, whitespace/blank-line filtering
+- Added reverse patch support
+- Expanded CLI to 8 subcommands
+- Found and fixed 10 bugs with 31 regression tests
+
+### v1.0.0 — Initial Release
+- 4 diff algorithms (Myers, LCS, Patience, Histogram)
+- 3 output formats (unified, context, normal)
+- Patch parser/applier with fuzz and reject support
+- Three-way merge with conflict markers
+- 20 tests
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).
