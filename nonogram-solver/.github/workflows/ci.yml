@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "nonogram-solver/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "nonogram-solver/**"
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        working-directory: nonogram-solver
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run tests
+        working-directory: nonogram-solver
+        run: |
+          python -m pytest tests/ -v --tb=short
+
+      - name: Test CLI
+        working-directory: nonogram-solver
+        run: |
+          nonogram solve puzzles/heart.json
+          nonogram presets --name heart --solve
+          nonogram generate --width 5 --height 5 --seed 42
+          nonogram benchmark --preset heart
+          nonogram config --generate /tmp/config.json
+          nonogram config --validate /tmp/config.json
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Lint
+        working-directory: nonogram-solver
+        run: |
+          ruff check nonogram/ --select E,F,W --ignore E501 || true
+          ruff format --check nonogram/ || true

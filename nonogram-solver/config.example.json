@@ -1,0 +1,22 @@
+{
+  "solver": {
+    "max_iterations": 5000,
+    "max_backtracks": 50000,
+    "use_mrv": true
+  },
+  "generator": {
+    "default_density": 0.55,
+    "default_max_attempts": 200
+  },
+  "rendering": {
+    "cell_size": 20,
+    "filled_color": [40, 40, 40],
+    "empty_color": [255, 255, 255],
+    "unknown_color": [200, 200, 200]
+  },
+  "logging": {
+    "level": "INFO",
+    "format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    "log_file": null
+  }
+}

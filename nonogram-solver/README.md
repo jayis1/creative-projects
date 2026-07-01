@@ -1,23 +1,68 @@
-# Nonogram Solver
+<div align="center">
 
-A from-scratch nonogram (Picross / Hanjie / Griddlers) solver, generator, and
-player — pure Python, no external dependencies.
+# 🧩 Nonogram Solver
+
+**A from-scratch nonogram (Picross / Hanjie / Griddlers) solver, generator, and player — pure Python, no external dependencies.**
+
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Tests: 100](https://img.shields.io/badge/tests-100%20passing-brightgreen.svg)]()
+[![Version: 3.0.0](https://img.shields.io/badge/version-3.0.0-orange.svg)]()
+[![No Dependencies](https://img.shields.io/badge/dependencies-stdlib%20only-lightgrey.svg)]()
+
+</div>
+
+---
+
+## Table of Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [CLI Reference](#cli-reference)
+- [Python API](#python-api)
+- [Puzzle File Formats](#puzzle-file-formats)
+- [Architecture](#architecture)
+- [Preset Puzzles](#preset-puzzles)
+- [Configuration](#configuration)
+- [Web Server](#web-server)
+- [Batch Solving & Benchmarking](#batch-solving--benchmarking)
+- [Testing](#testing)
+- [Contributing](#contributing)
+- [Changelog](#changelog)
+- [Roadmap](#roadmap)
+- [License](#license)
+
+---
+
+## Overview
 
 Nonograms are logic puzzles where you fill cells in a grid based on numbered
 clues given for each row and column. The numbers indicate the lengths of
 consecutive runs of filled cells in that line, separated by at least one blank
 cell. The goal is to determine which cells are filled and which are left blank.
 
+This project implements a complete nonogram toolkit from scratch — no external
+libraries required (PyYAML is optional for YAML config support). It includes a
+solver using constraint propagation + backtracking, a puzzle generator, an
+interactive player, a web-based solver, batch processing, benchmarking, and
+difficulty analysis.
+
 ## Features
 
-### Core
+### Core Solver
 - **Line solver** with the overlap method and constraint propagation
 - **Full-board solver** combining iterative propagation with backtracking
 - **MRV heuristic** for smarter cell selection during backtracking
 - **Solution counter** — count all solutions up to a limit
 - **Unique-solution checker** — robust multi-solution detection
+- **Result caching** in the line solver for performance
+
+### Generation & Analysis
 - **Puzzle generator** with unique-solution verification
-- **Interactive player** with hints and progress checking
+- **Difficulty analyzer** — grades puzzles as trivial/easy/medium/hard/expert
+- **10 curated preset puzzles** — all verified solvable and unique
 
 ### I/O & Rendering
 - **JSON serialization** for puzzles and solutions
@@ -27,65 +72,17 @@ cell. The goal is to determine which cells are filled and which are left blank.
 - **ANSI colored terminal rendering** with clue display
 - **HTML rendering** with styled tables
 
-### Extras
-- **10 curated preset puzzles** (heart, smiley, cross, letter-A, tree, house,
-  ship, cat, space invader, key) — all verified solvable and unique
-- **Difficulty analyzer** — grades puzzles as trivial/easy/medium/hard/expert
-  based on grid size, clue complexity, propagation efficiency, and
-  backtracking effort
-- **CLI** with 8 subcommands: `solve`, `generate`, `validate`, `hint`,
-    `presets`, `analyze`, `render`, `count`
+### Tools & Extensions
+- **Interactive web solver** — browser-based solving via stdlib `http.server`
+- **Batch solver** — process multiple puzzle files, generate JSON/CSV reports
+- **Benchmark suite** — measure solver performance on presets and generated puzzles
+- **Solver statistics** — propagation rounds, cache hit ratio, backtrack nodes
+- **Configuration management** — JSON/YAML/TOML config files with validation
 
-## How It Works
-
-### Line Solver (`LineSolver`)
-
-The core of the solver operates on a single row or column ("line"). Given a
-line with some cells known and some unknown, plus the clue for that line, it
-determines which additional cells can be definitively decided.
-
-**Overlap method:** For each block in the clue, compute the leftmost and
-rightmost valid positions. If these placements overlap, the overlapping cells
-are guaranteed to be filled. For example, clue `[3]` on a 5-cell line:
-
-```
-Leftmost:  ###..    (positions 0-2)
-Rightmost: ..###    (positions 2-4)
-Overlap:   ..#..    (position 2 → definitely filled)
-```
-
-**Constraint propagation:** The solver iterates to a fixpoint, repeatedly
-applying the overlap method. Each pass may reveal new filled or empty cells,
-which constrain the next pass further.
-
-**Feasibility check:** A backtracking verifier confirms that at least one
-valid arrangement exists consistent with the known cells.
-
-### Board Solver (`Solver`)
-
-The board solver applies the line solver to every row and column iteratively
-until no more progress is made (constraint propagation). If the board is not
-yet complete, it falls back to **depth-first backtracking** with the **MRV
-(Minimum Remaining Values)** heuristic: it picks the cell in the row or column
-with the fewest unknown cells, which tends to produce immediate deductions or
-contradictions, reducing the search tree.
-
-### Generator (`Generator`)
-
-The generator creates random grids at a given density, derives the clues, and
-verifies (via the solver) that the clues produce a unique solution. It retries
-up to `max_attempts` times if uniqueness is required but not achieved.
-
-### Difficulty Analyzer (`DifficultyAnalyzer`)
-
-Estimates puzzle difficulty based on:
-- Grid size and total cells
-- Clue complexity (number of blocks, average block size)
-- Filled-cell ratio
-- Whether constraint propagation alone solves the puzzle
-- Backtracking effort (number of backtracks, backtrack ratio)
-
-Produces a score and classifies as: trivial / easy / medium / hard / expert.
+### CLI
+- **12 subcommands**: `solve`, `generate`, `validate`, `hint`, `presets`,
+  `analyze`, `render`, `count`, `batch`, `benchmark`, `web`, `config`
+- Global options: `--config`, `--verbose`, `--quiet`
 
 ## Installation
 
@@ -94,123 +91,206 @@ cd nonogram-solver
 pip install -e .
 ```
 
-Or run directly with `python -m nonogram.cli`.
+With development dependencies (pytest, PyYAML):
+```bash
+pip install -e ".[dev]"
+```
 
-## Usage
+For YAML config support only:
+```bash
+pip -e ".[yaml]"
+```
 
-### Solve a puzzle
+**Requirements:** Python 3.10+ (uses `match` statements, `tomllib` on 3.11+)
+
+## Quick Start
 
 ```bash
-python -m nonogram.cli solve puzzles/heart.json
+# Solve a puzzle
+nonogram solve puzzles/heart.json
+
+# Solve with ANSI colors
+nonogram solve puzzles/heart.json --color
+
+# Generate a new puzzle
+nonogram generate --width 10 --height 10 --seed 42 --difficulty
+
+# List preset puzzles
+nonogram presets
+
+# Solve a preset
+nonogram presets --name ship --solve
+
+# Start the web solver
+nonogram web puzzles/heart.json --port 8080
+
+# Run benchmarks
+nonogram benchmark
+
+# Batch solve a directory
+nonogram batch puzzles/ --check-unique --report-json report.json
 ```
 
-Output:
-```
-. . # . .
-. # # # .
-# # # # #
-. # # # .
-. . # . .
+## CLI Reference
 
-Solved in 17 iterations, 9 backtracks.
-```
-
-With ANSI color:
-```bash
-python -m nonogram.cli solve puzzles/heart.json --color
-```
-
-### Generate a puzzle
-
-```bash
-python -m nonogram.cli generate --width 10 --height 10 --seed 42 --difficulty
-```
-
-### Validate uniqueness
-
-```bash
-python -m nonogram.cli validate puzzles/heart.json
-# VALID: puzzle has a unique solution.
-```
-
-### List and solve presets
+### `solve` — Solve a puzzle
 
 ```bash
-python -m nonogram.cli presets
-python -m nonogram.cli presets --name ship --solve
+nonogram solve puzzles/heart.json [options]
 ```
 
-### Analyze difficulty
+| Flag | Description |
+|------|-------------|
+| `--output, -o FILE` | Save solved board to JSON file |
+| `--max-backtracks N` | Max backtracking nodes (default: 100000) |
+| `--no-mrv` | Disable MRV cell selection heuristic |
+| `--color` | ANSI colored output |
+
+### `generate` — Generate a new puzzle
 
 ```bash
-python -m nonogram.cli analyze puzzles/heart.json
+nonogram generate --width 10 --height 10 --seed 42 [options]
 ```
 
-### Count solutions
+| Flag | Description |
+|------|-------------|
+| `--width, -w N` | Grid width (default: 10) |
+| `--height, -H N` | Grid height (default: 10) |
+| `--density, -d F` | Fraction of filled cells (default: 0.55) |
+| `--seed, -s N` | Random seed |
+| `--no-unique` | Skip uniqueness check |
+| `--difficulty` | Print difficulty analysis |
+
+### `batch` — Batch solve
 
 ```bash
-python -m nonogram.cli count puzzles/heart.json --limit 10
+nonogram batch puzzles/ [options]
 ```
 
-### Render in various formats
+| Flag | Description |
+|------|-------------|
+| `--output-dir, -o DIR` | Directory for solved JSON files |
+| `--recursive, -r` | Search subdirectories |
+| `--check-unique, -u` | Also check uniqueness |
+| `--report-json FILE` | Save JSON report |
+| `--report-csv FILE` | Save CSV report |
+
+### `benchmark` — Run benchmarks
 
 ```bash
-python -m nonogram.cli render puzzles/heart.json --format ansi
-python -m nonogram.cli render puzzles/heart.json --format html --output heart.html
-python -m nonogram.cli render puzzles/heart.json --format svg --output heart.svg
-python -m nonogram.cli render puzzles/heart.json --format png --output heart.png
+nonogram benchmark [options]
 ```
 
-### Python API
+| Flag | Description |
+|------|-------------|
+| `--preset, -p NAME` | Benchmark a specific preset |
+| `--output, -o FILE` | Save results as JSON |
+
+### `web` — Interactive web solver
+
+```bash
+nonogram web puzzles/heart.json [options]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--port, -p N` | Port number (default: 8080) |
+| `--no-browser` | Don't open browser automatically |
+
+### `config` — Config file management
+
+```bash
+nonogram config --generate config.json
+nonogram config --validate config.json
+```
+
+### Other commands
+
+```bash
+nonogram validate puzzles/heart.json   # Check uniqueness
+nonogram hint puzzles/heart.json        # Get a hint
+nonogram analyze puzzles/heart.json    # Difficulty analysis
+nonogram count puzzles/heart.json -l 5 # Count solutions
+nonogram render puzzles/heart.json -f ansi  # Render
+nonogram render puzzles/heart.json -f png -o heart.png
+```
+
+## Python API
 
 ```python
 from nonogram.board import Board, Cell
 from nonogram.solver import Solver
 from nonogram.generator import Generator
-from nonogram.presets import get_preset, list_presets
+from nonogram.player import Player
 from nonogram.analyzer import DifficultyAnalyzer
 from nonogram.io import PuzzleIO
 from nonogram.renderer import Renderer
+from nonogram.presets import get_preset, list_presets
+from nonogram.batch import BatchSolver
+from nonogram.benchmark import BenchmarkSuite
+from nonogram.stats import SolverStats
+from nonogram.config import AppConfig, load_config
 
-# Solve a puzzle
+# ── Solve a puzzle ──
 board = Board(
     row_clues=[[1], [3], [5], [3], [1]],
     col_clues=[[1], [3], [5], [3], [1]],
 )
 result = Solver().solve(board)
 print(board.render())
+# . . # . .
+# . # # # .
+# # # # #
+# . # # # .
+# . . # . .
 
-# Generate a puzzle
+# ── Generate a puzzle ──
 gen = Generator(seed=42)
 puzzle = gen.generate(10, 10, density=0.5, unique=True)
 
-# Check uniqueness
+# ── Check uniqueness ──
 solver = Solver()
 print(solver.is_unique(puzzle))  # True
 
-# Count solutions
+# ── Count solutions ──
 print(solver.count_solutions(puzzle, limit=5))  # 1
 
-# Analyze difficulty
+# ── Analyze difficulty ──
 info = DifficultyAnalyzer().analyze(puzzle)
 print(info["difficulty"])  # "medium"
 
-# Use a preset
-ship = get_preset("ship")
-print(ship.render())
-
-# Export to PNG/SVG/HTML
-PuzzleIO.save_png(board, "output.png")
-PuzzleIO.save_svg(board, "output.svg")
-html = Renderer.html(board, title="My Puzzle")
-
-# Interactive player
-from nonogram.player import Player
+# ── Interactive player ──
 player = Player(puzzle)
 player.fill(0, 2)
 player.blank(0, 0)
-hint = player.hint()
-print(hint)  # (row, col, Cell)
+hint = player.hint()  # (row, col, Cell)
+print(player.check())  # True if correct so far
+
+# ── Export to formats ──
+PuzzleIO.save_png(board, "output.png")
+PuzzleIO.save_svg(board, "output.svg")
+PuzzleIO.save_json(board, "output.json")
+PuzzleIO.save_non(board, "output.non")
+html = Renderer.html(board, title="My Puzzle")
+
+# ── Batch solve ──
+bs = BatchSolver(output_dir="solutions/", check_unique=True)
+report = bs.solve_files("puzzles/*.json")
+print(report.summary())
+print(report.to_csv())
+
+# ── Benchmark ──
+suite = BenchmarkSuite()
+suite.run_all()
+print(suite.summary())
+
+# ── Configuration ──
+config = AppConfig()
+config.solver.max_iterations = 5000
+config.validate()  # Validate all settings
+
+# ── Load config from file ──
+# config = load_config("config.json")  # or .yaml, .toml
 ```
 
 ## Puzzle File Formats
@@ -247,6 +327,66 @@ print(hint)  # (row, col, Cell)
 First line: `width height`. Next `height` lines: row clues. Next `width` lines:
 column clues. Use `0` for an empty clue (no filled cells).
 
+## Architecture
+
+The project is organized into focused modules with clear separation of concerns:
+
+```
+nonogram-solver/
+├── nonogram/
+│   ├── __init__.py      # Package exports (all public symbols)
+│   ├── board.py         # Board and Cell data structures
+│   ├── line_solver.py   # Per-line constraint propagation (overlap method)
+│   ├── solver.py        # Full-board solver (propagation + MRV backtracking)
+│   ├── generator.py     # Random puzzle generator with unique-solution check
+│   ├── player.py        # Interactive player with hints and progress checking
+│   ├── presets.py       # 10 curated preset puzzles
+│   ├── analyzer.py      # Difficulty analyzer (trivial→expert grading)
+│   ├── io.py            # File I/O (JSON, NON, PNG, SVG)
+│   ├── renderer.py      # ANSI and HTML renderers
+│   ├── cli.py           # CLI (12 subcommands + global options)
+│   ├── config.py        # Configuration management (JSON/YAML/TOML)
+│   ├── batch.py         # Batch solver with report generation
+│   ├── benchmark.py     # Performance benchmarking suite
+│   ├── stats.py         # Solver statistics and profiling
+│   └── web.py           # Interactive web solver (stdlib http.server)
+├── tests/
+│   ├── test_bug_hunt.py # Bug hunt regression tests (11 tests)
+│   └── test_nonogram.py # Comprehensive test suite (89 tests)
+├── puzzles/             # Example puzzle files
+├── examples/            # Usage example scripts (5 examples)
+├── docs/                # Architecture documentation
+├── .github/workflows/   # CI (GitHub Actions)
+├── pyproject.toml       # Build config, dependencies, pytest config
+├── config.example.json  # Example configuration file
+├── CONTRIBUTING.md      # Contribution guidelines
+├── CHANGELOG.md         # Version history
+├── LICENSE              # MIT License
+└── README.md
+```
+
+### Core Algorithm
+
+**LineSolver** (the fundamental building block):
+1. **Overlap method** — For each clue block, compute leftmost and rightmost
+   valid positions. Overlapping cells are guaranteed filled.
+2. **Constraint propagation** — Iterate to a fixpoint, each pass further
+   constraining the next.
+3. **Feasibility check** — Backtracking verifier confirms at least one valid
+   arrangement exists.
+4. **Result caching** — Cache by (line_state, clue, length) to avoid
+   redundant computation.
+
+**Solver** (full-board):
+1. **Constraint propagation** — Apply LineSolver to every row and column
+   iteratively until fixpoint.
+2. **MRV backtracking** — When propagation stalls, pick the most constrained
+   line (fewest unknowns), try both values, and recurse.
+3. **Solution counting** — Count all solutions up to a limit for uniqueness
+   checking.
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for a detailed description.
+
 ## Preset Puzzles
 
 | Name | Size | Difficulty | Description |
@@ -264,79 +404,195 @@ column clues. Use `0` for an empty clue (no filled cells).
 
 All presets are verified to have unique solutions.
 
+```
+$ nonogram presets --name ship --solve
+Preset 'ship' solution:
+. . . . # . . . . .
+. . . # # # . . . .
+. . . . # . . . . .
+. . . . # . . . . .
+# # # # # # # # # #
+# # # # # # # # # #
+. # # # # # # # # .
+. . # # # # # # . .
+. . . # # # # . . .
+. . . . # # # . . .
+```
+
+## Configuration
+
+The solver supports configuration via JSON, YAML, or TOML files:
+
+```bash
+# Generate a default config
+nonogram config --generate config.json
+
+# Validate a config
+nonogram config --validate config.json
+
+# Use config with any command
+nonogram --config config.json solve puzzles/heart.json
+```
+
+Example config (`config.example.json`):
+```json
+{
+  "solver": {
+    "max_iterations": 5000,
+    "max_backtracks": 50000,
+    "use_mrv": true
+  },
+  "generator": {
+    "default_density": 0.55,
+    "default_max_attempts": 200
+  },
+  "rendering": {
+    "cell_size": 20,
+    "filled_color": [40, 40, 40],
+    "empty_color": [255, 255, 255],
+    "unknown_color": [200, 200, 200]
+  },
+  "logging": {
+    "level": "INFO",
+    "format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+  }
+}
+```
+
+## Web Server
+
+The interactive web solver runs entirely on stdlib `http.server` — no Flask,
+Django, or other framework needed:
+
+```bash
+nonogram web puzzles/heart.json --port 8080
+```
+
+Then open `http://localhost:8080` in your browser. Features:
+- Click cells to fill/blank/erase
+- Hint button for solver-generated hints
+- Check button to verify progress
+- Solve button to auto-solve
+- Reset button to start over
+- Clue display (rows and columns)
+- Dark-themed responsive UI
+
+## Batch Solving & Benchmarking
+
+### Batch Solver
+
+Process multiple puzzle files at once:
+
+```bash
+# Solve all puzzles in a directory
+nonogram batch puzzles/ --check-unique --report-json report.json
+
+# Solve with glob pattern
+nonogram batch "puzzles/*.json" --output-dir solutions/
+```
+
+Output:
+```
+Batch Report: 4 puzzles
+  Solved:    4
+  Failed:    0
+  Unique:    4
+  Total time: 0.01s
+  Avg time:   0.0003s
+```
+
+### Benchmark Suite
+
+Measure solver performance:
+
+```bash
+nonogram benchmark
+```
+
+Output:
+```
+Nonogram Solver Benchmarks
+======================================================================
+✓ preset:heart              5×5      iters=3      bt=0      0.0001s [trivial]
+✓ preset:smiley              5×5      iters=5      bt=0      0.0001s [easy]
+✓ preset:ship               10×10    iters=12     bt=3      0.0021s [medium]
+...
+----------------------------------------------------------------------
+Solved: 16/16  Total time: 0.234s
+```
+
+## Testing
+
+```bash
+# Run all tests
+python -m pytest tests/ -v
+
+# Run with coverage (if pytest-cov installed)
+python -m pytest tests/ --cov=nonogram --cov-report=term-missing
+```
+
+**Test suite:** 100 tests across 2 files:
+- `tests/test_bug_hunt.py` — 11 regression tests from Phase 3 bug hunt
+- `tests/test_nonogram.py` — 89 comprehensive tests covering all modules
+
+All tests pass. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
 ## Known Issues (Resolved)
 
 All bugs found during the Phase 3 bug hunt have been fixed and verified with
 tests in `tests/test_bug_hunt.py` (11 tests, all passing).
 
-1. **Dead code in `save_png`** — The PNG export had a redundant first loop
-   that built pixel data only to be immediately overwritten by a second loop.
-   Removed the dead code. *(No user-visible effect, but wasted computation.)*
+1. **Dead code in `save_png`** — Redundant loop removed.
+2. **Misleading `_propagate` docstring** — Updated to match implementation.
+3. **`Board.from_dict` grid validation** — Now validates dimensions.
+4. **`PuzzleIO.load_non` line count validation** — Now raises `ValueError`.
+5. **`Player.check()` with no grid** — Solves clues to get solution first.
+6. **`LineSolver` empty clue handling** — Empty clues now mark all cells EMPTY.
+7. **`LineSolver` FILLED cell coverage** — Leftmost/rightmost now accounts for
+   FILLED cells.
+8. **`arrow.json` unsolvable puzzle** — Replaced with valid design.
 
-2. **Misleading `_propagate` docstring** — The docstring claimed a "dirty-set
-   optimisation" that was never implemented. Updated to accurately describe
-   the simple fixpoint iteration. *(Documentation fix.)*
+## Contributing
 
-3. **`Board.from_dict` accepted mismatched grid dimensions** — Loading a JSON
-   puzzle where the `grid` array dimensions didn't match the clue dimensions
-   would silently produce a broken board or cause a confusing `IndexError`.
-   Now raises a descriptive `ValueError`.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for full guidelines.
 
-4. **`PuzzleIO.load_non` didn't validate line count** — A truncated NON file
-   would cause an `IndexError` with no context. Now raises `ValueError` with
-   the expected vs. actual line count.
+1. Clone the repo and install: `pip install -e ".[dev]"`
+2. Run tests: `python -m pytest tests/ -v`
+3. Make changes with tests and docstrings
+4. Ensure all tests pass before committing
 
-5. **`Player.check()` failed for boards without a grid** — When a board was
-   loaded from NON format (no grid/solution), `check()` would always return
-   `False` because the solution was all-UNKNOWN. Now the `Player` constructor
-   solves the clues to obtain the solution before play begins.
+## Changelog
 
-6. **`LineSolver` didn't handle empty clues** — A clue of `[]` (no filled
-   cells in that line) left all cells as UNKNOWN instead of marking them
-   EMPTY. Fixed: empty clues now correctly set all cells to EMPTY (or raise
-   `ValueError` if any cell is already FILLED).
+See [CHANGELOG.md](CHANGELOG.md) for full version history.
 
-7. **`LineSolver` didn't account for FILLED cells in leftmost/rightmost
-   placement** — The overlap method's leftmost/rightmost position calculation
-   only avoided EMPTY cells but didn't ensure FILLED cells were covered by
-   blocks. This caused the solver to miss deductions when a line had known
-   FILLED cells (e.g., `[FILLED, UNKNOWN, UNKNOWN, UNKNOWN, UNKNOWN]` with
-   clue `[3]` should deduce positions 1,2 as FILLED and 3,4 as EMPTY, but
-   previously left them UNKNOWN). Fixed with a post-verification step that
-   checks all FILLED cells are covered and repositions blocks as needed.
+### v3.0.0 (2026-07-01)
+- Added web server, batch solver, benchmark suite, solver stats, config management
+- Added 4 new CLI subcommands (total: 12)
+- Added GitHub Actions CI, examples, architecture docs
+- Added 89 new tests (total: 100, all passing)
+- Fixed pyproject.toml build-backend
 
-8. **`arrow.json` puzzle was unsolvable** — The arrow puzzle's clues were
-   inconsistent (no valid grid matched them). Replaced with a valid,
-   uniquely-solvable arrow design.
+### v2.0.0 (2026-07-01)
+- Added MRV heuristic, solution counter, 10 presets, difficulty analyzer
+- Added NON format, PNG/SVG/ANSI/HTML rendering
+- Fixed 8 bugs with 11 regression tests
 
-## License
+### v1.0.0 (2026-07-01)
+- Initial release: solver, generator, player, JSON I/O
 
-MIT
+## Roadmap
 
-## Project Structure
-
-```
-├── nonogram/
-│   ├── __init__.py      # Package exports
-│   ├── board.py         # Board and Cell data structures
-│   ├── line_solver.py   # Per-line constraint propagation solver
-│   ├── solver.py        # Full-board solver (propagation + MRV backtracking)
-│   ├── generator.py     # Random puzzle generator
-│   ├── player.py        # Interactive player with hints
-│   ├── presets.py       # 10 curated preset puzzles
-│   ├── analyzer.py      # Difficulty analyzer
-│   ├── io.py            # File I/O (JSON, NON, PNG, SVG)
-│   ├── renderer.py      # ANSI and HTML renderers
-│   └── cli.py           # Command-line interface (8 subcommands)
-├── puzzles/
-│   ├── heart.json       # 5×5 heart
-│   ├── heart.non        # Same in NON format
-│   ├── smiley.json      # 5×5 smiley
-│   └── arrow.json       # 10×10 arrow
-├── pyproject.toml
-└── README.md
-```
+- [ ] Line solver with DP-based full feasibility (faster than backtracking)
+- [ ] More puzzle formats (XML, GNF, WebPBN)
+- [ ] Multi-color nonogram support (colored clues)
+- [ ] Puzzle editor GUI (tkinter or web-based)
+- [ ] Solver visualization (step-by-step propagation animation)
+- [ ] Puzzle database with import/export
+- [ ] Difficulty-based puzzle recommendation
+- [ ] Parallel batch solving with multiprocessing
+- [ ] Timed challenge mode for the player
+- [ ] Puzzle symmetry detection and generation
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE)
