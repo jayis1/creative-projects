@@ -272,6 +272,30 @@ Tests cover:
 - Binary file detection
 - Whitespace/blank-line preprocessing
 
+## Known Issues (Resolved)
+
+The following bugs were identified during the Phase 3 bug hunt and fixed:
+
+1. **Myers backtracking negative indices** — The original middle-snake recursive implementation could produce `DiffOp` instances with negative `j1` indices (e.g., `j1=-1`) when the last edit was an insertion at the end. Fixed by rewriting the algorithm with classic O(ND) trace backtracking that properly handles single-axis moves (pure inserts/deletes at the start). *(Tests: `test_bug_myers_insertion_at_end`, `test_bug_myers_single_element`)*
+
+2. **Patience/Histogram diff `_shift_ops` double-shifting** — The `_shift_ops` function was called with `len(out)` (the total ops list length) instead of `len(new_ops)` (the number of ops just added), causing previously-shifted ops to be double-shifted when the LCS fallback was hit multiple times in recursive segments. Fixed by capturing the count of newly-added ops before extending. *(Test: `test_bug_patience_shift_ops`)*
+
+3. **Three-way merge infinite loop** — The original merge implementation could enter an infinite loop when `_get_region` returned a zero-width region (`start == end`), causing `base_idx` to never advance. This happened with REPLACE ops where the `line_map` and `inserts` dicts were both populated. Fixed by completely rewriting the merge algorithm using the diff3 approach with change-region detection. *(Test: `test_bug_merge_zero_width_region`)*
+
+4. **Merge conflict markers missing newlines** — Conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`) were appended as bare strings without trailing newlines, causing them to be concatenated with the next content line when printed. Fixed by detecting the line ending from existing content and adding it to the markers. *(Test: `test_bug_merge_marker_newlines`)*
+
+5. **Normal diff INSERT line numbers** — The INSERT command in `normal_diff` used 0-based `op.j1` as the new-file line number, but normal diff convention uses 1-based line numbers. Fixed by computing `new_start_1 = op.j1 + 1` for the new-file range. *(Test: `test_bug_normal_diff_insert_line_number`)*
+
+6. **`is_binary` performance** — The binary detection function iterated over every byte of potentially large files, checking membership against a `bytes` object (O(n*m)). Fixed by using a `set` for O(1) lookups and sampling only the first 8000 bytes for large files. *(Tests: `test_bug_is_binary_set_performance`, `test_bug_is_binary_sampling`)*
+
+7. **Unified diff empty old file hunk header** — When the old file was empty, the hunk header should show `-0,0` not `-1,0`. Verified correct behavior with the `_split_ops_to_hunks` implementation. *(Test: `test_bug_unified_diff_empty_old`)*
+
+8. **Patch parser "No newline at end of file"** — The parser correctly skips `\ No newline at end of file` markers without adding them as hunk body lines. *(Test: `test_bug_patch_no_newline_marker`)*
+
+9. **Patch cumulative offset with multiple hunks** — When applying multiple hunks, the `cumulative_offset` must account for the size difference of each applied hunk. Verified correct behavior. *(Test: `test_bug_patch_multi_hunk_offset`)*
+
+10. **Merge overlapping vs adjacent regions** — The `_merge_regions` function originally merged adjacent (non-overlapping) regions, causing false conflicts when two sides made non-overlapping changes. Fixed by only merging truly overlapping regions (`start < last_end`). *(Test: `test_bug_merge_consecutive_changes_same_side`)*
+
 ## License
 
 MIT

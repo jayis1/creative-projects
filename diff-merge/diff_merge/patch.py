@@ -250,9 +250,11 @@ def _strip_context(
 ) -> Tuple[List[str], int] | None:
     """Strip *f* context lines from the start and end of *content*.
 
-    Only strips lines that are context (would be ' ' in the hunk).
-    Since we don't have the sign info here, we just strip f lines from
-    each end if the content is long enough.
+    Since we don't have the sign info here (context vs deletion),
+    we just strip f lines from each end if the content is long enough.
+    This is a known limitation: fuzz may strip deletion lines, not just
+    context lines.  For proper context-aware fuzz, the caller would need
+    to pass the hunk's sign information.
 
     Returns (stripped_content, total_trimmed) or None if content too short.
     """

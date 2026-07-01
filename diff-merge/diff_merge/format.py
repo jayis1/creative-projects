@@ -328,10 +328,15 @@ def normal_diff(
             for i in range(op.i1, op.i2):
                 result.append(f"< {a[i]}")
         elif op.tag == Operation.INSERT:
+            # Normal diff convention: "NaB[,C]" means after line N of
+            # old file, insert lines B through C of new file.
+            # op.j1/j2 are 0-based; normal diff uses 1-based for new.
+            new_start_1 = op.j1 + 1
+            after_line = a_start_1 - 1  # line number to insert after (0 = before first)
             if b_len == 1:
-                result.append(f"{a_start_1 - 1}a{op.j1}")
+                result.append(f"{after_line}a{new_start_1}")
             else:
-                result.append(f"{a_start_1 - 1}a{op.j1},{op.j1 + b_len - 1}")
+                result.append(f"{after_line}a{new_start_1},{new_start_1 + b_len - 1}")
             for j in range(op.j1, op.j2):
                 result.append(f"> {b[j]}")
         elif op.tag == Operation.REPLACE:

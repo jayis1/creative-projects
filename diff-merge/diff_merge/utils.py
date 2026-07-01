@@ -75,7 +75,9 @@ def is_binary(data: bytes) -> bool:
         return False
     if b"\x00" in data:
         return True
-    # Check for high proportion of non-text bytes
-    text_chars = bytes(range(32, 127)) + b"\n\r\t\f\b"
-    nontext = sum(1 for byte in data if byte not in text_chars)
-    return nontext / len(data) > 0.30
+    # Check for high proportion of non-text bytes.
+    # For efficiency, sample at most 8000 bytes for large inputs.
+    sample = data[:8000] if len(data) > 8000 else data
+    text_chars = set(range(32, 127)) | {ord(c) for c in "\n\r\t\f\b"}
+    nontext = sum(1 for byte in sample if byte not in text_chars)
+    return nontext / len(sample) > 0.30
