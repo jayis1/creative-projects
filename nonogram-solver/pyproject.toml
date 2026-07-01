@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "nonogram-solver"
+version = "1.0.0"
+description = "Nonogram (Picross/Hanjie) solver, generator, and player from scratch"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "AI Generated"}]
+keywords = ["nonogram", "picross", "hanjie", "puzzle", "solver", "constraint-propagation"]
+
+[project.scripts]
+nonogram = "nonogram.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["nonogram*"]
