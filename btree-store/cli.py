@@ -5,9 +5,13 @@ Usage:
   python cli.py --db FILE put KEY VALUE
   python cli.py --db FILE get KEY
   python cli.py --db FILE del KEY
-  python cli.py --db FILE scan [--low K] [--high K] [--limit N]
-  python cli.py --db FILE prefix PREFIX [--limit N]
+  python cli.py --db FILE cas KEY EXPECTED NEW_VALUE
+  python cli.py --db FILE scan [--low K] [--high K] [--include-high] [--reverse]
+                                [--limit N] [--offset N]
+  python cli.py --db FILE prefix PREFIX [--reverse] [--limit N] [--offset N]
   python cli.py --db FILE count
+  python cli.py --db FILE min
+  python cli.py --db FILE max
   python cli.py --db FILE stats
   python cli.py --db FILE validate
   python cli.py --db FILE batch-import FILE.json
@@ -25,6 +29,14 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import btree
 
 
+def _decode(b: bytes) -> str:
+    """Decode bytes to string, falling back to hex for binary data."""
+    try:
+        return b.decode('utf-8')
+    except UnicodeDecodeError:
+        return b.hex()
+
+
 def cmd_put(store, args):
     store.put(args.key.encode(), args.value.encode())
     print(f"OK: {args.key} -> {args.value}")
@@ -36,11 +48,7 @@ def cmd_get(store, args):
         print(f"NOT FOUND: {args.key}")
         sys.exit(1)
     else:
-        try:
-            print(val.decode('utf-8'))
-        except UnicodeDecodeError:
-            sys.stdout.buffer.write(val)
-            sys.stdout.write('\n')
+        print(_decode(val))
 
 
 def cmd_del(store, args):
@@ -52,50 +60,59 @@ def cmd_del(store, args):
         sys.exit(1)
 
 
+def cmd_cas(store, args):
+    expected = args.expected.encode() if args.expected != '__NONE__' else None
+    new_val = args.new_value.encode() if args.new_value != '__NONE__' else None
+    success = store.cas(args.key.encode(), expected, new_val)
+    if success:
+        print(f"OK: CAS succeeded for {args.key}")
+    else:
+        print(f"FAIL: CAS mismatch for {args.key}")
+        sys.exit(1)
+
+
 def cmd_scan(store, args):
     low = args.low.encode() if args.low else None
     high = args.high.encode() if args.high else None
-    c = store.cursor(low=low, high=high, include_high=args.include_high)
+    c = store.cursor(low=low, high=high, include_high=args.include_high,
+                     reverse=args.reverse, limit=args.limit, offset=args.offset)
     count = 0
     for k, v in c:
-        try:
-            ks = k.decode('utf-8')
-        except UnicodeDecodeError:
-            ks = k.hex()
-        try:
-            vs = v.decode('utf-8')
-        except UnicodeDecodeError:
-            vs = v.hex()
-        print(f"{ks}\t{vs}")
+        print(f"{_decode(k)}\t{_decode(v)}")
         count += 1
-        if args.limit and count >= args.limit:
-            break
     if args.summary:
         print(f"-- {count} entries --", file=sys.stderr)
 
 
 def cmd_prefix(store, args):
-    c = store.prefix(args.prefix.encode())
+    c = store.prefix(args.prefix.encode(), reverse=args.reverse,
+                     limit=args.limit, offset=args.offset)
     count = 0
     for k, v in c:
-        try:
-            ks = k.decode('utf-8')
-        except UnicodeDecodeError:
-            ks = k.hex()
-        try:
-            vs = v.decode('utf-8')
-        except UnicodeDecodeError:
-            vs = v.hex()
-        print(f"{ks}\t{vs}")
+        print(f"{_decode(k)}\t{_decode(v)}")
         count += 1
-        if args.limit and count >= args.limit:
-            break
     if args.summary:
         print(f"-- {count} entries --", file=sys.stderr)
 
 
 def cmd_count(store, args):
     print(store.count())
+
+
+def cmd_min(store, args):
+    result = store.min()
+    if result is None:
+        print("(empty)")
+    else:
+        print(f"{_decode(result[0])}\t{_decode(result[1])}")
+
+
+def cmd_max(store, args):
+    result = store.max()
+    if result is None:
+        print("(empty)")
+    else:
+        print(f"{_decode(result[0])}\t{_decode(result[1])}")
 
 
 def cmd_stats(store, args):
@@ -120,6 +137,9 @@ def cmd_batch_import(store, args):
     """
     with open(args.file, 'r') as f:
         data = json.load(f)
+    if not isinstance(data, dict):
+        print("ERROR: JSON file must contain a dict/object", file=sys.stderr)
+        sys.exit(1)
     txn = store.begin()
     try:
         for k, v in data.items():
@@ -137,13 +157,7 @@ def cmd_batch_export(store, args):
     c = store.cursor()
     data = {}
     for k, v in c:
-        try:
-            ks = k.decode('utf-8')
-            vs = v.decode('utf-8')
-        except UnicodeDecodeError:
-            ks = k.hex()
-            vs = v.hex()
-        data[ks] = vs
+        data[_decode(k)] = _decode(v)
     with open(args.file, 'w') as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
     print(f"Exported {len(data)} entries to {args.file}")
@@ -152,7 +166,8 @@ def cmd_batch_export(store, args):
 def cmd_interactive(store, args):
     """Simple interactive REPL."""
     print("btree-store interactive. Commands: get KEY, put KEY VALUE, "
-          "del KEY, scan, count, stats, quit")
+          "del KEY, cas KEY EXPECTED NEW, scan [--reverse] [--limit N], "
+          "prefix PREFIX, count, min, max, stats, validate, quit")
     while True:
         try:
             line = input("btree> ").strip()
@@ -170,10 +185,7 @@ def cmd_interactive(store, args):
             if val is None:
                 print("(none)")
             else:
-                try:
-                    print(val.decode())
-                except UnicodeDecodeError:
-                    print(val.hex())
+                print(_decode(val))
         elif cmd == 'put' and len(parts) == 3:
             store.put(parts[1].encode(), parts[2].encode())
             print("OK")
@@ -182,26 +194,57 @@ def cmd_interactive(store, args):
                 print("OK")
             else:
                 print("(not found)")
+        elif cmd == 'cas' and len(parts) == 3:
+            # cas KEY EXPECTED:NEW (split on colon for expected:new)
+            if ':' in parts[2]:
+                exp, new = parts[2].split(':', 1)
+            else:
+                exp, new = parts[2], parts[2]
+            exp_b = exp.encode() if exp != '-' else None
+            new_b = new.encode() if new != '-' else None
+            if store.cas(parts[1].encode(), exp_b, new_b):
+                print("OK")
+            else:
+                print("FAIL: mismatch")
         elif cmd == 'scan':
-            c = store.cursor()
+            words = parts[1:] if len(parts) > 1 else []
+            reverse = '--reverse' in words
+            limit = None
+            for i, w in enumerate(words):
+                if w == '--limit' and i + 1 < len(words):
+                    limit = int(words[i + 1])
+            c = store.cursor(reverse=reverse, limit=limit)
             n = 0
             for k, v in c:
-                try:
-                    ks = k.decode()
-                except UnicodeDecodeError:
-                    ks = k.hex()
-                try:
-                    vs = v.decode()
-                except UnicodeDecodeError:
-                    vs = v.hex()
-                print(f"  {ks}\t{vs}")
+                print(f"  {_decode(k)}\t{_decode(v)}")
+                n += 1
+            print(f"({n} entries)")
+        elif cmd == 'prefix' and len(parts) >= 2:
+            c = store.prefix(parts[1].encode())
+            n = 0
+            for k, v in c:
+                print(f"  {_decode(k)}\t{_decode(v)}")
                 n += 1
             print(f"({n} entries)")
         elif cmd == 'count':
             print(store.count())
+        elif cmd == 'min':
+            r = store.min()
+            if r:
+                print(f"  {_decode(r[0])}\t{_decode(r[1])}")
+            else:
+                print("  (empty)")
+        elif cmd == 'max':
+            r = store.max()
+            if r:
+                print(f"  {_decode(r[0])}\t{_decode(r[1])}")
+            else:
+                print("  (empty)")
         elif cmd == 'stats':
             for k, v in store.stats().items():
                 print(f"  {k}: {v}")
+        elif cmd == 'validate':
+            print("  OK" if store.validate() else "  ERROR: invalid")
         else:
             print("Unknown command. Type 'quit' to exit.")
 
@@ -225,21 +268,36 @@ def main():
     del_p = sub.add_parser('del', help='Delete a key')
     del_p.add_argument('key')
 
+    cas_p = sub.add_parser('cas', help='Compare-and-swap')
+    cas_p.add_argument('key')
+    cas_p.add_argument('expected', help='Expected value (use __NONE__ for absent)')
+    cas_p.add_argument('new_value', help='New value (use __NONE__ to delete)')
+
     scan_p = sub.add_parser('scan', help='Scan keys in order')
     scan_p.add_argument('--low', help='Lower bound key (inclusive)')
     scan_p.add_argument('--high', help='Upper bound key (exclusive by default)')
     scan_p.add_argument('--include-high', action='store_true',
                          help='Include the upper bound key')
+    scan_p.add_argument('--reverse', action='store_true',
+                        help='Scan in descending key order')
     scan_p.add_argument('--limit', type=int, help='Maximum number of entries')
+    scan_p.add_argument('--offset', type=int, default=0,
+                        help='Number of entries to skip')
     scan_p.add_argument('--summary', action='store_true',
                         help='Print count to stderr')
 
     prefix_p = sub.add_parser('prefix', help='Scan keys with a prefix')
     prefix_p.add_argument('prefix')
+    prefix_p.add_argument('--reverse', action='store_true',
+                           help='Scan in descending key order')
     prefix_p.add_argument('--limit', type=int, help='Maximum number of entries')
+    prefix_p.add_argument('--offset', type=int, default=0,
+                           help='Number of entries to skip')
     prefix_p.add_argument('--summary', action='store_true')
 
     sub.add_parser('count', help='Count total keys')
+    sub.add_parser('min', help='Get the minimum key')
+    sub.add_parser('max', help='Get the maximum key')
     sub.add_parser('stats', help='Show database statistics')
     sub.add_parser('validate', help='Validate B+Tree structure')
 
@@ -259,9 +317,12 @@ def main():
             'put': cmd_put,
             'get': cmd_get,
             'del': cmd_del,
+            'cas': cmd_cas,
             'scan': cmd_scan,
             'prefix': cmd_prefix,
             'count': cmd_count,
+            'min': cmd_min,
+            'max': cmd_max,
             'stats': cmd_stats,
             'validate': cmd_validate,
             'batch-import': cmd_batch_import,
