@@ -219,8 +219,22 @@ See the "Known Issues (Resolved)" section below for bugs found and fixed during 
 
 ## Known Issues (Resolved)
 
-1. **Header/page struct overflow with -1 sentinel**: Unsigned `I` format couldn't store `-1` used as "no page" sentinel for `root_page_id`, `free_list_head`, `prev`, `next`. Fixed by using signed `i` format for all page-ID fields.
+The following bugs were identified during the bug hunt phase and fixed:
 
-2. **File mode `r+b` on first create**: `_flush_header` and `_flush_page` opened with `r+b` which fails if the file doesn't exist yet. Fixed by checking `os.path.exists()` and using `w+b` for new files.
+1. **Header/page struct overflow with -1 sentinel** (Phase 1): Unsigned `I` format couldn't store `-1` used as "no page" sentinel for `root_page_id`, `free_list_head`, `prev`, `next`. Fixed by using signed `i` format for all page-ID fields.
 
-3. **LeafPage constructor keyword**: `LeafPage(new_id, next=leaf.next)` used wrong keyword `next` (shadows builtin); constructor parameter is `next_id`. Fixed to `next_id=leaf.next`.
+2. **File mode `r+b` on first create** (Phase 1): `_flush_header` and `_flush_page` opened with `r+b` which fails if the file doesn't exist yet. Fixed by checking `os.path.exists()` and using `w+b` for new files.
+
+3. **LeafPage constructor keyword mismatch** (Phase 1): `LeafPage(new_id, next=leaf.next)` used wrong keyword `next` (shadows builtin); constructor parameter is `next_id`. Fixed to `next_id=leaf.next`.
+
+4. **Reverse cursor with limit returns wrong entries** (Phase 3): `cursor(reverse=True, limit=5)` applied limit before reversing, returning the first 5 entries reversed instead of the last 5. Fixed by applying offset before reverse, and limit after reverse.
+
+5. **Empty prefix scan returns no results** (Phase 3): `prefix('')` computed `high=b'\x00'` which excluded all keys (since all keys >= `b'\x00'`). Fixed by returning `None` for the upper bound when prefix is empty.
+
+6. **All-0xFF prefix scan excludes longer keys** (Phase 3): `_prefix_upper_bound(b'\xff\xff')` returned `b'\xff\xff\x00'`, but `\xff\xff\xff > \xff\xff\x00` so 3-byte keys starting with `\xff\xff` were excluded. Fixed by returning `None` (no upper bound) when all prefix bytes are `0xFF`.
+
+7. **Oversized values crash during page serialization** (Phase 3): Inserting a value larger than a page caused `ValueError` deep in `_finalize_page` during flush, with no user-friendly error. Fixed by checking key+value size in `insert()` and raising a clear error immediately.
+
+8. **`commit_ts` not persisted on in-place updates** (Phase 3): When updating an existing key without allocating new pages, `_dirty_header` was False so the header (with new `commit_ts`) wasn't flushed. Fixed by setting `_dirty_header = True` in `commit()`.
+
+9. **CRC corruption test false negative** (Phase 3): The CRC test wrote `0xFF` to a byte that was already `0xFF`, so no corruption actually occurred. Fixed the test to choose a byte value that differs from the original.

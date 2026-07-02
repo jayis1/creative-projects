@@ -623,8 +623,8 @@ class Transaction:
             high: upper bound key (exclusive unless include_high=True)
             include_high: if True, high is inclusive
             reverse: if True, return results in descending key order
-            limit: maximum number of entries to return
-            offset: number of entries to skip (default 0)
+            limit: maximum number of entries to return (applied AFTER reverse)
+            offset: number of entries to skip (default 0, applied BEFORE reverse)
         """
         low_b = self._coerce_key(low) if low is not None else None
         high_b = self._coerce_key(high) if high is not None else None
@@ -657,23 +657,30 @@ class Transaction:
                 continue  # already present (and already overlaid above)
             pairs.append((wk, wv))
         pairs.sort(key=lambda x: x[0])
-        # Apply offset and limit
+        # Apply offset BEFORE reverse so it skips from the start
         if offset > 0:
             pairs = pairs[offset:]
-        if limit is not None and limit >= 0:
-            pairs = pairs[:limit]
+        # Apply reverse BEFORE limit so limit takes from the correct end
         if reverse:
             pairs = pairs[::-1]
+        # Apply limit AFTER reverse so it takes the first N of the reversed list
+        if limit is not None and limit >= 0:
+            pairs = pairs[:limit]
         return Cursor(pairs)
 
     def prefix(self, prefix: Union[str, bytes],
                reverse: bool = False,
                limit: Optional[int] = None,
                offset: int = 0) -> Cursor:
-        """Scan all keys with the given byte-level prefix."""
+        """Scan all keys with the given byte-level prefix.
+
+        An empty prefix matches all keys.
+        """
         prefix_b = self._coerce_key(prefix)
         high = _prefix_upper_bound(prefix_b)
-        return self.cursor(low=prefix_b, high=high, include_high=False,
+        # high is None for empty prefix or all-0xFF prefix (no finite upper bound)
+        return self.cursor(low=prefix_b if prefix_b else None, high=high,
+                            include_high=False,
                             reverse=reverse, limit=limit, offset=offset)
 
     def count(self) -> int:
@@ -697,22 +704,23 @@ class Transaction:
         return self.count() == 0
 
 
-def _prefix_upper_bound(prefix: bytes) -> bytes:
+def _prefix_upper_bound(prefix: bytes) -> Optional[bytes]:
     """Compute the smallest key strictly greater than all keys with the given prefix.
 
-    This is done by treating the prefix as a big-endian number and adding 1.
-    If the prefix is all 0xFF bytes, there is no finite upper bound, so we
-    return a sentinel that is larger than any key with this prefix — but
-    since we cannot represent infinity, we return the prefix itself with a
-    flag; the caller should handle this case by doing a full scan and
-    filtering. For simplicity, we return b'\xff' * (len+1) as an upper bound
-    that is guaranteed to be > any key starting with prefix.
+    This is done by treating the prefix as a big-endian number and adding 1
+    to the last non-0xFF byte. If the prefix is all 0xFF bytes, there is no
+    finite upper bound — we return None to signal "no upper bound".
+
+    Special case: empty prefix b'' matches all keys. We return None to
+    signal "no upper bound".
     """
+    if not prefix:
+        return None  # empty prefix = match everything
     for i in range(len(prefix) - 1, -1, -1):
         if prefix[i] != 0xFF:
             return prefix[:i] + bytes([prefix[i] + 1]) + b"\x00" * (len(prefix) - i - 1)
-    # All 0xFF
-    return prefix + b"\x00"  # this won't match but signals unbounded prefix
+    # All 0xFF — no finite upper bound exists
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -763,6 +771,14 @@ class BPlusTree:
         return None
 
     def insert(self, key: bytes, value: bytes) -> None:
+        # Check that key+value can fit in a single page
+        max_size = (self.store.page_size - CRC_SIZE) * 0.9
+        estimated = len(key) + len(value) + 20  # overhead for headers + varints
+        if estimated > max_size:
+            raise ValueError(
+                f"Key+value too large ({estimated} bytes) for page size "
+                f"({self.store.page_size} bytes). Max combined ~{int(max_size)} bytes."
+            )
         leaf = self._search_leaf(key)
         idx = bisect.bisect_left(leaf.keys, key)
         if idx < len(leaf.keys) and leaf.keys[idx] == key:
@@ -1184,6 +1200,7 @@ class Store:
                     self.tree.insert(key, val)
             self._commit_ts += 1
             self.header["commit_ts"] = self._commit_ts
+            self._dirty_header = True  # ensure header is flushed with new commit_ts
             self._flush_all()
             txn._committed = True
 
