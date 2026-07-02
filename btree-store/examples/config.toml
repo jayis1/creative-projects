@@ -1,0 +1,33 @@
+# btreestore configuration example (TOML format)
+# Copy to config.toml and modify as needed.
+
+# Path to the database file (can also be set via --db CLI flag)
+path = "mydb.btree"
+
+# Page size in bytes (includes 4-byte CRC). Range: 256-65536
+page_size = 4096
+
+# Target max children per internal node. Minimum: 4
+branching = 32
+
+# Max pages kept in LRU cache. Minimum: 8
+cache_size = 512
+
+# Enable Write-Ahead Log for crash recovery
+wal_enabled = true
+
+# Custom WAL file path (default: <db_path>.wal)
+# wal_path = "/tmp/mydb.wal"
+
+# Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+log_level = "INFO"
+
+# Log file path (default: stderr)
+# log_file = "btreestore.log"
+
+# Auto-checkpoint WAL every N commits
+auto_checkpoint = true
+checkpoint_interval = 100
+
+# Fsync on every commit (slower but more durable)
+sync_on_commit = false
