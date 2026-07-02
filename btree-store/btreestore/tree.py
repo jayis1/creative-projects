@@ -185,8 +185,14 @@ class BPlusTree:
         self._insert_separator(page.id, sep_key, new_id)
         logger.debug(f"Split internal page {page.id} -> {new_id}, sep_key={sep_key!r}")
 
-    def delete(self, key: bytes) -> bool:
-        """Delete a key from the tree. Returns True if the key existed."""
+    def delete(self, key: bytes, rebalance: bool = True) -> bool:
+        """Delete a key from the tree. Returns True if the key existed.
+
+        When rebalance=True (default), the tree is rebalanced after the
+        deletion by borrowing from or merging with sibling pages. This
+        keeps the tree dense and prevents sparse pages. Set rebalance=False
+        for faster deletions if you plan to compact periodically.
+        """
         leaf = self._search_leaf(key)
         idx = bisect.bisect_left(leaf.keys, key)
         if idx >= len(leaf.keys) or leaf.keys[idx] != key:
@@ -195,8 +201,12 @@ class BPlusTree:
         leaf.values.pop(idx)
         leaf.dirty = True
         self._write_page(leaf)
-        # Note: we don't implement merge/borrow for simplicity; B+Tree
-        # still correct, just sparse. Rebalance could be added later.
+
+        if rebalance:
+            from .merge import Rebalancer
+            rebalancer = Rebalancer(self)
+            rebalancer.rebalance_leaf(leaf)
+
         return True
 
     def scan(self, low: Optional[bytes], high: Optional[bytes],

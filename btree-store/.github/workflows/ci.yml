@@ -33,8 +33,14 @@ jobs:
         run: |
           python btreestore_cli.py --db /tmp/test.btree put hello world
           python btreestore_cli.py --db /tmp/test.btree get hello
+          python btreestore_cli.py --db /tmp/test.btree info --format json
           python btreestore_cli.py --db /tmp/test.btree stats --format json
           python btreestore_cli.py --db /tmp/test.btree scan --format json
+          python btreestore_cli.py --db /tmp/test.btree stream
           python btreestore_cli.py --db /tmp/test.btree count
           python btreestore_cli.py --db /tmp/test.btree validate
           python btreestore_cli.py --db /tmp/test.btree compact
+          python btreestore_cli.py --db /tmp/test.btree backup /tmp/test.bak
+          python btreestore_cli.py --db /tmp/test.btree backup-info /tmp/test.bak
+          python btreestore_cli.py --db /tmp/test.btree restore /tmp/test.bak /tmp/restored.btree
+          python btreestore_cli.py --db /tmp/restored.btree get hello

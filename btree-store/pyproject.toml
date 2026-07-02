@@ -4,15 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "btreestore"
-version = "3.0.0"
-description = "A persistent B+Tree key-value store with MVCC transactions, WAL recovery, CRC32 checksums, and cursor-based iteration — pure Python, zero dependencies."
+version = "4.0.0"
+description = "A persistent B+Tree key-value store with MVCC transactions, self-balancing deletes, WAL recovery, TTL expiration, secondary indexes, backup/restore, streaming cursors, event subscriptions, and optional compression — pure Python, zero dependencies."
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
 authors = [
     {name = "Creative Projects"},
 ]
-keywords = ["btree", "b-plus-tree", "key-value-store", "database", "mvcc", "embedded-database", "persistent"]
+keywords = ["btree", "b-plus-tree", "key-value-store", "database", "mvcc", "embedded-database", "persistent", "ttl", "secondary-index", "backup", "wal", "compression"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -21,6 +21,7 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Database",
     "Topic :: Database :: Database Engines/Servers",
     "Topic :: Software Development :: Libraries :: Python Modules",

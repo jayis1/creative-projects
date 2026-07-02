@@ -10,9 +10,11 @@ Usage:
   btreestore --db FILE scan [--low K] [--high K] [--include-high] [--reverse]
                               [--limit N] [--offset N] [--format json|tsv]
   btreestore --db FILE prefix PREFIX [--reverse] [--limit N] [--offset N]
+  btreestore --db FILE stream [--low K] [--high K] [--reverse] [--limit N]
   btreestore --db FILE count
   btreestore --db FILE min
   btreestore --db FILE max
+  btreestore --db FILE info [--format json]
   btreestore --db FILE stats [--format json]
   btreestore --db FILE validate
   btreestore --db FILE batch-import FILE.json
@@ -20,6 +22,9 @@ Usage:
   btreestore --db FILE compact
   btreestore --db FILE checkpoint
   btreestore --db FILE incr KEY [AMOUNT]
+  btreestore --db FILE backup BACKUP_FILE
+  btreestore --db FILE restore BACKUP_FILE DEST_FILE
+  btreestore --db FILE backup-info BACKUP_FILE
   btreestore --db FILE interactive
   btreestore --config CONFIG.toml --db FILE put KEY VALUE
 """
@@ -33,6 +38,8 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from btreestore.store import Store
 from btreestore.config import StoreConfig
+from btreestore.streaming_cursor import StreamingCursor
+from btreestore.backup import BackupManager
 
 
 def _decode(b: bytes) -> str:
@@ -321,6 +328,66 @@ def cmd_interactive(store, args):
             print("Unknown command. Type 'quit' to exit.")
 
 
+def cmd_backup(store, args):
+    """Create a backup of the store."""
+    bm = BackupManager(store)
+    n = bm.backup(args.file)
+    print(f"Backed up {n} entries to {args.file}")
+
+
+def cmd_restore(store, args):
+    """Restore a backup into a new store file."""
+    bm = BackupManager(store)
+    n = bm.restore(args.file, args.dest)
+    print(f"Restored {n} entries to {args.dest}")
+
+
+def cmd_backup_info(store, args):
+    """Show info about a backup file."""
+    bm = BackupManager(store)
+    info = bm.backup_info(args.file)
+    if args.format == "json":
+        print(json.dumps(info, indent=2))
+    else:
+        for k, v in info.items():
+            print(f"  {k}: {v}")
+
+
+def cmd_stream(store, args):
+    """Stream all keys using the memory-efficient streaming cursor."""
+    low = args.low.encode() if args.low else None
+    high = args.high.encode() if args.high else None
+    count = 0
+    for k, v in StreamingCursor(store, low=low, high=high,
+                                 reverse=args.reverse, limit=args.limit):
+        print(f"{_decode(k)}\t{_decode(v)}")
+        count += 1
+    if args.summary:
+        print(f"-- {count} entries --", file=sys.stderr)
+
+
+def cmd_info(store, args):
+    """Show detailed store information."""
+    s = store.stats()
+    s["path"] = store.path
+    s["version"] = "4.0.0"
+    if args.format == "json":
+        print(json.dumps(s, indent=2))
+    else:
+        print(f"btreestore v{s['version']}")
+        print(f"  path:         {s['path']}")
+        print(f"  file_size:    {s['file_size']:,} bytes")
+        print(f"  page_size:    {s['page_size']}")
+        print(f"  total_pages:  {s['total_pages']}")
+        print(f"  num_keys:     {s['num_keys']}")
+        print(f"  tree_depth:   {s['tree_depth']}")
+        print(f"  cached_pages: {s['cached_pages']}")
+        print(f"  commit_ts:    {s['commit_ts']}")
+        print(f"  commit_count: {s['commit_count']}")
+        print(f"  wal_enabled:  {s['wal_enabled']}")
+        print(f"  wal_size:     {s['wal_size']:,} bytes")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="btreestore: persistent B+Tree key-value store CLI"
@@ -403,6 +470,27 @@ def main():
 
     sub.add_parser("interactive", help="Interactive REPL")
 
+    backup_p = sub.add_parser("backup", help="Create a backup archive")
+    backup_p.add_argument("file", help="Path for the backup file")
+
+    restore_p = sub.add_parser("restore", help="Restore from a backup archive")
+    restore_p.add_argument("file", help="Path to the backup file")
+    restore_p.add_argument("dest", help="Path for the restored store file")
+
+    binfo_p = sub.add_parser("backup-info", help="Show info about a backup file")
+    binfo_p.add_argument("file", help="Path to the backup file")
+    binfo_p.add_argument("--format", choices=["tsv", "json"], default="tsv")
+
+    stream_p = sub.add_parser("stream", help="Stream keys (memory-efficient)")
+    stream_p.add_argument("--low", help="Lower bound key (inclusive)")
+    stream_p.add_argument("--high", help="Upper bound key (exclusive)")
+    stream_p.add_argument("--reverse", action="store_true")
+    stream_p.add_argument("--limit", type=int, help="Max entries")
+    stream_p.add_argument("--summary", action="store_true")
+
+    info_p = sub.add_parser("info", help="Show detailed store information")
+    info_p.add_argument("--format", choices=["tsv", "json"], default="tsv")
+
     args = parser.parse_args()
 
     if not args.db and not args.config:
@@ -428,6 +516,11 @@ def main():
             "batch-import": cmd_batch_import,
             "batch-export": cmd_batch_export,
             "interactive": cmd_interactive,
+            "backup": cmd_backup,
+            "restore": cmd_restore,
+            "backup-info": cmd_backup_info,
+            "stream": cmd_stream,
+            "info": cmd_info,
         }[args.command](store, args)
     finally:
         store.close()
