@@ -1,0 +1,13 @@
+{
+  "graph": {"generator": "watts-strogatz", "params": [50, 4, 30, 42]},
+  "layout": {
+    "algorithm": "pivot-mds",
+    "width": 1000,
+    "height": 1000
+  },
+  "render": {
+    "format": "svg",
+    "output": "small_world.svg"
+  },
+  "metrics": true
+}

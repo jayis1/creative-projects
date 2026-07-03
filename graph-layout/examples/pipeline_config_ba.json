@@ -1,0 +1,14 @@
+{
+  "graph": {"generator": "barabasi-albert", "params": [100, 3, 42]},
+  "layout": {
+    "algorithm": "drgraph",
+    "width": 1200,
+    "height": 800,
+    "seed": 42
+  },
+  "render": {
+    "format": "html",
+    "output": "ba_network.html"
+  },
+  "metrics": true
+}

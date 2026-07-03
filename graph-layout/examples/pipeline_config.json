@@ -1,0 +1,15 @@
+{
+  "graph": {"generator": "petersen"},
+  "layout": {
+    "algorithm": "fr",
+    "width": 800,
+    "height": 600,
+    "seed": 42,
+    "iterations": 200
+  },
+  "render": {
+    "format": "svg",
+    "output": "petersen_fr.svg"
+  },
+  "metrics": true
+}
