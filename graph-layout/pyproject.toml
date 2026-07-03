@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "graph-layout"
+version = "1.0.0"
+description = "From-scratch force-directed & hierarchical graph layout engine"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+authors = [{name = "creative-projects"}]
+
+[project.scripts]
+graph-layout = "graph_layout.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["graph_layout*"]

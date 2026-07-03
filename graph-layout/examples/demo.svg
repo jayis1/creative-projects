@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
+<rect width="800" height="600" fill="white"/>
+<line x1="86.5" y1="86.0" x2="214.7" y2="114.7" stroke="#999" stroke-width="1.5"/>
+<line x1="86.5" y1="86.0" x2="30.0" y2="342.4" stroke="#999" stroke-width="1.5"/>
+<line x1="214.7" y1="114.7" x2="383.7" y2="30.0" stroke="#999" stroke-width="1.5"/>
+<line x1="214.7" y1="114.7" x2="321.5" y2="30.0" stroke="#999" stroke-width="1.5"/>
+<line x1="30.0" y1="342.4" x2="222.6" y2="342.3" stroke="#999" stroke-width="1.5"/>
+<line x1="30.0" y1="342.4" x2="30.0" y2="570.0" stroke="#999" stroke-width="1.5"/>
+<line x1="383.7" y1="30.0" x2="570.0" y2="30.0" stroke="#999" stroke-width="1.5"/>
+<line x1="321.5" y1="30.0" x2="532.1" y2="208.1" stroke="#999" stroke-width="1.5"/>
+<line x1="222.6" y1="342.3" x2="426.0" y2="444.6" stroke="#999" stroke-width="1.5"/>
+<line x1="30.0" y1="570.0" x2="245.4" y2="570.0" stroke="#999" stroke-width="1.5"/>
+<line x1="570.0" y1="30.0" x2="532.1" y2="208.1" stroke="#999" stroke-width="1.5"/>
+<line x1="532.1" y1="208.1" x2="426.0" y2="444.6" stroke="#999" stroke-width="1.5"/>
+<line x1="426.0" y1="444.6" x2="245.4" y2="570.0" stroke="#999" stroke-width="1.5"/>
+<line x1="86.5" y1="86.0" x2="383.7" y2="30.0" stroke="#999" stroke-width="1.5"/>
+<line x1="214.7" y1="114.7" x2="222.6" y2="342.3" stroke="#999" stroke-width="1.5"/>
+<defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#999"/></marker></defs>
+<circle cx="86.5" cy="86.0" r="12" fill="#4a90d9"/>
+<text x="86.5" y="90.0" text-anchor="middle" font-size="10" fill="white">A</text>
+<circle cx="214.7" cy="114.7" r="12" fill="#4a90d9"/>
+<text x="214.7" y="118.7" text-anchor="middle" font-size="10" fill="white">B</text>
+<circle cx="30.0" cy="342.4" r="12" fill="#4a90d9"/>
+<text x="30.0" y="346.4" text-anchor="middle" font-size="10" fill="white">C</text>
+<circle cx="383.7" cy="30.0" r="12" fill="#4a90d9"/>
+<text x="383.7" y="34.0" text-anchor="middle" font-size="10" fill="white">D</text>
+<circle cx="321.5" cy="30.0" r="12" fill="#4a90d9"/>
+<text x="321.5" y="34.0" text-anchor="middle" font-size="10" fill="white">E</text>
+<circle cx="222.6" cy="342.3" r="12" fill="#4a90d9"/>
+<text x="222.6" y="346.3" text-anchor="middle" font-size="10" fill="white">F</text>
+<circle cx="30.0" cy="570.0" r="12" fill="#4a90d9"/>
+<text x="30.0" y="574.0" text-anchor="middle" font-size="10" fill="white">G</text>
+<circle cx="570.0" cy="30.0" r="12" fill="#4a90d9"/>
+<text x="570.0" y="34.0" text-anchor="middle" font-size="10" fill="white">H</text>
+<circle cx="532.1" cy="208.1" r="12" fill="#4a90d9"/>
+<text x="532.1" y="212.1" text-anchor="middle" font-size="10" fill="white">I</text>
+<circle cx="426.0" cy="444.6" r="12" fill="#4a90d9"/>
+<text x="426.0" y="448.6" text-anchor="middle" font-size="10" fill="white">J</text>
+<circle cx="245.4" cy="570.0" r="12" fill="#4a90d9"/>
+<text x="245.4" y="574.0" text-anchor="middle" font-size="10" fill="white">K</text>
+</svg>
