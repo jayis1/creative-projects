@@ -11,9 +11,13 @@ from . import (
     value_iteration, policy_iteration, modified_policy_iteration,
     policy_evaluation_iterative, q_values,
     QLearner, SARSALearner, ExpectedSARSALearner, DoubleQLearner, MonteCarloLearner,
-    make_russell_norvig_grid, make_cliff_walking, make_frozen_lake, make_chain, make_taxi,
+    NStepSARSALearner, NStepTreeBackupLearner, SARSALambdaLearner, QLambdaLearner,
+    make_russell_norvig_grid, make_cliff_walking, make_frozen_lake, make_chain,
+    make_taxi, make_bridge_walking, make_random_mdp,
     PRESETS,
     simulate_policy, compare_planners, compare_learners,
+    render_value_heatmap, render_policy_grid, render_q_table, render_learning_curve,
+    serialize_value_function, serialize_policy,
 )
 
 
@@ -51,12 +55,13 @@ def cmd_plan(args) -> None:
     print(f"States: {len(mdp.states)}, Actions: {len(mdp.actions)}")
     print()
     if args.show_values:
-        print("Optimal state values:")
-        for s in mdp.states:
-            print(f"  {s}: {V[s]:.6f}")
+        print("Optimal state values (heatmap):")
+        print(render_value_heatmap(mdp, V))
         print()
     if args.show_policy:
-        print("Optimal policy:")
+        print("Optimal policy (grid):")
+        print(render_policy_grid(mdp, pi))
+        print()
         for s in mdp.states:
             a = pi[s]
             print(f"  {s}: {a}")
@@ -69,6 +74,12 @@ def cmd_plan(args) -> None:
             "policy": pi.to_dict(),
         }
         print(json.dumps(out, indent=2))
+    if args.save_values:
+        serialize_value_function(V, args.save_values)
+        print(f"Values saved to {args.save_values}")
+    if args.save_policy:
+        serialize_policy(pi, args.save_policy)
+        print(f"Policy saved to {args.save_policy}")
 
 
 def cmd_learn(args) -> None:
@@ -76,6 +87,8 @@ def cmd_learn(args) -> None:
     learner_classes = {
         "q": QLearner, "sarsa": SARSALearner, "expected_sarsa": ExpectedSARSALearner,
         "double_q": DoubleQLearner, "mc": MonteCarloLearner,
+        "nstep_sarsa": NStepSARSALearner, "nstep_tree": NStepTreeBackupLearner,
+        "sarsa_lambda": SARSALambdaLearner, "q_lambda": QLambdaLearner,
     }
     cls = learner_classes[args.algo]
     kwargs = dict(
@@ -84,6 +97,11 @@ def cmd_learn(args) -> None:
     )
     if args.algo == "mc":
         kwargs["first_visit"] = not args.every_visit
+    if args.algo in ("nstep_sarsa", "nstep_tree"):
+        kwargs["n"] = args.n_step
+    if args.algo in ("sarsa_lambda", "q_lambda"):
+        kwargs["lam"] = args.lam
+        kwargs["replace_traces"] = args.replace_traces
     learner = cls(mdp, **kwargs)
     stats = learner.train(n_episodes=args.episodes, max_steps=args.max_steps, verbose=args.verbose)
     print(f"Algorithm: {args.algo}")
@@ -98,10 +116,10 @@ def cmd_learn(args) -> None:
               f"success: {sim['success_rate']:.2%}")
     if args.show_q:
         print("\nLearned Q-values:")
-        for s in sorted(mdp.states, key=str):
-            q = learner.Q.get(s, {})
-            if q:
-                print(f"  {s}: {q}")
+        print(render_q_table(learner.Q))
+    if args.show_curve:
+        print()
+        print(render_learning_curve(learner.episode_rewards, title=f"{args.algo} learning curve"))
 
 
 def cmd_compare(args) -> None:
@@ -144,7 +162,7 @@ def cmd_info(args) -> None:
 
 def cmd_list(_args) -> None:
     print("Available presets:")
-    for name, factory in PRESETS.items():
+    for name in PRESETS:
         print(f"  {name}")
 
 
@@ -159,6 +177,7 @@ def build_parser() -> argparse.ArgumentParser:
         sp.add_argument("--slip", type=float, default=None, help="Slip probability")
         sp.add_argument("--seed", type=int, default=None, help="Random seed")
 
+    # --- plan ---
     sp_plan = sub.add_parser("plan", help="Solve MDP with dynamic programming")
     add_mdp_args(sp_plan)
     sp_plan.add_argument("--method", choices=["value", "policy", "modified"], default="value")
@@ -166,11 +185,16 @@ def build_parser() -> argparse.ArgumentParser:
     sp_plan.add_argument("--show-values", action="store_true")
     sp_plan.add_argument("--show-policy", action="store_true")
     sp_plan.add_argument("--json", action="store_true")
+    sp_plan.add_argument("--save-values", type=str, default=None, help="Save V to JSON file")
+    sp_plan.add_argument("--save-policy", type=str, default=None, help="Save policy to JSON file")
     sp_plan.set_defaults(func=cmd_plan)
 
+    # --- learn ---
     sp_learn = sub.add_parser("learn", help="Learn with model-free RL")
     add_mdp_args(sp_learn)
-    sp_learn.add_argument("--algo", choices=["q", "sarsa", "expected_sarsa", "double_q", "mc"],
+    sp_learn.add_argument("--algo",
+                          choices=["q", "sarsa", "expected_sarsa", "double_q", "mc",
+                                   "nstep_sarsa", "nstep_tree", "sarsa_lambda", "q_lambda"],
                           default="q")
     sp_learn.add_argument("--alpha", type=float, default=0.1)
     sp_learn.add_argument("--epsilon", type=float, default=0.1)
@@ -179,12 +203,17 @@ def build_parser() -> argparse.ArgumentParser:
     sp_learn.add_argument("--episodes", type=int, default=5000)
     sp_learn.add_argument("--max-steps", type=int, default=1000, dest="max_steps")
     sp_learn.add_argument("--every-visit", action="store_true", help="MC every-visit (default first)")
+    sp_learn.add_argument("--n-step", type=int, default=3, dest="n_step", help="n for n-step methods")
+    sp_learn.add_argument("--lam", type=float, default=0.9, help="lambda for TD(λ) methods")
+    sp_learn.add_argument("--replace-traces", action="store_true", dest="replace_traces")
     sp_learn.add_argument("--simulate", action="store_true")
     sp_learn.add_argument("--sim-episodes", type=int, default=500, dest="sim_episodes")
     sp_learn.add_argument("--show-q", action="store_true", dest="show_q")
+    sp_learn.add_argument("--show-curve", action="store_true", dest="show_curve")
     sp_learn.add_argument("--verbose", action="store_true")
     sp_learn.set_defaults(func=cmd_learn)
 
+    # --- compare ---
     sp_cmp = sub.add_parser("compare", help="Compare planners or learners")
     add_mdp_args(sp_cmp)
     sp_cmp.add_argument("--mode", choices=["planners", "learners"], default="planners")
@@ -192,11 +221,13 @@ def build_parser() -> argparse.ArgumentParser:
     sp_cmp.add_argument("--sim-episodes", type=int, default=500, dest="sim_episodes")
     sp_cmp.set_defaults(func=cmd_compare)
 
+    # --- info ---
     sp_info = sub.add_parser("info", help="Show MDP information")
     add_mdp_args(sp_info)
     sp_info.add_argument("--json", action="store_true")
     sp_info.set_defaults(func=cmd_info)
 
+    # --- list ---
     sp_list = sub.add_parser("list", help="List preset MDPs")
     sp_list.set_defaults(func=cmd_list)
 

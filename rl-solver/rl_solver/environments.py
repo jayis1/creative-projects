@@ -192,12 +192,98 @@ def make_taxi(gamma: float = 0.95) -> MDP:
                terminal_states=terminals, start_state=(0, 0, 0, 3))
 
 
+def make_bridge_walking(size: int = 10, gamma: float = 0.99) -> MDP:
+    """Bridge walking: a 1×n bridge over a chasm.
+
+    The agent walks along a 1-row bridge of ``size`` cells.  At each end
+    there is a choice of going forward or "jumping off" (W from left,
+    E from right).  Reaching the far end gives +10; jumping gives −10 and
+    resets to start.  Every step costs −1.
+    """
+    states = [(0, c) for c in range(size)]
+    # add off-bridge states
+    off_left = (-1, 0)
+    off_right = (-2, 0)
+    all_states = states + [off_left, off_right]
+    actions = ["N", "S", "E", "W"]
+    terminals = {(0, size - 1), off_left, off_right}
+    transitions: Dict = {}
+    for (r, c) in states:
+        if (r, c) in terminals:
+            continue
+        transitions[(r, c)] = {}
+        for a in actions:
+            if a == "E":
+                if c + 1 < size:
+                    ns = (0, c + 1)
+                    reward = 10.0 if ns == (0, size - 1) else -1.0
+                else:
+                    ns = off_right
+                    reward = -10.0
+            elif a == "W":
+                if c == 0:
+                    ns = off_left
+                    reward = -10.0
+                else:
+                    ns = (0, c - 1)
+                    reward = -1.0
+            else:
+                ns = (0, c)  # N/S do nothing on a 1-row bridge
+                reward = -1.0
+            transitions[(r, c)][a] = [(ns, 1.0, reward)]
+    return MDP(all_states, actions, transitions, gamma=gamma,
+               terminal_states=terminals, start_state=(0, 0))
+
+
+def make_random_mdp(
+    n_states: int = 10,
+    n_actions: int = 3,
+    gamma: float = 0.9,
+    seed: int = 0,
+    reward_range: Tuple[float, float] = (-1.0, 1.0),
+    terminal_frac: float = 0.1,
+) -> MDP:
+    """Generate a random MDP with given dimensions.
+
+    Each (state, action) pair gets a random distribution over next states
+    and random rewards.  Useful for stress-testing planners.
+    """
+    import random as _r
+    rng = _r.Random(seed)
+    states = list(range(n_states))
+    actions = [f"a{i}" for i in range(n_actions)]
+    n_term = max(1, int(n_states * terminal_frac))
+    terminals = set(rng.sample(states, n_term))
+    transitions: Dict = {}
+    for s in states:
+        if s in terminals:
+            continue
+        transitions[s] = {}
+        for a in actions:
+            # random number of next states (1-4)
+            k = rng.randint(1, min(4, n_states))
+            next_states = rng.sample(states, k)
+            # random probabilities
+            raw = [rng.random() for _ in range(k)]
+            total = sum(raw)
+            probs = [x / total for x in raw]
+            outcomes = []
+            for ns, p in zip(next_states, probs):
+                r = rng.uniform(*reward_range)
+                outcomes.append((ns, p, r))
+            transitions[s][a] = outcomes
+    return MDP(states, actions, transitions, gamma=gamma,
+               terminal_states=terminals, start_state=0)
+
+
 PRESETS = {
     "russell_norvig": make_russell_norvig_grid,
     "cliff_walking": make_cliff_walking,
     "frozen_lake": make_frozen_lake,
     "chain": make_chain,
     "taxi": make_taxi,
+    "bridge_walking": make_bridge_walking,
+    "random": make_random_mdp,
 }
 
 __all__ = [
@@ -206,5 +292,7 @@ __all__ = [
     "make_frozen_lake",
     "make_chain",
     "make_taxi",
+    "make_bridge_walking",
+    "make_random_mdp",
     "PRESETS",
 ]
