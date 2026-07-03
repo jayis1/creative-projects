@@ -162,10 +162,9 @@ def make_taxi(gamma: float = 0.95) -> MDP:
 
     for st in states:
         r, c, p, d = st
-        # terminal if passenger delivered
-        if p == "in_taxi" and (r, c) == stands[d]:
-            terminals.add(st)
-            continue
+        # Bug fix: do NOT mark in_taxi-at-destination as terminal.
+        # The agent must still perform the 'dropoff' action to get the +20 reward.
+        # The terminal state is the post-dropoff state (passenger at destination stand).
         transitions[st] = {}
         for a in actions:
             if a in dirs:
@@ -183,9 +182,11 @@ def make_taxi(gamma: float = 0.95) -> MDP:
                     transitions[st][a] = [(st, 1.0, -10.0)]
             elif a == "dropoff":
                 if p == "in_taxi" and (r, c) == stands[d]:
-                    ns = (r, c, d, d)  # passenger at destination stand
-                    # actually delivered -> terminal
-                    transitions[st][a] = [(st, 1.0, 20.0)]
+                    # Bug fix: next state should have passenger at destination stand (d),
+                    # not self-loop with passenger still in_taxi.
+                    ns = (r, c, d, d)  # passenger now at destination stand
+                    transitions[st][a] = [(ns, 1.0, 20.0)]
+                    terminals.add(ns)  # post-dropoff state is terminal
                 else:
                     transitions[st][a] = [(st, 1.0, -10.0)]
     return MDP(states, actions, transitions, gamma=gamma,
@@ -197,16 +198,14 @@ def make_bridge_walking(size: int = 10, gamma: float = 0.99) -> MDP:
 
     The agent walks along a 1-row bridge of ``size`` cells.  At each end
     there is a choice of going forward or "jumping off" (W from left,
-    E from right).  Reaching the far end gives +10; jumping gives −10 and
-    resets to start.  Every step costs −1.
+    E from right).  Reaching the far end gives +10 and terminates; jumping
+    gives −10 and sends the agent back to the start (episode continues).
+    Every step costs −1.
     """
     states = [(0, c) for c in range(size)]
-    # add off-bridge states
-    off_left = (-1, 0)
-    off_right = (-2, 0)
-    all_states = states + [off_left, off_right]
     actions = ["N", "S", "E", "W"]
-    terminals = {(0, size - 1), off_left, off_right}
+    # Bug fix: only the far-right goal is terminal; jumping off resets to start
+    terminals = {(0, size - 1)}
     transitions: Dict = {}
     for (r, c) in states:
         if (r, c) in terminals:
@@ -218,11 +217,13 @@ def make_bridge_walking(size: int = 10, gamma: float = 0.99) -> MDP:
                     ns = (0, c + 1)
                     reward = 10.0 if ns == (0, size - 1) else -1.0
                 else:
-                    ns = off_right
+                    # Bug fix: jumping off resets to start, not terminal
+                    ns = (0, 0)  # reset to start
                     reward = -10.0
             elif a == "W":
                 if c == 0:
-                    ns = off_left
+                    # Bug fix: jumping off resets to start, not terminal
+                    ns = (0, 0)  # reset to start
                     reward = -10.0
                 else:
                     ns = (0, c - 1)
@@ -231,7 +232,7 @@ def make_bridge_walking(size: int = 10, gamma: float = 0.99) -> MDP:
                 ns = (0, c)  # N/S do nothing on a 1-row bridge
                 reward = -1.0
             transitions[(r, c)][a] = [(ns, 1.0, reward)]
-    return MDP(all_states, actions, transitions, gamma=gamma,
+    return MDP(states, actions, transitions, gamma=gamma,
                terminal_states=terminals, start_state=(0, 0))
 
 

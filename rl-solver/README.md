@@ -193,3 +193,15 @@ e(s,a) *= γλ
 ## License
 
 MIT
+
+## Known Issues (Resolved)
+
+The following bugs were identified during the Phase 3 bug hunt and have been fixed:
+
+1. **`simulate_policy` double-counted successes** — `success_rate` could exceed 1.0 (observed 200%) because terminal-state detection incremented `successes` both inside the step loop and again after the loop. **Fix**: use a single `reached_terminal` flag to count success at most once per episode.
+
+2. **`make_taxi` premature terminal marking** — States where the passenger was `in_taxi` and the taxi was at the destination stand were incorrectly marked as terminal *before* the agent could perform the `dropoff` action, making the +20 dropoff reward unreachable. **Fix**: only the post-dropoff state (passenger at destination stand) is terminal; the in-taxi-at-destination state is non-terminal and the agent must explicitly drop off.
+
+3. **`make_taxi` dropoff self-loop** — The `dropoff` transition used `st` (self-loop) as the next state instead of the post-dropoff state `(r, c, d, d)`, leaving the passenger in the taxi even after a "successful" dropoff. **Fix**: transition to `(r, c, d, d)` with reward +20, and mark that state as terminal.
+
+4. **`make_bridge_walking` terminal mismatch** — The docstring said jumping off "resets to start" but the implementation sent the agent to off-bridge terminal states (`(-1,0)` / `(-2,0)`), ending the episode. **Fix**: jumping off now transitions back to `(0,0)` with reward −10; the episode continues. Only the far-right goal is terminal.

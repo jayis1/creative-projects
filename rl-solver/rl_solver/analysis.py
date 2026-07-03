@@ -29,9 +29,10 @@ def simulate_policy(
         state = mdp.start_state
         total = 0.0
         steps = 0
+        reached_terminal = False
         for steps in range(max_steps):
             if mdp.is_terminal(state):
-                successes += 1
+                reached_terminal = True
                 break
             a = policy[state]
             if a is None:
@@ -41,8 +42,12 @@ def simulate_policy(
         else:
             # did not terminate within max_steps
             pass
-        if mdp.is_terminal(state):
-            successes += 1 if steps < max_steps else 0
+        # Check terminal after loop (in case loop ended via break or max_steps)
+        # Fix: only count success once — either in the loop or here, not both
+        if not reached_terminal and mdp.is_terminal(state):
+            reached_terminal = True
+        if reached_terminal:
+            successes += 1
         returns.append(total)
         lengths.append(steps)
     n = len(returns)
