@@ -55,8 +55,8 @@ class MDP:
         self._state_set = set(self.states)
         self._action_set = set(self.actions)
         self.transitions = transitions
-        if not 0.0 <= gamma < 1.0:
-            raise ValueError(f"gamma must be in [0, 1), got {gamma}")
+        if not 0.0 <= gamma <= 1.0:
+            raise ValueError(f"gamma must be in [0, 1], got {gamma}")
         self.gamma = gamma
         self.terminal_states: set = set(terminal_states) if terminal_states else set()
         for ts in self.terminal_states:
@@ -202,8 +202,8 @@ class GridWorld:
             raise ValueError("rows and cols must be >= 1")
         if not 0.0 <= self.slip < 1.0:
             raise ValueError("slip must be in [0, 1)")
-        if not 0.0 <= self.gamma < 1.0:
-            raise ValueError("gamma must be in [0, 1)")
+        if not 0.0 <= self.gamma <= 1.0:
+            raise ValueError("gamma must be in [0, 1]")
         for g in self.goals:
             self._check_cell(g)
         for t in self.traps:

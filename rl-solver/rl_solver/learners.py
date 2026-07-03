@@ -50,11 +50,17 @@ def _eps_greedy_action(
     best_actions: List[Any] = []
     for a in actions:
         qa = q.get(state, {}).get(a, 0.0)
+        # Guard against NaN values
+        if qa != qa:  # NaN check
+            qa = 0.0
         if qa > best_q + 1e-12:
             best_q = qa
             best_actions = [a]
         elif abs(qa - best_q) <= 1e-12:
             best_actions.append(a)
+    # Fallback: if best_actions is somehow empty, pick uniformly
+    if not best_actions:
+        return rng.choice(actions)
     return rng.choice(best_actions)
 
 
@@ -321,7 +327,11 @@ class DoubleQLearner(_BaseLearner):
             if not acts:
                 pi[s] = None
                 continue
-            pi[s] = max(combined.get(s, {}), key=combined.get(s, {}).get) if combined.get(s) else None
+            qs = combined.get(s, {})
+            if qs:
+                pi[s] = max(qs, key=qs.get)
+            else:
+                pi[s] = acts[0]
         return pi
 
 

@@ -17,6 +17,12 @@ from .planners import (
     greedy_policy,
     q_values,
 )
+from .advanced_planners import (
+    linear_programming_solve,
+    gauss_seidel_value_iteration,
+    prioritized_sweeping,
+    rtdp,
+)
 from .learners import (
     QLearner,
     SARSALearner,
@@ -30,6 +36,13 @@ from .nstep import (
     SARSALambdaLearner,
     QLambdaLearner,
 )
+from .advanced_learners import (
+    DynaQLearner,
+    RMaxLearner,
+    BoltzmannQLearner,
+    TileCoder,
+    GradientQLearner,
+)
 from .environments import (
     make_russell_norvig_grid,
     make_cliff_walking,
@@ -39,6 +52,14 @@ from .environments import (
     make_bridge_walking,
     make_random_mdp,
     PRESETS,
+)
+from .extra_environments import (
+    make_maze,
+    make_windy_gridworld,
+    make_blackjack,
+    make_dice_game,
+    make_pendulum,
+    EXTENDED_PRESETS,
 )
 from .analysis import simulate_policy, evaluate_policy, compare_planners, compare_learners
 from .visualization import (
@@ -59,7 +80,7 @@ from .config import (
 )
 from .logging_utils import get_logger, set_log_level
 
-__version__ = "2.0.0"
+__version__ = "3.0.0"
 
 __all__ = [
     # core
@@ -68,16 +89,25 @@ __all__ = [
     "policy_evaluation_linear", "policy_evaluation_iterative",
     "value_iteration", "policy_iteration", "modified_policy_iteration",
     "greedy_policy", "q_values",
+    # advanced planners
+    "linear_programming_solve", "gauss_seidel_value_iteration",
+    "prioritized_sweeping", "rtdp",
     # learners
     "QLearner", "SARSALearner", "ExpectedSARSALearner", "DoubleQLearner",
     "MonteCarloLearner",
     # n-step / TD(λ)
     "NStepSARSALearner", "NStepTreeBackupLearner",
     "SARSALambdaLearner", "QLambdaLearner",
+    # advanced learners
+    "DynaQLearner", "RMaxLearner", "BoltzmannQLearner",
+    "TileCoder", "GradientQLearner",
     # environments
     "make_russell_norvig_grid", "make_cliff_walking", "make_frozen_lake",
     "make_chain", "make_taxi", "make_bridge_walking", "make_random_mdp",
     "PRESETS",
+    # extra environments
+    "make_maze", "make_windy_gridworld", "make_blackjack",
+    "make_dice_game", "make_pendulum", "EXTENDED_PRESETS",
     # analysis
     "simulate_policy", "evaluate_policy", "compare_planners", "compare_learners",
     # visualization
