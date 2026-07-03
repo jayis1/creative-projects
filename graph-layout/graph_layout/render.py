@@ -121,6 +121,10 @@ class ASCIIRenderer:
                 continue
             x0, y0 = to_cell(n1.x, n1.y)
             x1, y1 = to_cell(n2.x, n2.y)
+            # Bug fix: capture initial deltas for char selection (not changing ones)
+            init_dx = abs(x1 - x0)
+            init_dy = abs(y1 - y0)
+            line_char = "-" if init_dx >= init_dy else "|"
             dx = abs(x1 - x0)
             dy = abs(y1 - y0)
             sx = 1 if x0 < x1 else -1
@@ -129,7 +133,7 @@ class ASCIIRenderer:
             while True:
                 if 0 <= y0 < self.height and 0 <= x0 < self.width:
                     if grid[y0][x0] == " ":
-                        grid[y0][x0] = "-" if abs(x1 - x0) > abs(y1 - y0) else "|"
+                        grid[y0][x0] = line_char
                     elif grid[y0][x0] not in ("+",):
                         grid[y0][x0] = "+"
                 if x0 == x1 and y0 == y1:

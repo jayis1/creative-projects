@@ -162,3 +162,27 @@ Four-phase hierarchical layout:
 ## License
 
 MIT
+
+## Known Issues (Resolved)
+
+The following bugs were found during the bug hunt phase and have been fixed:
+
+1. **Partial-position crash in metrics** (`metrics.py`): `crossing_count`, `angular_resolution`, `node_overlap`, `edge_length_variance`, and `stress` only checked `node.x is None` but not `node.y`, causing a `TypeError` when `x` was set but `y` was `None`. Fixed by checking both coordinates.
+
+2. **RadialLayout didn't handle disconnected graphs** (`layouts.py`): BFS from a single root left nodes in other connected components unpositioned. Fixed by iterating over all component roots and distributing them around the circle.
+
+3. **TreeLayout didn't BFS disconnected components** (`layouts.py`): Unvisited nodes from other components were added as isolated single-node roots without exploring their edges, losing connectivity information. Fixed by BFS-ing from each unvisited node.
+
+4. **Sugiyama DFS hit Python recursion limit** (`layouts.py`): Recursive DFS for cycle removal could exceed the default recursion limit on deep chains (200+ nodes). Fixed by converting to an iterative DFS with an explicit stack.
+
+5. **remove_edge crashed on nonexistent edges** (`graph.py`): Calling `remove_edge` on nodes not in the adjacency map raised `KeyError`. Fixed by guarding with `if source in self._adj`.
+
+6. **ASCIIRenderer Bresenham char selection used changing values** (`render.py`): The `-` vs `|` character was chosen based on `abs(x1-x0)` which changes during the line-drawing loop, producing inconsistent characters. Fixed by capturing initial deltas.
+
+7. **Barabási–Albert generator potential infinite loop** (`generators.py`): The target-selection loop could spin when all candidates with `cum >= r` were already in targets. Fixed by sampling from a shrinking available-nodes list.
+
+8. **Inconsistent constructor signatures** (`layouts.py`): `SugiyamaLayout`, `TreeLayout`, `CircularLayout`, and `GridLayout` didn't accept a `seed` parameter, breaking uniform API usage. Fixed by adding `seed` for API consistency.
+
+9. **Dead code in `add_edge`** (`graph.py`): An unused `key` variable computed a nonsensical `(frozenset, Edge)` tuple. Removed.
+
+10. **Dead variable in `save_dot`** (`io_utils.py`): Variable `w` was computed but never used. Removed.

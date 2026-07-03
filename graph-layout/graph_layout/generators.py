@@ -107,16 +107,28 @@ def barabasi_albert(n: int, m: int, seed: Optional[int] = None) -> Graph:
     for new_node in range(m + 1, n):
         nid = str(new_node)
         g.add_node(nid)
+        # Bug fix: use weighted sampling from *available* (not-yet-targeted) nodes
+        # to avoid potential infinite loops when the for-loop can't find a new target
         targets: List[str] = []
-        total_deg = sum(degrees.values())
-        while len(targets) < m:
+        available = [k for k in degrees if k not in targets]
+        while len(targets) < m and available:
+            total_deg = sum(degrees[k] for k in available)
+            if total_deg <= 0:
+                # fallback: uniform random from available
+                targets.append(available.pop(rng.randint(0, len(available) - 1)))
+                continue
             r = rng.random() * total_deg
             cum = 0
-            for existing, deg in degrees.items():
-                cum += deg
-                if cum >= r and existing not in targets:
-                    targets.append(existing)
+            chosen = None
+            for existing in available:
+                cum += degrees[existing]
+                if cum >= r:
+                    chosen = existing
                     break
+            if chosen is None:
+                chosen = available[-1]
+            targets.append(chosen)
+            available.remove(chosen)
         for t in targets:
             g.add_edge(nid, t)
             degrees[t] = degrees.get(t, 0) + 1

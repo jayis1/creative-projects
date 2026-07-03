@@ -25,7 +25,7 @@ def save_dot(graph: Graph, path: str) -> None:
         lines.append(f'  "{nid}" [{attr_str}];')
     op = "->" if graph.directed else "--"
     for e in graph.edges:
-        w = e.weight if e.weight != 1.0 else ""
+        # Bug fix: removed unused variable `w`; only emit weight attr when != 1.0
         attr = f' [weight={e.weight}]' if e.weight != 1.0 else ""
         lines.append(f'  "{e.source}" {op} "{e.target}"{attr};')
     lines.append("}")

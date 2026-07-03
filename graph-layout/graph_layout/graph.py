@@ -111,8 +111,8 @@ class Graph:
         self._edges.append(edge)
         self._adj[source].add(target)
         self._adj[target].add(source)
-        key = (source, target) if d else (frozenset({source, target}), Edge)
-        # store canonical for undirected lookup both directions
+        # Bug fix: removed dead code (unused `key` variable with frozenset+Edge ref)
+        # store edge for both directions for undirected, one for directed
         if not d:
             self._edge_map[(source, target)] = edge
             self._edge_map[(target, source)] = edge
@@ -137,11 +137,14 @@ class Graph:
 
     def remove_edge(self, source: str, target: str) -> None:
         """Remove a single edge (undirected removes either direction)."""
+        # Bug fix: guard against nodes not in adjacency (no-op if missing)
         self._edges = [e for e in self._edges
                        if not ((e.source == source and e.target == target)
                                or (not e.directed and e.source == target and e.target == source))]
-        self._adj[source].discard(target)
-        self._adj[target].discard(source)
+        if source in self._adj:
+            self._adj[source].discard(target)
+        if target in self._adj:
+            self._adj[target].discard(source)
         self._edge_map.pop((source, target), None)
         self._edge_map.pop((target, source), None)
 

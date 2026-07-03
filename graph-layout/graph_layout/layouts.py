@@ -75,10 +75,12 @@ class GridLayout(LayoutAlgorithm):
     name = "grid"
 
     def __init__(self, width: float = 1000.0, height: float = 1000.0,
-                 spacing: Optional[float] = None) -> None:
+                 spacing: Optional[float] = None,
+                 seed: Optional[int] = None) -> None:
         self.width = width
         self.height = height
         self.spacing = spacing
+        self.seed = seed  # accepted for API consistency; Grid is deterministic
 
     def layout(self, graph: Graph, **kwargs) -> Graph:
         n = graph.node_count
@@ -105,9 +107,11 @@ class CircularLayout(LayoutAlgorithm):
 
     name = "circular"
 
-    def __init__(self, width: float = 1000.0, height: float = 1000.0) -> None:
+    def __init__(self, width: float = 1000.0, height: float = 1000.0,
+                 seed: Optional[int] = None) -> None:
         self.width = width
         self.height = height
+        self.seed = seed  # accepted for API consistency; Circular is deterministic
 
     def layout(self, graph: Graph, **kwargs) -> Graph:
         n = graph.node_count
@@ -506,13 +510,15 @@ class TreeLayout(LayoutAlgorithm):
 
     def __init__(self, width: float = 1000.0, height: float = 1000.0,
                  root: Optional[str] = None, orientation: str = "top-down",
-                 node_spacing: float = 40.0, level_spacing: float = 80.0) -> None:
+                 node_spacing: float = 40.0, level_spacing: float = 80.0,
+                 seed: Optional[int] = None) -> None:
         self.width = width
         self.height = height
         self.root = root
         self.orientation = orientation
         self.node_spacing = node_spacing
         self.level_spacing = level_spacing
+        self.seed = seed  # accepted for API consistency; Tree is deterministic
 
     def layout(self, graph: Graph, **kwargs) -> Graph:
         if graph.node_count == 0:
@@ -535,9 +541,12 @@ class TreeLayout(LayoutAlgorithm):
         # BFS to build parent→children with visited set
         children: Dict[str, List[str]] = {nid: [] for nid in adj}
         parent: Dict[str, Optional[str]] = {nid: None for nid in adj}
+        # Bug fix: properly BFS each connected component, not just the first
+        all_roots: List[str] = []
         for r in roots:
             if r in visited:
                 continue
+            all_roots.append(r)
             stack = [r]
             visited.add(r)
             while stack:
@@ -549,11 +558,22 @@ class TreeLayout(LayoutAlgorithm):
                     children[cur].append(nbr)
                     parent[nbr] = cur
                     stack.append(nbr)
-        # add any unvisited nodes as additional roots
+        # Bug fix: also BFS from any remaining unvisited nodes (disconnected components)
         for nid in adj:
             if nid not in visited:
-                roots.append(nid)
+                all_roots.append(nid)
                 visited.add(nid)
+                stack = [nid]
+                while stack:
+                    cur = stack.pop(0)
+                    for nbr in adj[cur]:
+                        if nbr in visited:
+                            continue
+                        visited.add(nbr)
+                        children[cur].append(nbr)
+                        parent[nbr] = cur
+                        stack.append(nbr)
+        roots = all_roots
 
         # subtree width calculation
         widths: Dict[str, float] = {}
@@ -639,51 +659,80 @@ class RadialLayout(LayoutAlgorithm):
             return graph
         adj = graph.neighbor_list()
         cx, cy = self.width / 2, self.height / 2
+        # Bug fix: handle disconnected graphs by BFS from each component's root
         if self.root and self.root in adj:
-            root = self.root
+            roots = [self.root]
         else:
-            root = next(iter(adj))
-        # BFS
+            roots = list(adj)  # every node is a potential BFS root
+        # BFS from each root, marking visited so we cover all components
         from collections import deque
-        depths: Dict[str, int] = {root: 0}
-        parents: Dict[str, Optional[str]] = {root: None}
-        queue = deque([root])
-        while queue:
-            cur = queue.popleft()
-            for nbr in adj[cur]:
-                if nbr not in depths:
-                    depths[nbr] = depths[cur] + 1
-                    parents[nbr] = cur
-                    queue.append(nbr)
+        depths: Dict[str, int] = {}
+        parents: Dict[str, Optional[str]] = {}
+        visited_global: set = set()
+        component_roots: List[str] = []
+        for r in roots:
+            if r in visited_global:
+                continue
+            component_roots.append(r)
+            depths[r] = 0
+            parents[r] = None
+            visited_global.add(r)
+            queue = deque([r])
+            while queue:
+                cur = queue.popleft()
+                for nbr in adj[cur]:
+                    if nbr not in visited_global:
+                        depths[nbr] = depths[cur] + 1
+                        parents[nbr] = cur
+                        visited_global.add(nbr)
+                        queue.append(nbr)
         max_depth = max(depths.values()) if depths else 1
         radius_step = min(self.width, self.height) / 2 / max(1, max_depth + 1)
-        # assign angular slices
-        # group by depth, order children around their parent's angle
-        angle_span: Dict[str, Tuple[float, float]] = {root: (0, 2 * math.pi)}
-        positions: Dict[str, Tuple[float, float]] = {root: (cx, cy)}
-        # BFS order to assign angles
-        by_depth: Dict[int, List[str]] = {}
-        for nid, d in depths.items():
-            by_depth.setdefault(d, []).append(nid)
-        rng = random.Random(self.seed)
-        for d in range(1, max_depth + 1):
-            for nid in by_depth.get(d, []):
-                parent = parents[nid]
-                if parent is None:
-                    continue
-                p_angle_start, p_angle_end = angle_span[parent]
-                siblings = [c for c in by_depth.get(d, []) if parents.get(c) == parent]
-                if nid not in siblings:
-                    siblings = [nid]
-                idx = siblings.index(nid)
-                seg = (p_angle_end - p_angle_start) / max(1, len(siblings))
-                a_start = p_angle_start + idx * seg
-                a_end = a_start + seg
-                angle_span[nid] = (a_start, a_end)
-                a_mid = (a_start + a_end) / 2
-                r = d * radius_step
-                positions[nid] = (cx + r * math.cos(a_mid),
-                                   cy + r * math.sin(a_mid))
+        # assign angular slices — distribute component roots around the circle
+        positions: Dict[str, Tuple[float, float]] = {}
+        n_components = len(component_roots)
+        for ci, root in enumerate(component_roots):
+            root_angle_start = 2 * math.pi * ci / n_components
+            root_angle_end = 2 * math.pi * (ci + 1) / n_components
+            angle_span: Dict[str, Tuple[float, float]] = {
+                root: (root_angle_start, root_angle_end)
+            }
+            positions[root] = (cx, cy)
+            # BFS order to assign angles for this component
+            by_depth: Dict[int, List[str]] = {}
+            # collect nodes in this component via BFS order
+            comp_nodes: List[str] = []
+            q = deque([root])
+            seen: set = {root}
+            while q:
+                cur = q.popleft()
+                comp_nodes.append(cur)
+                for nbr in adj[cur]:
+                    if nbr not in seen and parents.get(nbr) == cur:
+                        seen.add(nbr)
+                        q.append(nbr)
+            for nid in comp_nodes:
+                d = depths[nid]
+                by_depth.setdefault(d, []).append(nid)
+            for d in range(1, max_depth + 1):
+                for nid in by_depth.get(d, []):
+                    parent = parents[nid]
+                    if parent is None:
+                        continue
+                    p_angle_start, p_angle_end = angle_span[parent]
+                    siblings = [c for c in by_depth.get(d, [])
+                                if parents.get(c) == parent]
+                    if nid not in siblings:
+                        siblings = [nid]
+                    idx = siblings.index(nid)
+                    seg = (p_angle_end - p_angle_start) / max(1, len(siblings))
+                    a_start = p_angle_start + idx * seg
+                    a_end = a_start + seg
+                    angle_span[nid] = (a_start, a_end)
+                    a_mid = (a_start + a_end) / 2
+                    r = d * radius_step
+                    positions[nid] = (cx + r * math.cos(a_mid),
+                                      cy + r * math.sin(a_mid))
         for nid, (x, y) in positions.items():
             if nid in graph.nodes:
                 graph.nodes[nid].x = x
@@ -704,11 +753,13 @@ class SugiyamaLayout(LayoutAlgorithm):
     name = "sugiyama"
 
     def __init__(self, width: float = 1000.0, height: float = 1000.0,
-                 node_spacing: float = 60.0, level_spacing: float = 80.0) -> None:
+                 node_spacing: float = 60.0, level_spacing: float = 80.0,
+                 seed: Optional[int] = None) -> None:
         self.width = width
         self.height = height
         self.node_spacing = node_spacing
         self.level_spacing = level_spacing
+        self.seed = seed  # accepted for API consistency; Sugiyama is deterministic
 
     def layout(self, graph: Graph, **kwargs) -> Graph:
         if graph.node_count == 0:
@@ -721,27 +772,35 @@ class SugiyamaLayout(LayoutAlgorithm):
             succ[e.source].append(e.target)
             pred[e.target].append(e.source)
 
-        # 1. Cycle removal: greedy heuristic — remove back edges via DFS
-        # (we just ignore edges that point backward in a DFS post-order)
+        # 1. Cycle removal: greedy heuristic — DFS post-order (iterative to
+        #    avoid Python recursion limit on deep chains)
         order: List[str] = []
         visited: set = set()
         temp: set = set()
-
-        def dfs(u: str) -> None:
-            if u in visited:
-                return
-            if u in temp:
-                return  # cycle — skip
-            temp.add(u)
-            for v in list(succ[u]):
-                if v not in visited:
-                    dfs(v)
-            temp.discard(u)
-            visited.add(u)
-            order.append(u)
-
-        for nid in adj:
-            dfs(nid)
+        # Bug fix: iterative DFS to prevent RecursionError on deep graphs
+        for start in adj:
+            if start in visited:
+                continue
+            # stack of (node, child_index) pairs
+            stack: List[Tuple[str, int]] = [(start, 0)]
+            temp.add(start)
+            while stack:
+                u, idx = stack[-1]
+                if idx < len(succ[u]):
+                    v = succ[u][idx]
+                    stack[-1] = (u, idx + 1)
+                    if v in visited:
+                        continue
+                    if v in temp:
+                        continue  # cycle — skip back edge
+                    temp.add(v)
+                    stack.append((v, 0))
+                else:
+                    # all children processed
+                    stack.pop()
+                    temp.discard(u)
+                    visited.add(u)
+                    order.append(u)
         # order is reverse topological (post-order)
         topo = list(reversed(order))
 

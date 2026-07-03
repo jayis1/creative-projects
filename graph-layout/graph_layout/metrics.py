@@ -20,7 +20,8 @@ class LayoutMetrics:
         lengths = []
         for e in graph.edges:
             n1, n2 = graph.nodes[e.source], graph.nodes[e.target]
-            if n1.x is None or n2.x is None:
+            # Bug fix: skip if either node lacks a full position
+            if n1.x is None or n1.y is None or n2.x is None or n2.y is None:
                 continue
             lengths.append(math.hypot(n1.x - n2.x, n1.y - n2.y))
         if not lengths:
@@ -50,7 +51,8 @@ class LayoutMetrics:
 
         pts = {}
         for nid, node in graph.nodes.items():
-            if node.x is not None:
+            # Bug fix: only include nodes where BOTH x and y are set
+            if node.x is not None and node.y is not None:
                 pts[nid] = (node.x, node.y)
 
         for i in range(len(edges)):
@@ -78,7 +80,7 @@ class LayoutMetrics:
         """
         min_angle = float("inf")
         for nid, node in graph.nodes.items():
-            if node.x is None:
+            if node.x is None or node.y is None:
                 continue
             nbrs = graph.neighbors(nid)
             if len(nbrs) < 2:
@@ -86,7 +88,8 @@ class LayoutMetrics:
             angles = []
             for nb in nbrs:
                 other = graph.nodes.get(nb)
-                if other is None or other.x is None:
+                # Bug fix: check both x and y are set
+                if other is None or other.x is None or other.y is None:
                     continue
                 angles.append(math.atan2(other.y - node.y, other.x - node.x))
             angles.sort()
@@ -124,7 +127,8 @@ class LayoutMetrics:
                 if d_graph is None or d_graph == 0:
                     continue
                 n1, n2 = graph.nodes[ids[i]], graph.nodes[ids[j]]
-                if n1.x is None or n2.x is None:
+                # Bug fix: skip if either node lacks a full position
+                if n1.x is None or n1.y is None or n2.x is None or n2.y is None:
                     continue
                 d_real = math.hypot(n1.x - n2.x, n1.y - n2.y)
                 if d_graph == 0:
@@ -136,7 +140,9 @@ class LayoutMetrics:
     @staticmethod
     def node_overlap(graph: Graph, threshold: float = 1.0) -> int:
         """Count pairs of nodes closer than ``threshold`` (overlapping)."""
-        nodes = [n for n in graph.nodes.values() if n.x is not None]
+        # Bug fix: only consider nodes with both x and y set
+        nodes = [n for n in graph.nodes.values()
+                 if n.x is not None and n.y is not None]
         count = 0
         for i in range(len(nodes)):
             for j in range(i + 1, len(nodes)):
