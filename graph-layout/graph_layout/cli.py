@@ -13,6 +13,13 @@ from . import (
     SVGRenderer, ASCIIRenderer, TextRenderer,
     load_dot, save_dot, load_json, save_json, load_edge_list, save_edge_list,
 )
+from .generators import (
+    complete_bipartite, path_graph, star_graph, cycle_graph,
+    petersen_graph, hypercube_graph, erdos_renyi,
+    barabasi_albert, watts_strogatz,
+)
+from .transform import scale_to_fit
+from .render import AnimatedSVGRenderer
 
 ALGORITHMS = {
     "fr": FruchtermanReingold,
@@ -68,6 +75,34 @@ def cmd_compare(args):
         print(f"{name:<25s} {int(m['crossing_count']):>10d} "
               f"{m['edge_length_variance']:>10.2f} "
               f"{m['stress']:>10.2f} {m['aspect_ratio']:>8.2f}")
+
+
+GENERATORS = {
+    "complete-bipartite": lambda a: complete_bipartite(a[0], a[1]),
+    "path": lambda a: path_graph(a[0]),
+    "star": lambda a: star_graph(a[0]),
+    "cycle": lambda a: cycle_graph(a[0]),
+    "petersen": lambda a: petersen_graph(),
+    "hypercube": lambda a: hypercube_graph(a[0]),
+    "erdos-renyi": lambda a: erdos_renyi(a[0], a[1] / 100.0, seed=a[2] if len(a) > 2 else None),
+    "barabasi-albert": lambda a: barabasi_albert(a[0], a[1], seed=a[2] if len(a) > 2 else None),
+    "watts-strogatz": lambda a: watts_strogatz(a[0], a[1], a[2] / 100.0, seed=a[3] if len(a) > 3 else None),
+    "grid": lambda a: Graph.grid_graph(a[0], a[1]),
+    "tree": lambda a: Graph.tree_graph(a[0], a[1]),
+    "complete": lambda a: Graph.complete_graph(a[0]),
+}
+
+
+def cmd_generate(args):
+    """Generate a named graph and save it."""
+    gen = GENERATORS.get(args.type)
+    if gen is None:
+        print(f"Unknown generator '{args.type}'. Available: {list(GENERATORS)}")
+        sys.exit(1)
+    params = [int(x) for x in args.params]
+    g = gen(params)
+    _save(g, args.output, args.output_format)
+    print(f"Generated {args.type}: {g.node_count} nodes, {g.edge_count} edges → {args.output}")
 
 
 def _load(path: str, fmt: Optional[str]):
@@ -148,6 +183,17 @@ def build_parser():
     pc.add_argument("--height", type=float, default=1000)
     pc.add_argument("--seed", type=int, default=42)
     pc.set_defaults(func=cmd_compare)
+
+    # generate
+    pg = sub.add_parser("generate", help="Generate a named graph")
+    pg.add_argument("type", choices=list(GENERATORS),
+                    help="Graph type to generate")
+    pg.add_argument("params", nargs="*", default=[],
+                    help="Generator parameters (type-specific)")
+    pg.add_argument("-o", "--output", default="generated.json",
+                    help="Output file")
+    pg.add_argument("--output-format", default=None)
+    pg.set_defaults(func=cmd_generate)
 
     return p
 

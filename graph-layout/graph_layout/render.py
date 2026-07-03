@@ -178,3 +178,79 @@ class TextRenderer:
     def save(self, graph: Graph, path: str) -> None:
         with open(path, "w", encoding="utf-8") as f:
             f.write(self.render(graph))
+
+
+class AnimatedSVGRenderer:
+    """Render a sequence of layout frames as an animated SVG (SMIL).
+
+    Useful for visualising how a force-directed layout evolves over time.
+    """
+
+    def __init__(self, width: int = 800, height: int = 600,
+                 node_radius: float = 12, fps: float = 10,
+                 bg: str = "white", edge_color: str = "#999",
+                 node_color: str = "#4a90d9") -> None:
+        self.width = width
+        self.height = height
+        self.node_radius = node_radius
+        self.fps = fps
+        self.bg = bg
+        self.edge_color = edge_color
+        self.node_color = node_color
+
+    def render(self, frames: list, graph: Graph) -> str:
+        """Render frames (list of dicts {node_id: (x,y)}) as animated SVG."""
+        duration = max(1.0, len(frames) / self.fps)
+        parts = [
+            f'<svg xmlns="http://www.w3.org/2000/svg" '
+            f'width="{self.width}" height="{self.height}">',
+            f'<rect width="{self.width}" height="{self.height}" '
+            f'fill="{self.bg}"/>',
+        ]
+        # determine bounds across all frames
+        all_x, all_y = [], []
+        for frame in frames:
+            for nid, (x, y) in frame.items():
+                all_x.append(x)
+                all_y.append(y)
+        if not all_x:
+            return "\n".join(parts) + "</svg>"
+        minx, miny = min(all_x), min(all_y)
+        span_x = max(1, max(all_x) - minx)
+        span_y = max(1, max(all_y) - miny)
+        margin = 30
+        scale = min((self.width - 2 * margin) / span_x,
+                    (self.height - 2 * margin) / span_y)
+
+        def tx(x): return margin + (x - minx) * scale
+        def ty(y): return margin + (y - miny) * scale
+
+        # edges (static lines, refreshed by node animation)
+        for e in graph.edges:
+            n1 = graph.nodes.get(e.source)
+            n2 = graph.nodes.get(e.target)
+            if not n1 or not n2:
+                continue
+            parts.append(f'<line id="e_{e.source}_{e.target}" '
+                         f'x1="0" y1="0" x2="0" y2="0" '
+                         f'stroke="{self.edge_color}" stroke-width="1.5"/>')
+
+        # nodes with animateMotion or animate on cx/cy
+        for nid in graph.nodes:
+            values_x = ";".join(f"{tx(f[nid][0]):.1f}" for f in frames if nid in f)
+            values_y = ";".join(f"{ty(f[nid][1]):.1f}" for f in frames if nid in f)
+            parts.append(f'<circle r="{self.node_radius}" '
+                         f'fill="{self.node_color}">'
+                         f'<animate attributeName="cx" '
+                         f'values="{values_x}" dur="{duration}s" '
+                         f'repeatCount="indefinite"/>'
+                         f'<animate attributeName="cy" '
+                         f'values="{values_y}" dur="{duration}s" '
+                         f'repeatCount="indefinite"/></circle>')
+
+        parts.append("</svg>")
+        return "\n".join(parts)
+
+    def save(self, frames: list, graph: Graph, path: str) -> None:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(self.render(frames, graph))

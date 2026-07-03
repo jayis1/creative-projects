@@ -1,6 +1,6 @@
 # graph-layout
 
-A from-scratch force-directed & hierarchical graph layout engine in pure Python (stdlib only). Nine layout algorithms, six quality metrics, and three renderers (SVG, ASCII, plain text) — no NumPy, no external dependencies.
+A from-scratch force-directed & hierarchical graph layout engine in pure Python (stdlib only). Nine layout algorithms, six quality metrics, twelve graph generators, layout transforms, and four renderers (SVG, animated SVG, ASCII, plain text) — no NumPy, no external dependencies.
 
 ## Features
 
@@ -8,7 +8,7 @@ A from-scratch force-directed & hierarchical graph layout engine in pure Python 
 
 | Algorithm | Class | Description |
 |-----------|-------|-------------|
-| Fruchterman-Reingold | `FruchtermanReingold` | Classic force-directed: repulsive (all pairs) + attractive (edges) forces with temperature cooling |
+| Fruchterman-Reingold | `FruchtermanReingold` | Classic force-directed: repulsive (all pairs) + attractive (edges) forces with temperature cooling. Supports **frame capture** for animated SVG. |
 | Kamada-Kawai | `KamadaKawai` | Stress minimization via Newton-Raphson on the node with the largest gradient |
 | Stress Majorization | `StressMajorization` | Gansner-Koren-North iterative majorization (SMOF) |
 | Sugiyama | `SugiyamaLayout` | Hierarchical layered layout: cycle removal → longest-path layering → median crossing reduction → coordinate assignment |
@@ -17,6 +17,23 @@ A from-scratch force-directed & hierarchical graph layout engine in pure Python 
 | Circular | `CircularLayout` | Evenly spaced on a circle |
 | Grid | `GridLayout` | Regular grid arrangement |
 | Random | `RandomLayout` | Uniform random (seedable) |
+
+### Graph Generators (12)
+
+| Generator | Function | Parameters |
+|-----------|----------|------------|
+| Complete bipartite | `complete_bipartite(m, n)` | K_{m,n} |
+| Path | `path_graph(n)` | P_n |
+| Star | `star_graph(n)` | center + n leaves |
+| Cycle | `cycle_graph(n)` | C_n |
+| Petersen | `petersen_graph()` | classic 10-node |
+| Hypercube | `hypercube_graph(dim)` | Q_d |
+| Erdős–Rényi | `erdos_renyi(n, p, seed)` | G(n, p) |
+| Barabási–Albert | `barabasi_albert(n, m, seed)` | preferential attachment |
+| Watts–Strogatz | `watts_strogatz(n, k, p, seed)` | small-world |
+| Grid | `Graph.grid_graph(rows, cols)` | rows×cols lattice |
+| Tree | `Graph.tree_graph(branching, depth)` | balanced tree |
+| Complete | `Graph.complete_graph(n)` | K_n |
 
 ### Quality Metrics (6)
 
@@ -27,9 +44,19 @@ A from-scratch force-directed & hierarchical graph layout engine in pure Python 
 - **Stress** — normalized deviation of realized distances from graph-theoretic distances (lower = better)
 - **Node overlap** — count of pairs closer than a threshold
 
-### Renderers (3)
+### Layout Transforms (6)
+
+- `scale_to_fit(graph, w, h, margin)` — scale and center to fit a bounding box
+- `normalize(graph)` — scale to unit square [0,1]²
+- `translate(graph, dx, dy)` — shift all positions
+- `rotate(graph, angle, cx, cy)` — rotate around a point
+- `center_on_origin(graph)` — center centroid at origin
+- `bounding_box(graph)` — get (min_x, min_y, max_x, max_y)
+
+### Renderers (4)
 
 - **SVGRenderer** — full SVG with directed-edge arrowheads, colored nodes, labels
+- **AnimatedSVGRenderer** — SMIL-based animated SVG from captured layout frames
 - **ASCIIRenderer** — Bresenham-line ASCII art for terminal preview
 - **TextRenderer** — plain-text node/edge listing with positions
 
@@ -87,6 +114,23 @@ python -m graph_layout.cli ascii input.dot -a kamada
 
 # Compare all algorithms by metrics
 python -m graph_layout.cli compare input.edges
+
+# Generate a named graph
+python -m graph_layout.cli generate petersen -o petersen.json
+python -m graph_layout.cli generate erdos-renyi 30 20 42 -o er.json
+python -m graph_layout.cli generate barabasi-albert 50 3 42 -o ba.json
+```
+
+### Animated SVG
+
+```python
+from graph_layout import FruchtermanReingold, petersen_graph, AnimatedSVGRenderer
+
+g = petersen_graph()
+algo = FruchtermanReingold(seed=42, iterations=200,
+                            capture_frames=True, frame_interval=10)
+algo.layout(g)
+AnimatedSVGRenderer().save(algo.frames, g, "animation.svg")
 ```
 
 ## How It Works

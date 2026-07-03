@@ -137,13 +137,17 @@ class FruchtermanReingold(LayoutAlgorithm):
 
     def __init__(self, width: float = 1000.0, height: float = 1000.0,
                  iterations: int = 300, seed: Optional[int] = None,
-                 cooling: str = "linear", k: Optional[float] = None) -> None:
+                 cooling: str = "linear", k: Optional[float] = None,
+                 capture_frames: bool = False, frame_interval: int = 10) -> None:
         self.width = width
         self.height = height
         self.iterations = iterations
         self.seed = seed
         self.cooling = cooling
         self.k = k
+        self.capture_frames = capture_frames
+        self.frame_interval = max(1, frame_interval)
+        self.frames: list = []  # populated if capture_frames=True
 
     def layout(self, graph: Graph, **kwargs) -> Graph:
         nodes = list(graph.iter_nodes())
@@ -193,7 +197,7 @@ class FruchtermanReingold(LayoutAlgorithm):
                     disp[v][0] -= fx
                     disp[v][1] -= fy
 
-            # attractive forces (edges)
+            # attractive forces (edges) — scaled by edge weight (stronger = shorter)
             for e in graph.edges:
                 u, v = e.source, e.target
                 if u not in pos or v not in pos:
@@ -230,6 +234,11 @@ class FruchtermanReingold(LayoutAlgorithm):
                 temp = temp_init * (0.95 ** iteration)
             else:
                 temp = temp_init * (1 - iteration / self.iterations)
+
+            # capture frame for animation
+            if self.capture_frames and (iteration % self.frame_interval == 0):
+                self.frames.append({nid: (pos[nid][0], pos[nid][1])
+                                    for nid in pos})
 
         for node in nodes:
             node.x = pos[node.id][0]
