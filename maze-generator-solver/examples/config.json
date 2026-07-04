@@ -1,0 +1,13 @@
+{
+  "width": 25,
+  "height": 15,
+  "seed": 42,
+  "generator": "recursive_backtracking",
+  "solver": "astar",
+  "heuristic": "manhattan",
+  "braid": 0.3,
+  "start": [0, 0],
+  "end": [24, 14],
+  "solve": true,
+  "analyze": true
+}

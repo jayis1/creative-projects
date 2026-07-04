@@ -1,0 +1,67 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "maze-generator-solver"
+version = "2.0.0"
+description = "A comprehensive maze generation, solving, and analysis toolkit"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "creative-projects"},
+]
+keywords = [
+    "maze",
+    "generator",
+    "solver",
+    "pathfinding",
+    "astar",
+    "bfs",
+    "dfs",
+    "dijkstra",
+    "ida-star",
+    "cellular-automata",
+    "grid",
+    "puzzle",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Education",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Games/Entertainment :: Puzzle Games",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = []
+
+[project.optional-dependencies]
+yaml = ["pyyaml>=6.0"]
+toml = ["tomli>=2.0; python_version < '3.11'"]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+maze-solver = "maze_solver.cli:main"
+
+[project.urls]
+"Homepage" = "https://github.com/jayis1/creative-projects/tree/main/maze-generator-solver"
+"Repository" = "https://github.com/jayis1/creative-projects"
+"Issues" = "https://github.com/jayis1/creative-projects/issues"
+
+[tool.setuptools]
+packages = ["maze_solver"]
+
+[tool.pytest.ini_options]
+testpaths = ["test_maze.py", "test_maze_v2.py"]
+python_files = ["test_*.py"]
+addopts = "-v"
