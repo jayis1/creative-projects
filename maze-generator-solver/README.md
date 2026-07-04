@@ -242,6 +242,47 @@ The `analyze()` method reports:
 - **Greedy Best-First** is the fastest but may not find the shortest path
 - **Braid mazes** are easier to navigate but harder to solve optimally (multiple paths)
 
+## Known Issues (Resolved)
+
+The following bugs were identified during the bug hunt phase and have been fixed:
+
+1. **Benchmark explored count was 0 for A\*, Dijkstra, greedy, and bidirectional solvers** — These solvers used their own internal `closed`/`visited` sets instead of the `cell.visited` flag. The `benchmark()` method counted explored cells via `cell.visited`, resulting in 0 for these solvers. **Fix**: All solvers now set `cell.visited = True` when they visit a cell, ensuring the benchmark reports accurate exploration counts.
+
+2. **Kruskal's algorithm removed walls even when cells were already connected** — The generator always called `remove_wall()` without checking the return value of `union()`, creating cycles (non-perfect mazes with extra openings). **Fix**: `remove_wall()` is now only called when `union()` returns `True` (cells were in different sets).
+
+3. **`distance_map()` returned all -1 when called after `solve()` or `is_perfect()`** — The BFS in `distance_map()` relied on `cell.visited` flags, but previous operations (solve, is_perfect) left these flags set to `True`. The BFS immediately terminated because all neighbors appeared visited. **Fix**: `distance_map()` now calls `reset_visited()` before starting the BFS.
+
+4. **`from_dict()` didn't validate wall data dimensions or wall names** — Malformed JSON could cause cryptic `IndexError` or `KeyError` exceptions instead of clear error messages. **Fix**: Added dimension validation (rows/columns match declared width/height) and wall name validation with descriptive error messages.
+
+5. **Misleading comment in `to_png()`** — Comment said "RGBA pixel buffer" but the buffer is actually RGB (3 bytes per pixel). **Fix**: Corrected comment to "RGB pixel buffer (3 bytes per pixel, row-major, top-to-bottom)".
+
+## Testing
+
+The project includes a comprehensive test suite (`test_maze.py`) with 71 tests covering:
+
+- Direction and Cell unit tests
+- Maze construction and validation
+- All 7 generation algorithms (perfect maze + solvability checks)
+- All 6 solving algorithms (path validity, shortest path verification)
+- Heuristic functions (Manhattan, Euclidean, Chebyshev)
+- Braid functionality
+- JSON serialization (round-trip, file I/O, invalid data)
+- Maze validation (perfect maze check)
+- Distance maps
+- Waypoint pathfinding
+- ASCII rendering
+- PNG export
+- Benchmarking (explored count correctness)
+- Edge cases (1×1, 2×2, 1×N, N×1 mazes)
+
+```bash
+# Run the test suite
+python3 -m pytest test_maze.py -v
+
+# Or run directly
+python3 test_maze.py
+```
+
 ## License
 
 MIT

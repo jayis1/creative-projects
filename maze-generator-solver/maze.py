@@ -747,11 +747,14 @@ class Maze:
         g_score: Dict[Cell, float] = {start_cell: 0}
         came_from: Dict[Cell, Optional[Cell]] = {start_cell: None}
         closed: Set[Cell] = set()
+        # Mark start as visited for benchmark explored-count tracking.
+        start_cell.visited = True
         while open_heap:
             _, _, current = heapq.heappop(open_heap)
             if current in closed:
                 continue
             closed.add(current)
+            current.visited = True  # track explored for benchmark
             if current == end_cell:
                 return self._reconstruct_path(came_from, end_cell)
             for neighbor in self.accessible_neighbors(current):
@@ -781,6 +784,7 @@ class Maze:
         heapq.heappush(open_heap, (heuristic(start_cell, end_cell), counter, start_cell))
         came_from: Dict[Cell, Optional[Cell]] = {start_cell: None}
         visited: Set[Cell] = {start_cell}
+        start_cell.visited = True  # track explored for benchmark
         while open_heap:
             _, _, current = heapq.heappop(open_heap)
             if current == end_cell:
@@ -788,6 +792,7 @@ class Maze:
             for neighbor in self.accessible_neighbors(current):
                 if neighbor not in visited:
                     visited.add(neighbor)
+                    neighbor.visited = True  # track explored
                     came_from[neighbor] = current
                     counter += 1
                     heapq.heappush(
@@ -807,11 +812,13 @@ class Maze:
         dist: Dict[Cell, float] = {start_cell: 0}
         came_from: Dict[Cell, Optional[Cell]] = {start_cell: None}
         closed: Set[Cell] = set()
+        start_cell.visited = True  # track explored for benchmark
         while open_heap:
             _, _, current = heapq.heappop(open_heap)
             if current in closed:
                 continue
             closed.add(current)
+            current.visited = True  # track explored
             if current == end_cell:
                 return self._reconstruct_path(came_from, end_cell)
             for neighbor in self.accessible_neighbors(current):
@@ -833,6 +840,7 @@ class Maze:
         start_cell = self.cells[sy][sx]
         end_cell = self.cells[ey][ex]
         if start_cell == end_cell:
+            start_cell.visited = True
             return [(sx, sy)]
         forward_queue: deque[Cell] = deque([start_cell])
         backward_queue: deque[Cell] = deque([end_cell])
@@ -840,6 +848,9 @@ class Maze:
         backward_came: Dict[Cell, Optional[Cell]] = {end_cell: None}
         forward_visited: Set[Cell] = {start_cell}
         backward_visited: Set[Cell] = {end_cell}
+        # Track visited for benchmark explored-count.
+        start_cell.visited = True
+        end_cell.visited = True
         meeting_point: Optional[Cell] = None
 
         while forward_queue and backward_queue:
@@ -852,6 +863,7 @@ class Maze:
                 for neighbor in self.accessible_neighbors(current):
                     if neighbor not in forward_visited:
                         forward_visited.add(neighbor)
+                        neighbor.visited = True  # track explored
                         forward_came[neighbor] = current
                         forward_queue.append(neighbor)
             # Expand backward frontier by one level.
@@ -863,6 +875,7 @@ class Maze:
                 for neighbor in self.accessible_neighbors(current):
                     if neighbor not in backward_visited:
                         backward_visited.add(neighbor)
+                        neighbor.visited = True  # track explored
                         backward_came[neighbor] = current
                         backward_queue.append(neighbor)
 
@@ -1200,12 +1213,39 @@ class Maze:
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> "Maze":
-        """Reconstruct a maze from a :meth:`to_dict` dictionary."""
-        maze = cls(data["width"], data["height"], seed=data.get("seed"))
-        for y in range(maze.height):
-            for x in range(maze.width):
+        """
+        Reconstruct a maze from a :meth:`to_dict` dictionary.
+
+        Validates that the wall data dimensions match the declared
+        width and height, and that all wall names are valid Direction
+        enum values.
+        """
+        width = data["width"]
+        height = data["height"]
+        if not isinstance(width, int) or not isinstance(height, int):
+            raise TypeError("width and height must be integers")
+        if width < 1 or height < 1:
+            raise ValueError("width and height must be positive")
+        maze = cls(width, height, seed=data.get("seed"))
+        walls_data = data["walls"]
+        if len(walls_data) != height:
+            raise ValueError(
+                f"walls has {len(walls_data)} rows, expected {height}"
+            )
+        for y in range(height):
+            if len(walls_data[y]) != width:
+                raise ValueError(
+                    f"walls row {y} has {len(walls_data[y])} cells, "
+                    f"expected {width}"
+                )
+            for x in range(width):
                 cell = maze.cells[y][x]
-                cell.walls = {Direction[w] for w in data["walls"][y][x]}
+                try:
+                    cell.walls = {Direction[w] for w in walls_data[y][x]}
+                except KeyError as e:
+                    raise ValueError(
+                        f"Invalid wall name {e} at cell ({x}, {y})"
+                    ) from e
         if "start" in data and data["start"] is not None:
             maze._start = tuple(data["start"])  # type: ignore[assignment]
         if "end" in data and data["end"] is not None:
@@ -1257,7 +1297,7 @@ class Maze:
 
         w = self.width * cell_size + 1
         h = self.height * cell_size + 1
-        # RGBA pixel buffer (we'll write RGB).
+        # RGB pixel buffer (3 bytes per pixel, row-major, top-to-bottom).
         # Initialize all white.
         pixels = bytearray([255, 255, 255] * (w * h))
 
