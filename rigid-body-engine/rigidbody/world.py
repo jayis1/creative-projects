@@ -8,6 +8,7 @@ from typing import Callable, List, Optional
 from .core.body import RigidBody
 from .core.broadphase import BroadPhase
 from .core.collision import Manifold, collide
+from .core.fields import ForceField
 from .core.vec2 import Vec2
 from .joints.joints import Joint
 from .solver.contact_solver import ContactSolver
@@ -43,6 +44,7 @@ class World:
         self.allow_sleeping = allow_sleeping
         self.bodies: List[RigidBody] = []
         self.joints: List[Joint] = []
+        self.force_fields: List["ForceField"] = []
         self.broad_phase = BroadPhase()
         self.contact_solver = ContactSolver(iterations=velocity_iterations)
         # Callbacks.
@@ -68,6 +70,10 @@ class World:
     def add_joint(self, joint: Joint) -> None:
         self.joints.append(joint)
 
+    def add_force_field(self, field: ForceField) -> None:
+        """Register a force field applied to all dynamic bodies each step."""
+        self.force_fields.append(field)
+
     # ------------------------------------------------------------------ #
     # stepping
     # ------------------------------------------------------------------ #
@@ -78,6 +84,12 @@ class World:
         for b in self.bodies:
             if (b.force.length_sq() > 0.0 or b.torque != 0.0) and b.sleeping:
                 b.set_awake()
+
+        # 0. Apply force fields (before integration).
+        for field in self.force_fields:
+            for b in self.bodies:
+                if b.is_dynamic and not b.sleeping:
+                    field.apply(b, dt)
 
         # 1. Integrate forces into velocities (semi-implicit Euler).
         for b in self.bodies:
@@ -90,14 +102,20 @@ class World:
         for b in self.bodies:
             b.update_aabb()
         pairs = self.broad_phase.update(self.bodies)
+        # Debug: uncomment to trace broad-phase pairs.
+        # if pairs:
+        #     print(f"  broadphase pairs: {pairs}")
 
-        # 3. Narrow phase → manifolds.
+        # 3. Narrow phase → manifolds (with collision filtering).
         manifolds: List[tuple[int, int, Manifold]] = []
         for ia, ib in pairs:
             a = self.bodies[ia]
             b = self.bodies[ib]
             # Skip pairs where both are immovable.
             if a.inv_mass == 0.0 and b.inv_mass == 0.0:
+                continue
+            # Collision filter: both directions must match.
+            if not ((a.collision_mask & b.collision_layer) and (b.collision_mask & a.collision_layer)):
                 continue
             m = collide(a.shape, b.shape, a.position, a.angle, b.position, b.angle)
             if m is not None:
@@ -111,7 +129,12 @@ class World:
         # 4. Build contact solver constraints and solve velocity.
         self.contact_solver.clear()
         for ia, ib, m in manifolds:
-            self.contact_solver.add_manifold(m, self.bodies[ia], self.bodies[ib], dt)
+            a = self.bodies[ia]
+            b = self.bodies[ib]
+            # Sensors generate callbacks but no solver constraints.
+            if a.is_sensor or b.is_sensor:
+                continue
+            self.contact_solver.add_manifold(m, a, b, dt)
         self.contact_solver.dt = dt
         self.contact_solver.solve()
 

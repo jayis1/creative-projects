@@ -12,8 +12,11 @@ from .core.vec2 import Vec2
 from .core.mat22 import Mat22
 from .core.collision import Manifold, collide, point_in_polygon
 from .core.broadphase import BroadPhase
+from .core.fields import BuoyancyField, DragField, ForceField, RadialField, UniformField
 from .solver.contact_solver import ContactSolver
 from .joints.joints import DistanceJoint, Joint, MouseJoint, RevoluteJoint, WeldJoint
+from .diagnostics import Diagnostics, compute_energy, compute_momentum
+from .serialize import body_from_dict, body_to_dict, world_from_dict, world_from_json, world_to_dict, world_to_json
 from .world import World
 from .renderer.renderer import AsciiRenderer, PPMRenderer
 
@@ -30,14 +33,28 @@ __all__ = [
     "collide",
     "point_in_polygon",
     "BroadPhase",
+    "ForceField",
+    "UniformField",
+    "RadialField",
+    "DragField",
+    "BuoyancyField",
     "ContactSolver",
     "DistanceJoint",
     "Joint",
     "MouseJoint",
     "RevoluteJoint",
     "WeldJoint",
+    "Diagnostics",
+    "compute_energy",
+    "compute_momentum",
+    "body_to_dict",
+    "body_from_dict",
+    "world_to_dict",
+    "world_from_dict",
+    "world_to_json",
+    "world_from_json",
     "AsciiRenderer",
     "PPMRenderer",
 ]
 
-__version__ = "1.0.0"
+__version__ = "2.0.0"

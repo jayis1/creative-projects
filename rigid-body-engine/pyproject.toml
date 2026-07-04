@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rigid-body-engine"
+version = "2.0.0"
+description = "A 2D rigid body physics engine in pure Python"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [{name = "creative-projects"}]
+keywords = ["physics", "simulation", "rigid-body", "collision", "game"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Scientific/Engineering :: Physics",
+    "License :: OSI Approved :: MIT License",
+]
+
+[project.scripts]
+rigid-body = "rigidbody.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["rigidbody*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

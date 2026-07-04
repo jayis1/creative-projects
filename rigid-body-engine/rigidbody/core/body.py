@@ -78,6 +78,15 @@ class RigidBody:
 
         # Optional user data / tag for external bookkeeping.
         self.user_data: object = None
+        # Collision filtering: a body only collides with another if
+        # ``(a.collision_mask & b.collision_layer) != 0`` **and**
+        # ``(b.collision_mask & a.collision_layer) != 0``.
+        # Defaults: layer 1, mask all-bits → collide with everything.
+        self.collision_layer: int = 0x0001
+        self.collision_mask: int = 0xFFFF
+        # If True, this body never generates collision responses (but still
+        # triggers the on_collision callback).  Useful for sensors/triggers.
+        self.is_sensor: bool = False
 
         # Cached world-space AABB, recomputed each broad phase.
         self.aabb: Optional[AABB] = None
