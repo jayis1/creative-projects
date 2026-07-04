@@ -17,7 +17,9 @@ from .core.vec2 import Vec2
 from .joints.joints import DistanceJoint, Joint, MouseJoint, RevoluteJoint, WeldJoint
 from .world import World
 
-__all__ = ["world_to_dict", "world_to_json", "world_from_dict", "world_from_json", "body_to_dict", "body_from_dict"]
+__all__ = ["world_to_dict", "world_to_json", "world_from_dict", "world_from_json",
+           "body_to_dict", "body_from_dict",
+           "world_to_yaml", "world_from_yaml", "world_to_file", "world_from_file"]
 
 
 def _vec_to_dict(v: Vec2) -> Dict[str, float]:
@@ -206,3 +208,57 @@ def world_from_json(path: str) -> World:
     """Load a world from a JSON file at *path*."""
     with open(path, "r") as f:
         return world_from_dict(json.load(f))
+
+
+def world_to_yaml(world: World, path: str) -> None:
+    """Serialize *world* to a YAML file at *path*.
+
+    Requires the optional ``pyyaml`` dependency.  Falls back to JSON
+    written with a ``.yaml`` extension if PyYAML is not installed.
+    """
+    try:
+        import yaml  # type: ignore
+    except ImportError:
+        # Fallback: write JSON with a note.
+        with open(path, "w") as f:
+            f.write("# PyYAML not installed; JSON follows\n")
+            json.dump(world_to_dict(world), f, indent=2)
+        return
+    with open(path, "w") as f:
+        yaml.dump(world_to_dict(world), f, default_flow_style=False, sort_keys=False)
+
+
+def world_from_yaml(path: str) -> World:
+    """Load a world from a YAML file at *path*.
+
+    Falls back to JSON parsing if the file is actually JSON (detected by
+    the first non-whitespace character being ``{`` or ``[``).
+    """
+    try:
+        import yaml  # type: ignore
+    except ImportError:
+        # Fallback: treat as JSON.
+        with open(path, "r") as f:
+            return world_from_dict(json.load(f))
+    with open(path, "r") as f:
+        content = f.read()
+    # Auto-detect JSON files.
+    stripped = content.lstrip()
+    if stripped.startswith("{") or stripped.startswith("["):
+        return world_from_dict(json.loads(content))
+    return world_from_dict(yaml.safe_load(content))
+
+
+def world_to_file(world: World, path: str) -> None:
+    """Save a world to JSON or YAML based on file extension."""
+    if path.endswith((".yaml", ".yml")):
+        world_to_yaml(world, path)
+    else:
+        world_to_json(world, path)
+
+
+def world_from_file(path: str) -> World:
+    """Load a world from JSON or YAML based on file extension."""
+    if path.endswith((".yaml", ".yml")):
+        return world_from_yaml(path)
+    return world_from_json(path)

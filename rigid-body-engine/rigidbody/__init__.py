@@ -14,9 +14,17 @@ from .core.collision import Manifold, collide, point_in_polygon
 from .core.broadphase import BroadPhase
 from .core.fields import BuoyancyField, DragField, ForceField, RadialField, UniformField
 from .solver.contact_solver import ContactSolver
-from .joints.joints import DistanceJoint, Joint, MouseJoint, RevoluteJoint, WeldJoint
+from .joints.joints import DistanceJoint, Joint, MouseJoint, PrismaticJoint, RevoluteJoint, WeldJoint
 from .diagnostics import Diagnostics, compute_energy, compute_momentum
-from .serialize import body_from_dict, body_to_dict, world_from_dict, world_from_json, world_to_dict, world_to_json
+from .serialize import (
+    body_from_dict, body_to_dict,
+    world_from_dict, world_from_json,
+    world_to_dict, world_to_json,
+    world_from_yaml, world_to_yaml,
+    world_from_file, world_to_file,
+)
+from .raycast import RayCastHit, ray_cast, ray_cast_body
+from .logger import configure_logging, get_logger
 from .world import World
 from .renderer.renderer import AsciiRenderer, PPMRenderer
 
@@ -42,6 +50,7 @@ __all__ = [
     "DistanceJoint",
     "Joint",
     "MouseJoint",
+    "PrismaticJoint",
     "RevoluteJoint",
     "WeldJoint",
     "Diagnostics",
@@ -53,8 +62,17 @@ __all__ = [
     "world_from_dict",
     "world_to_json",
     "world_from_json",
+    "world_to_yaml",
+    "world_from_yaml",
+    "world_to_file",
+    "world_from_file",
     "AsciiRenderer",
     "PPMRenderer",
+    "RayCastHit",
+    "ray_cast",
+    "ray_cast_body",
+    "configure_logging",
+    "get_logger",
 ]
 
-__version__ = "2.0.0"
+__version__ = "3.0.0"

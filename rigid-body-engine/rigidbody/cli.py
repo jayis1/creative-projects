@@ -22,7 +22,7 @@ from .core.vec2 import Vec2
 from .diagnostics import Diagnostics
 from .joints.joints import DistanceJoint, RevoluteJoint, WeldJoint
 from .renderer.renderer import AsciiRenderer, PPMRenderer
-from .serialize import world_from_json, world_to_json
+from .serialize import world_from_json, world_to_json, world_from_file, world_to_file
 from .world import World
 
 __all__ = ["main", "build_parser"]
@@ -65,7 +65,7 @@ def cmd_save(args: argparse.Namespace) -> int:
 
 
 def cmd_info(args: argparse.Namespace) -> int:
-    world = world_from_json(args.scene)
+    world = world_from_file(args.scene)
     print(f"Scene: {args.scene}")
     print(f"  Bodies: {len(world.bodies)}")
     print(f"  Joints: {len(world.joints)}")
@@ -80,7 +80,7 @@ def cmd_info(args: argparse.Namespace) -> int:
 
 def cmd_run(args: argparse.Namespace) -> int:
     if args.scene:
-        world = world_from_json(args.scene)
+        world = world_from_file(args.scene)
     else:
         world = _build_demo_world()
     renderer = AsciiRenderer(width=args.width, height=args.height,
@@ -99,14 +99,14 @@ def cmd_run(args: argparse.Namespace) -> int:
             tag = b.user_data if b.user_data else "?"
             print(f"  {tag}: pos=({b.position.x:.3f}, {b.position.y:.3f}) angle={b.angle:.2f}")
     if args.output:
-        world_to_json(world, args.output)
+        world_to_file(world, args.output)
         print(f"\nSaved final state to {args.output}")
     return 0
 
 
 def cmd_render(args: argparse.Namespace) -> int:
     if args.scene:
-        world = world_from_json(args.scene)
+        world = world_from_file(args.scene)
     else:
         world = _build_demo_world()
     renderer = PPMRenderer(
@@ -128,7 +128,7 @@ def cmd_render(args: argparse.Namespace) -> int:
 
 def cmd_energy(args: argparse.Namespace) -> int:
     if args.scene:
-        world = world_from_json(args.scene)
+        world = world_from_file(args.scene)
     else:
         world = _build_demo_world()
     diag = Diagnostics()
@@ -142,6 +142,27 @@ def cmd_energy(args: argparse.Namespace) -> int:
         if f"{k}_min" in report:
             print(f"  {k:10s}: min={report[f'{k}_min']:+.4f}  max={report[f'{k}_max']:+.4f}  mean={report[f'{k}_mean']:+.4f}")
     print(f"  energy drift: {diag.energy_drift():.4%}")
+    return 0
+
+
+def cmd_raycast(args: argparse.Namespace) -> int:
+    """Cast a ray and print the closest body hit."""
+    if args.scene:
+        world = world_from_file(args.scene)
+    else:
+        world = _build_demo_world()
+    origin = Vec2(args.origin[0], args.origin[1])
+    direction = Vec2(args.direction[0], args.direction[1])
+    hit = world.ray_cast(origin, direction, max_distance=args.max_distance)
+    if hit is None:
+        print("No hit.")
+        return 1
+    print(f"Hit body {hit.body_index} at fraction {hit.fraction:.4f}")
+    print(f"  point  = ({hit.point.x:.3f}, {hit.point.y:.3f})")
+    print(f"  normal = ({hit.normal.x:.3f}, {hit.normal.y:.3f})")
+    b = world.bodies[hit.body_index]
+    tag = b.user_data if b.user_data else f"body{hit.body_index}"
+    print(f"  body   = {tag} ({b.body_type}, {b.shape.shape_type})")
     return 0
 
 
@@ -188,6 +209,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_energy.add_argument("--frames", "-f", type=int, default=300, help="Number of frames")
     p_energy.add_argument("--fps", type=int, default=60, help="Frames per second")
     p_energy.set_defaults(func=cmd_energy)
+
+    p_ray = sub.add_parser("raycast", help="Cast a ray and find the closest body hit")
+    p_ray.add_argument("--scene", "-s", help="Scene file (JSON/YAML, default: built-in demo)")
+    p_ray.add_argument("--origin", type=float, nargs=2, required=True,
+                       metavar=("X", "Y"), help="Ray origin in world space")
+    p_ray.add_argument("--direction", type=float, nargs=2, required=True,
+                       metavar=("DX", "DY"), help="Ray direction (need not be normalized)")
+    p_ray.add_argument("--max-distance", type=float, default=1e6, help="Maximum ray length")
+    p_ray.set_defaults(func=cmd_raycast)
 
     return parser
 

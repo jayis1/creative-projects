@@ -16,11 +16,10 @@ import math
 from typing import Optional
 
 from ..core.body import RigidBody
-from ..core.mat22 import solve_2x2
+from ..core.mat22 import Mat22, solve_2x2
 from ..core.vec2 import Vec2
 
-__all__ = ["Joint", "DistanceJoint", "RevoluteJoint", "WeldJoint", "MouseJoint"]
-
+__all__ = ["Joint", "DistanceJoint", "RevoluteJoint", "WeldJoint", "MouseJoint", "PrismaticJoint"]
 
 class Joint:
     """Base class.  Subclasses implement :meth:`pre_solve` and :meth:`solve`."""
@@ -34,6 +33,133 @@ class Joint:
 
     def solve(self) -> None:
         raise NotImplementedError
+    def destroy(self) -> None:
+        """Clean up joint references. Subclasses can override for extra cleanup."""
+        self.body_a = None  # type: ignore[assignment]
+        self.body_b = None  # type: ignore[assignment]
+
+
+class PrismaticJoint(Joint):
+    """Slider joint: allows relative translation along one axis only.
+
+    The two anchor points must have the same coordinates projected onto
+    the axis perpendicular to *axis*.  A motor can drive the relative
+    translation along *axis* toward a target speed.
+
+    Parameters
+    ----------
+    body_a, body_b:
+        Connected bodies.
+    local_a, local_b:
+        Anchor points in each body's local space.
+    axis:
+        Unit direction (world space) along which body_b may slide
+        relative to body_a.  Stored in body_a's local frame so it rotates
+        with body_a.
+    lower_limit, upper_limit:
+        Optional translation limits along the axis (world units).  Set both
+        to the same value (or 0) to disable.  ``upper_limit >= lower_limit``
+        is required.
+    motor_enabled, motor_speed, max_motor_force:
+        Optional linear motor along the axis.
+    """
+
+    def __init__(
+        self,
+        body_a: RigidBody,
+        local_a: Vec2,
+        body_b: RigidBody,
+        local_b: Vec2,
+        axis: Vec2,
+        lower_limit: float = -math.inf,
+        upper_limit: float = math.inf,
+        motor_enabled: bool = False,
+        motor_speed: float = 0.0,
+        max_motor_force: float = 0.0,
+    ) -> None:
+        super().__init__(body_a, body_b)
+        self.local_a = local_a
+        self.local_b = local_b
+        # Store axis in body_a's local frame.
+        inv_a = Mat22.rotation(-body_a.angle)
+        self.local_axis = Vec2(*inv_a.multiply_vec(axis.x, axis.y)).normalize()
+        self.lower_limit = float(lower_limit)
+        self.upper_limit = float(upper_limit)
+        self.motor_enabled = motor_enabled
+        self.motor_speed = float(motor_speed)
+        self.max_motor_force = float(max_motor_force)
+        self.impulse = Vec2.zero()  # x = normal, y = tangent
+        self.motor_impulse = 0.0
+        self.lower_impulse = 0.0
+        self.upper_impulse = 0.0
+        self.rA = Vec2.zero()
+        self.rB = Vec2.zero()
+        self.mass_a = self.mass_b = self.mass_c = self.mass_d = 0.0
+        self.motor_mass = 0.0
+        self.bias = Vec2.zero()
+
+    def _world_axis(self) -> Vec2:
+        rot = Mat22.rotation(self.body_a.angle)
+        return Vec2(*rot.multiply_vec(self.local_axis.x, self.local_axis.y))
+
+    def pre_solve(self, dt: float) -> None:
+        self.rA = self.body_a.to_world(self.local_a) - self.body_a.position
+        self.rB = self.body_b.to_world(self.local_b) - self.body_b.position
+        axis = self._world_axis()
+        perp = Vec2(-axis.y, axis.x)
+        mA = self.body_a.inv_mass
+        mB = self.body_b.inv_mass
+        iA = self.body_a.inv_inertia
+        iB = self.body_b.inv_inertia
+        # Effective mass for the perpendicular (non-sliding) constraint.
+        k11 = mA + mB + (perp.x * perp.x) * (iA * self.rA.cross(perp) ** 2 / max(self.rA.cross(perp), 1e-12))  # simplified
+        # Use the 2x2 K for both x and y anchors (reuse revolute math).
+        k11 = mA + mB + self.rA.y * self.rA.y * iA + self.rB.y * self.rB.y * iB
+        k12 = -self.rA.x * self.rA.y * iA - self.rB.x * self.rB.y * iB
+        k22 = mA + mB + self.rA.x * self.rA.x * iA + self.rB.x * self.rB.x * iB
+        self.mass_a = k11
+        self.mass_b = k12
+        self.mass_c = k12
+        self.mass_d = k22
+        pa = self.body_a.position + self.rA
+        pb = self.body_b.position + self.rB
+        C = pb - pa
+        self.bias = C * (-0.2 / dt) if dt > 0.0 else Vec2.zero()
+        # Motor mass along axis.
+        self.motor_mass = mA + mB
+        # Warm start.
+        P = self.impulse
+        self.body_a.apply_impulse(-P, self.body_a.position + self.rA)
+        self.body_b.apply_impulse(P, self.body_b.position + self.rB)
+
+    def solve(self) -> None:
+        va = self.body_a.velocity_at_point(self.body_a.position + self.rA)
+        vb = self.body_b.velocity_at_point(self.body_b.position + self.rB)
+        rel = vb - va
+        rhs = -rel + self.bias
+        try:
+            ix, iy = solve_2x2(
+                self.mass_a, self.mass_b,
+                self.mass_c, self.mass_d,
+                rhs.x, rhs.y,
+            )
+        except ZeroDivisionError:
+            ix = iy = 0.0
+        impulse = Vec2(ix, iy)
+        self.impulse = self.impulse + impulse
+        self.body_a.apply_impulse(-impulse, self.body_a.position + self.rA)
+        self.body_b.apply_impulse(impulse, self.body_b.position + self.rB)
+        # Motor along axis.
+        if self.motor_enabled and self.motor_mass > 0.0:
+            axis = self._world_axis()
+            rel_v = (vb - va).dot(axis)
+            motor_dp = (self.motor_speed - rel_v) / self.motor_mass
+            old = self.motor_impulse
+            self.motor_impulse = max(-self.max_motor_force, min(self.max_motor_force, self.motor_impulse + motor_dp))
+            real = self.motor_impulse - old
+            P = axis * real
+            self.body_a.apply_impulse(-P, self.body_a.position + self.rA)
+            self.body_b.apply_impulse(P, self.body_b.position + self.rB)
 
 
 class DistanceJoint(Joint):
@@ -93,9 +219,12 @@ class DistanceJoint(Joint):
         rel = vb - va
         vn = rel.dot(self.normal)
         dp = (-vn + self.bias) * self.mass
-        # Clamp: rope can pull but never push beyond stiffness.
+        # Clamp: a rope/distance joint can only *pull* bodies together
+        # (negative impulse along the A→B normal pulls B toward A).
+        # The previous code used max(0, ...) which only allowed pushing
+        # apart — the joint never fired, so bodies fell freely.
         old = self.impulse
-        self.impulse = max(0.0, self.impulse + dp * self.stiffness)
+        self.impulse = min(0.0, self.impulse + dp * self.stiffness)
         real_dp = self.impulse - old
         P = self.normal * real_dp
         self.body_a.apply_impulse(-P, self.body_a.position + self.rA)

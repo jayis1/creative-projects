@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rigid-body-engine"
-version = "2.0.0"
+version = "3.0.0"
 description = "A 2D rigid body physics engine in pure Python"
 readme = "README.md"
 license = {text = "MIT"}
@@ -14,9 +14,19 @@ keywords = ["physics", "simulation", "rigid-body", "collision", "game"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Physics",
     "License :: OSI Approved :: MIT License",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
 ]
+
+[project.optional-dependencies]
+yaml = ["pyyaml>=6.0"]
+test = ["pytest>=7.0", "pyyaml>=6.0"]
+dev = ["pytest>=7.0", "pyyaml>=6.0", "pytest-cov"]
 
 [project.scripts]
 rigid-body = "rigidbody.cli:main"
@@ -26,3 +36,4 @@ include = ["rigidbody*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "-q"

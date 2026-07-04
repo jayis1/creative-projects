@@ -11,9 +11,13 @@ from .core.collision import Manifold, collide
 from .core.fields import ForceField
 from .core.vec2 import Vec2
 from .joints.joints import Joint
+from .logger import get_logger
+from .raycast import RayCastHit, ray_cast
 from .solver.contact_solver import ContactSolver
 
 __all__ = ["World"]
+
+_log = get_logger("world")
 
 
 class World:
@@ -37,6 +41,12 @@ class World:
         joint_iterations: int = 5,
         allow_sleeping: bool = True,
     ) -> None:
+        if velocity_iterations < 1:
+            raise ValueError("velocity_iterations must be >= 1")
+        if position_iterations < 0:
+            raise ValueError("position_iterations must be >= 0")
+        if joint_iterations < 1:
+            raise ValueError("joint_iterations must be >= 1")
         self.gravity = gravity
         self.velocity_iterations = velocity_iterations
         self.position_iterations = position_iterations
@@ -194,3 +204,33 @@ class World:
             if isinstance(b.user_data, str) and b.user_data == tag:
                 return b
         return None
+
+    # ------------------------------------------------------------------ #
+    # spatial queries
+    # ------------------------------------------------------------------ #
+    def bodies_in_aabb(self, aabb_min: Vec2, aabb_max: Vec2) -> List[int]:
+        """Return indices of bodies whose AABB overlaps the query AABB."""
+        from .core.shapes import AABB
+
+        query = AABB(aabb_min, aabb_max)
+        out = []
+        for i, b in enumerate(self.bodies):
+            if b.aabb is None:
+                b.update_aabb()
+            if b.aabb is not None and b.aabb.overlaps(query):
+                out.append(i)
+        return out
+
+    def ray_cast(
+        self,
+        origin: Vec2,
+        direction: Vec2,
+        max_distance: float = 1e6,
+        ignore: Optional[set] = None,
+    ) -> Optional[RayCastHit]:
+        """Cast a ray through the world and return the closest body hit.
+
+        Convenience wrapper around :func:`rigidbody.raycast.ray_cast` that
+        uses the world's body list.
+        """
+        return ray_cast(self.bodies, origin, direction, max_distance, ignore)
