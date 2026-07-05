@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    paths:
+      - 'fractal-explorer/**'
+  pull_request:
+    paths:
+      - 'fractal-explorer/**'
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python-version: ['3.9', '3.10', '3.11', '3.12']
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest
+        cd fractal-explorer && pip install -e ".[dev]"
+
+    - name: Run tests
+      run: |
+        cd fractal-explorer
+        python -m pytest tests/ -v --tb=short
+
+    - name: Smoke test CLI
+      run: |
+        cd fractal-explorer
+        python -m fractal_explorer.cli info
+        python -m fractal_explorer.cli render --width 20 --height 15 --max-iter 20 -o /tmp/ci_test.png
+        python -m fractal_explorer.cli buddhabrot --width 15 --height 15 --samples 100 --max-iter 20 -o /tmp/ci_buddha.png
+        python -m fractal_explorer.cli ifs --type fern --width 15 --height 15 --iterations 100 -o /tmp/ci_fern.png
+        python -m fractal_explorer.cli lyapunov --width 15 --height 15 --max-iter 50 -o /tmp/ci_lyap.png

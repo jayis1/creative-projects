@@ -1,19 +1,25 @@
-"""Example gallery: render a few representative fractals to PNG/ASCII."""
+"""Example gallery: render representative fractals from each category.
+
+Run:  python3 examples/gallery.py
+
+Output is written to examples/gallery_output/.
+"""
 from __future__ import annotations
 import os
 import sys
 
-# Allow running from anywhere by adding the project root to sys.path.
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.dirname(_HERE)
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from fractal import (Viewport, render_fractal, render_mandelbrot_hp,
-                      write_png, write_ascii)
+from fractal_explorer import (
+    Viewport, render_fractal, render_mandelbrot_hp, write_png, write_ascii,
+    write_tga, render_buddhabrot, render_lyapunov, render_ifs,
+    BARNSLEY_FERN, SIERPINSKI_TRIANGLE, apply_filter,
+)
 
-OUT = os.path.join(os.path.dirname(__file__), "..", "gallery_output")
-OUT = os.path.abspath(OUT)
+OUT = os.path.join(_HERE, "gallery_output")
 os.makedirs(OUT, exist_ok=True)
 
 
@@ -23,13 +29,18 @@ def save(name, pixels, w, h, fmt="png"):
         write_png(path, pixels, w, h)
     elif fmt == "ascii":
         write_ascii(path, pixels, w, h)
-    print("wrote", path)
+    elif fmt == "tga":
+        write_tga(path, pixels, w, h)
+    print(f"  wrote {path}")
 
 
 def main():
+    print("Rendering gallery...")
+
     # 1. Classic Mandelbrot
     vp = Viewport(-0.5 + 0j, 3.0, 2.0)
-    px, _ = render_fractal("mandelbrot", vp, 500, 350, max_iter=300, palette_name="fire")
+    px, _ = render_fractal("mandelbrot", vp, 500, 350, max_iter=300,
+                            palette_name="fire")
     save("mandelbrot.png", px, 500, 350)
 
     # 2. Julia set (dendrite)
@@ -73,6 +84,56 @@ def main():
     px, _ = render_mandelbrot_hp(vp, 300, 300, max_iter=600, prec=50,
                                    palette_name="fire")
     save("seahorse_hp.png", px, 300, 300)
+
+    # 9. Distance-estimator coloring
+    vp = Viewport(-0.5 + 0j, 3.0, 2.0)
+    px, _ = render_fractal("mandelbrot", vp, 500, 350, max_iter=500,
+                            coloring="de", palette_name="magma")
+    save("de_coloring.png", px, 500, 350)
+
+    # 10. Orbit-trap (stripe)
+    vp = Viewport(-0.5 + 0j, 3.0, 2.0)
+    from fractal_explorer import StripeTrap
+    px, _ = render_fractal("mandelbrot", vp, 500, 350, max_iter=300,
+                            coloring="trap", trap=StripeTrap(count=16),
+                            palette_name="neon")
+    save("stripe_trap.png", px, 500, 350)
+
+    # 11. Buddhabrot
+    vp = Viewport(-0.5 + 0j, 3.0, 2.5)
+    px, _ = render_buddhabrot(vp, 400, 400, samples=100000, max_iter=500,
+                               seed=42, palette_name="magma")
+    save("buddhabrot.png", px, 400, 400)
+
+    # 12. Lyapunov fractal
+    px, _ = render_lyapunov(width=400, height=400, sequence="ABBA",
+                             max_iter=400, palette_name="ocean")
+    save("lyapunov.png", px, 400, 400)
+
+    # 13. Barnsley Fern (IFS)
+    px, _ = render_ifs(BARNSLEY_FERN, width=300, height=300,
+                        iterations=100000, seed=42, palette_name="forest")
+    save("barnsley_fern.png", px, 300, 300)
+
+    # 14. Sierpinski Triangle (IFS)
+    px, _ = render_ifs(SIERPINSKI_TRIANGLE, width=300, height=300,
+                        iterations=50000, seed=42, palette_name="sunset")
+    save("sierpinski.png", px, 300, 300)
+
+    # 15. Edge detection filter on a Mandelbrot
+    vp = Viewport(-0.5 + 0j, 3.0, 2.0)
+    px, _ = render_fractal("mandelbrot", vp, 300, 200, max_iter=200,
+                            palette_name="grayscale", coloring="smooth")
+    px = apply_filter(px, 300, 200, "edge")
+    save("edge_filtered.png", px, 300, 200)
+
+    # 16. TGA format
+    vp = Viewport(-0.5 + 0j, 3.0, 2.0)
+    px, _ = render_fractal("mandelbrot", vp, 200, 150, max_iter=100,
+                            palette_name="fire")
+    save("mandelbrot.tga", px, 200, 150, fmt="tga")
+
+    print(f"\nGallery complete — {len(os.listdir(OUT))} files in {OUT}")
 
 
 if __name__ == "__main__":

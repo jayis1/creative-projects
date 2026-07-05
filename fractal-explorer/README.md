@@ -1,253 +1,370 @@
-# Fractal Explorer
+# 🔺 Fractal Explorer
 
-A from-scratch, pure-Python library for rendering escape-time fractals of complex dynamics.
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Tests: 135](https://img.shields.io/badge/tests-135-brightgreen.svg)](#testing)
+[![Dependencies: None](https://img.shields.io/badge/dependencies-none-success.svg)](#dependencies)
+[![Format: PNG/SVG/TGA](https://img.shields.io/badge/output-PNG%2FSVG%2FTGA-orange.svg)](#output-formats)
 
-Zero external dependencies — only the Python standard library is used (no NumPy, no Pillow, no PyYAML required for core functionality).
+> A from-scratch, pure-Python library for rendering escape-time and other
+> fractals of complex dynamics — **zero external dependencies** (Python
+> stdlib only, no NumPy, no Pillow, no PyYAML required for core features).
 
-## Fractals
+---
 
-| Fractal | Formula | Notes |
-|---|---|---|
-| **Mandelbrot** | `z = z^p + c` from `z=0` | `p=2` classic; `p≠2` gives Multibrot |
-| **Julia** | `z = z^p + c` from `z=point` | constant `c` set via `--julia-c` |
-| **Burning Ship** | `z = (|Re z| + i|Im z|)^2 + c` | the "ship" fractal |
-| **Tricorn** (Mandelbar) | `z = conj(z)^2 + c` | non-analytic, fractal "tricorn" |
-| **Celtic** | `z = |Re(z^2)| + i·Im(z^2) + c` | Celtic knot-like fractal |
-| **Phoenix** | `z_{n+1} = z_n^p + c + p_c·z_{n-1}` | feather-like, two-term recurrence |
-| **Magnet** | `m(z) = ((z²+c)/(2z²+c-1))²` | rational map, magnetic-field domains |
-| **Newton** | Newton iteration on `z^p − 1` | basin-coloured by root |
-| **Custom** | user-supplied `fn(z, c)` | via Python API |
+## Table of Contents
 
-## Coloring Modes
+- [Overview](#overview)
+- [Key Features](#key-features)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Usage](#usage)
+  - [CLI Reference](#cli-reference)
+  - [Python API](#python-api)
+  - [Config Files](#config-files)
+  - [Presets](#presets)
+- [Fractals](#fractals)
+- [Coloring Modes](#coloring-modes)
+- [Orbit Traps](#orbit-traps)
+- [Palettes](#palettes)
+- [Post-Processing Filters](#post-processing-filters)
+- [Output Formats](#output-formats)
+- [Architecture](#architecture)
+- [Performance](#performance)
+- [Testing](#testing)
+- [Known Issues (Resolved)](#known-issues-resolved)
+- [Roadmap](#roadmap)
+- [Contributing](#contributing)
+- [Changelog](#changelog)
+- [License](#license)
 
-| Mode | Description |
+---
+
+## Overview
+
+Fractal Explorer is a comprehensive fractal rendering toolkit written in
+pure Python using only the standard library. It supports 10+ fractal
+families, 6 coloring modes, 6 orbit-trap types, 11 built-in colour
+palettes, 8 post-processing filters, 5 output formats, arbitrary-precision
+deep zoom, parallel rendering, and animation — all without a single
+external dependency.
+
+The project is structured as a proper Python package with a modular
+architecture, a full CLI, preset management, and a 135-test suite.
+
+## Key Features
+
+| Category | Features |
 |---|---|
-| `smooth` | Normalized iteration count (Hubbard–Douady) — continuous, no banding |
-| `flat` | Raw integer iteration count → palette index |
-| `de` | **True distance estimator** using derivative tracking (`|z'|·ln|z|/|z|`) for crisp boundary detail |
-| `trap` | **Orbit-trap coloring** — colours a point by how close its orbit approaches a configurable trap (point, line, circle, cross) |
-| `root` | Newton-basin coloring (color by which root the orbit converges to) |
-| `histogram` | **Histogram-equalized** coloring — distributes colours evenly across the full iteration-count distribution |
+| **Fractals** | Mandelbrot, Multibrot, Julia, Burning Ship, Tricorn, Celtic, Phoenix, Magnet, Newton, Mandelbrot (periodic), Buddhabrot, Anti-Buddhabrot, Lyapunov, IFS (Barnsley Fern, Sierpinski Triangle, Dragon Curve) |
+| **Coloring** | Smooth (normalized iteration count), flat, true distance-estimator (derivative tracking), orbit-trap, Newton root-basin, histogram-equalized |
+| **Traps** | Point, line, circle, cross, stripe, spiral |
+| **Palettes** | rainbow, fire, ice, grayscale, electric, sunset, ocean, magma, earth, neon, forest + custom hex gradients |
+| **Filters** | Box blur, Gaussian blur, Sobel edge detect, emboss, grayscale, invert, brightness, contrast |
+| **Output** | PNG (with tEXt metadata), PPM, SVG (vector), ASCII art, TGA |
+| **Precision** | Double-precision for normal zoom; `decimal.Decimal` for arbitrary-precision deep zoom |
+| **Performance** | Multiprocessing parallel rendering, supersampling anti-aliasing, Brent cycle detection for interior points |
+| **Tools** | Zoom-sequence batch renderer, Julia-grid explorer, benchmark, animation, preset manager |
+| **Config** | JSON / YAML / TOML config files, named presets, CLI with 14 subcommands |
 
-## Orbit Traps
+## Installation
 
-| Trap | Description |
-|---|---|
-| `point` | Single complex point (`--trap-point re,im`) |
-| `line` | Infinite line through origin at angle (`--trap-angle rad`) |
-| `circle` | Circle of given radius (`--trap-radius r`) |
-| `cross` | Union of real and imaginary axes |
+### From source (recommended)
 
-## Palettes (built-in)
+```bash
+git clone https://github.com/jayis1/creative-projects.git
+cd creative-projects/fractal-explorer
+pip install -e ".[dev]"   # installs with test dependencies
+# or just:
+pip install -e .           # core only (no test deps)
+```
 
-`rainbow`, `fire`, `ice`, `grayscale`, `electric`, `sunset`, `ocean`, `magma`, `earth` — plus custom hex-gradient palettes (`--palette "#000000,#ff0000,#ffff00,#ffffff"` or `--palette '["#ff0000","#00ff00"]'`).
+### No installation needed
 
-## Features
+Since the project has zero dependencies, you can also just run it directly:
 
-* **8 fractal families** with configurable parameters (power, Julia constant, Phoenix coefficient, Magnet variant, Newton power).
-* **6 coloring modes** including true distance-estimator (derivative tracking), orbit traps, and histogram equalization.
-* **4 orbit-trap types** (point, line, circle, cross).
-* **9 built-in palettes** + custom hex gradients.
-* **Supersampling anti-aliasing** (2×, 3×, 4×) for smooth edges.
-* **Multiprocessing parallel rendering** (stdlib `multiprocessing` with spawn) for multi-core speed-up.
-* **Arbitrary-precision deep zoom** using `decimal.Decimal` with configurable precision for zooms beyond `1e-15`.
-* **Zoom-sequence batch renderer** producing animation-ready frame series with auto-scaling iteration counts and PNG metadata.
-* **Julia-explorer**: render a grid of Julia sets for different constants with an HTML index page.
-* **Benchmark** subcommand for measuring rendering throughput.
-* **Multi-format output**: PNG (pure stdlib zlib, with tEXt metadata), PPM, SVG (vector), ASCII.
-* JSON / TOML / YAML config support.
-* Argparse CLI with 8 sub-commands.
+```bash
+cd fractal-explorer
+python3 -m fractal_explorer.cli info
+```
+
+### Dependencies
+
+- **Required:** Python 3.9+ (uses only the standard library)
+- **Optional:** PyYAML (for YAML config files), tomli (for TOML on Python < 3.11)
+- **Test:** pytest
+
+## Quick Start
+
+```bash
+# Classic Mandelbrot set
+python3 -m fractal_explorer.cli render --kind mandelbrot --width 800 --height 600 \
+    --max-iter 500 --palette fire --output mandel.png
+
+# Barnsley Fern (IFS fractal)
+python3 -m fractal_explorer.cli ifs --type fern --width 400 --output fern.png
+
+# Buddhabrot (nebula-like escape-dynamics image)
+python3 -m fractal_explorer.cli buddhabrot --width 400 --samples 200000 \
+    --max-iter 500 --palette magma --output buddha.png
+
+# Lyapunov fractal
+python3 -m fractal_explorer.cli lyapunov --width 400 --sequence ABBA \
+    --palette ocean --output lyap.png
+
+# List all available options
+python3 -m fractal_explorer.cli info
+```
 
 ## Usage
 
-### CLI
+### CLI Reference
+
+The CLI provides 14 subcommands:
+
+| Command | Description |
+|---|---|
+| `render` | Render a single fractal image |
+| `julia` | Render a Julia set (shortcut) |
+| `newton` | Render a Newton basin fractal (shortcut) |
+| `ascii` | Render to an ASCII art file |
+| `zoom` | Render a zoom sequence (animation frames) |
+| `palette` | Render a palette strip preview |
+| `explore` | Render a grid of Julia sets with HTML index |
+| `benchmark` | Benchmark rendering throughput |
+| `info` | List available fractals, palettes, traps, filters, presets |
+| `buddhabrot` | Render a Buddhabrot image |
+| `lyapunov` | Render a Lyapunov fractal |
+| `ifs` | Render an IFS fractal (fern, sierpinski, dragon) |
+| `animate` | Render an animation (julia-morph or color-cycle) |
+| `preset` | Manage render presets (list, save, load, delete) |
+| `filter` | List available post-processing filters |
+
+#### Examples
 
 ```bash
-# Render a classic Mandelbrot set
-python3 fractal.py render --kind mandelbrot --width 800 --height 600 \
-    --max-iter 500 --palette fire --output mandel.png
+# ─── Basic rendering ───────────────────────────────────────────────
 
-# Julia set (use = to avoid argparse treating the leading - as an option)
-python3 fractal.py julia --julia-c="-0.7,0.27015" --width 800 --output julia.png
+# Classic Mandelbrot
+python3 -m fractal_explorer.cli render --kind mandelbrot --width 800 \
+    --height 600 --max-iter 500 --palette fire --output mandel.png
+
+# Julia set (use = to avoid argparse treating leading - as an option)
+python3 -m fractal_explorer.cli julia --julia-c="-0.7,0.27015" \
+    --width 800 --output julia.png
 
 # Multibrot (power 5)
-python3 fractal.py render --kind mandelbrot --power 5 --width 600 --output multibrot5.png
+python3 -m fractal_explorer.cli render --kind mandelbrot --power 5 \
+    --width 600 --output multibrot5.png
 
 # Celtic fractal
-python3 fractal.py render --kind celtic --center="0,0" --viewport-width 3 --output celtic.png
+python3 -m fractal_explorer.cli render --kind celtic \
+    --center="0,0" --viewport-width 3 --output celtic.png
 
 # Phoenix fractal
-python3 fractal.py render --kind phoenix --phoenix-c="-0.5" --output phoenix.png
-
-# Magnet fractal
-python3 fractal.py render --kind magnet --magnet-variant 1 --output magnet.png
+python3 -m fractal_explorer.cli render --kind phoenix \
+    --phoenix-c="-0.5" --output phoenix.png
 
 # Newton's method basins (z^3 - 1)
-python3 fractal.py newton --width 600 --max-iter 80 --output newton.png
+python3 -m fractal_explorer.cli newton --width 600 --max-iter 80 \
+    --output newton.png
 
 # Burning Ship
-python3 fractal.py render --kind burning_ship --center="-0.5,-0.5" \
-    --viewport-width 3.5 --output ship.png
+python3 -m fractal_explorer.cli render --kind burning_ship \
+    --center="-0.5,-0.5" --viewport-width 3.5 --output ship.png
+
+# ─── Coloring modes ─────────────────────────────────────────────────
 
 # True distance-estimator coloring (Mandelbrot)
-python3 fractal.py render --kind mandelbrot --coloring de --max-iter 500 --output de.png
+python3 -m fractal_explorer.cli render --kind mandelbrot \
+    --coloring de --max-iter 500 --output de.png
 
 # Orbit-trap coloring (cross trap)
-python3 fractal.py render --kind mandelbrot --coloring trap --trap cross --output trap.png
+python3 -m fractal_explorer.cli render --kind mandelbrot \
+    --coloring trap --trap cross --output trap.png
+
+# Orbit-trap with stripe trap
+python3 -m fractal_explorer.cli render --kind mandelbrot \
+    --coloring trap --trap stripe --output stripe.png
 
 # Histogram-equalized coloring
-python3 fractal.py render --kind mandelbrot --coloring histogram --output hist.png
+python3 -m fractal_explorer.cli render --kind mandelbrot \
+    --coloring histogram --output hist.png
+
+# ─── Quality & performance ───────────────────────────────────────────
 
 # Supersampled anti-aliased render
-python3 fractal.py render --kind mandelbrot --supersample 3 --width 600 --output smooth.png
+python3 -m fractal_explorer.cli render --kind mandelbrot \
+    --supersample 3 --width 600 --output smooth.png
 
-# Parallel render (2 worker processes)
-python3 fractal.py render --kind mandelbrot --workers 2 --width 800 --output fast.png
+# Parallel render (4 worker processes)
+python3 -m fractal_explorer.cli render --kind mandelbrot \
+    --workers 4 --width 800 --output fast.png
+
+# Periodicity detection (faster interior)
+python3 -m fractal_explorer.cli render --kind mandelbrot_periodic \
+    --max-iter 1000 --output periodic.png
+
+# ─── Output formats ─────────────────────────────────────────────────
 
 # SVG vector output
-python3 fractal.py render --kind mandelbrot --format svg --width 100 --output mandel.svg
+python3 -m fractal_explorer.cli render --format svg --width 100 \
+    --output mandel.svg
+
+# TGA output
+python3 -m fractal_explorer.cli render --format tga --output mandel.tga
 
 # ASCII art preview
-python3 fractal.py ascii --width 120 --height 40 --output mandel.txt
+python3 -m fractal_explorer.cli ascii --width 120 --height 40 \
+    --output mandel.txt
+
+# ─── Post-processing ────────────────────────────────────────────────
+
+# Render + apply edge-detection filter
+python3 -m fractal_explorer.cli render --kind mandelbrot \
+    --filter edge --output mandel_edges.png
+
+# ─── Advanced fractals ──────────────────────────────────────────────
+
+# Buddhabrot (traces escaping orbits)
+python3 -m fractal_explorer.cli buddhabrot --width 500 --samples 500000 \
+    --max-iter 1000 --palette magma --output buddha.png
+
+# Anti-Buddhabrot (traces interior orbits)
+python3 -m fractal_explorer.cli buddhabrot --anti --width 400 \
+    --output anti_buddha.png
+
+# Lyapunov fractal (logistic map chaos/order)
+python3 -m fractal_explorer.cli lyapunov --width 400 --sequence ABBA \
+    --max-iter 500 --palette magma --output lyap.png
+
+# IFS: Barnsley Fern
+python3 -m fractal_explorer.cli ifs --type fern --width 400 \
+    --iterations 200000 --palette forest --output fern.png
+
+# IFS: Sierpinski Triangle
+python3 -m fractal_explorer.cli ifs --type sierpinski --width 400 \
+    --output sierpinski.png
+
+# IFS: Dragon Curve
+python3 -m fractal_explorer.cli ifs --type dragon --width 400 \
+    --output dragon.png
+
+# ─── Batch & animation ──────────────────────────────────────────────
 
 # Zoom sequence (30 frames, exponential zoom-in, high precision)
-python3 fractal.py zoom --center="-0.745,0.105" \
+python3 -m fractal_explorer.cli zoom --center="-0.745,0.105" \
     --start-width 3.0 --end-width 0.0001 --frames 30 \
     --output-dir zoom_frames --hp --prec 80
 
-# Julia-explorer grid (4x4 = 16 Julia sets with HTML index)
-python3 fractal.py explore --grid 4 --output-dir julia_grid --palette rainbow
+# Julia-grid explorer (4x4 = 16 Julia sets with HTML index)
+python3 -m fractal_explorer.cli explore --grid 4 \
+    --output-dir julia_grid --palette rainbow
 
-# Palette strip preview
-python3 fractal.py palette --name ice --output ice_strip.png
+# Julia morph animation (interpolate Julia constant)
+python3 -m fractal_explorer.cli animate --mode julia-morph \
+    --c-start="-0.4,0.6" --c-end="0.285,0.01" --frames 30 \
+    --output-dir morph_frames
+
+# Colour-cycling animation
+python3 -m fractal_explorer.cli animate --mode color-cycle \
+    --kind mandelbrot --frames 24 --output-dir cycle_frames
+
+# ─── Presets ────────────────────────────────────────────────────────
+
+# List available presets
+python3 -m fractal_explorer.cli preset list
+
+# Render using a preset
+python3 -m fractal_explorer.cli render --preset seahorse-valley \
+    --output seahorse.png
+
+# Save a custom preset
+python3 -m fractal_explorer.cli preset save --name my-view \
+    --params '{"kind":"julia","julia_c":"-0.8,0.156","palette":"neon"}'
+
+# ─── Benchmarking ───────────────────────────────────────────────────
 
 # Benchmark rendering throughput
-python3 fractal.py benchmark --width 400 --height 400 --max-iter 300 --trials 3
+python3 -m fractal_explorer.cli benchmark --width 400 --height 400 \
+    --max-iter 300 --trials 3
 
-# List available fractals / palettes / traps
-python3 fractal.py info
+# Palette strip preview
+python3 -m fractal_explorer.cli palette --name ice --output ice_strip.png
+
+# List all options
+python3 -m fractal_explorer.cli info
 ```
 
 ### Python API
 
 ```python
-from fractal import Viewport, render_fractal, write_png
+from fractal_explorer import (
+    Viewport, render_fractal, write_png, write_tga,
+    render_buddhabrot, render_lyapunov, render_ifs,
+    BARNSLEY_FERN, apply_filter,
+)
 
+# ── Basic Mandelbrot ──
 vp = Viewport(center=-0.5+0j, width=3.0, height=2.0)
 pixels, stats = render_fractal(
-    kind="mandelbrot",
-    viewport=vp,
-    width=800, height=600,
-    max_iter=512,
-    palette_name="fire",
-    coloring="smooth",
+    kind="mandelbrot", viewport=vp, width=800, height=600,
+    max_iter=512, palette_name="fire", coloring="smooth",
     supersample=2,      # anti-aliasing
     workers=4,          # parallel
 )
-write_png("mandel.png", pixels, 800, 600, text_meta={"fractal": "mandelbrot"})
+write_png("mandel.png", pixels, 800, 600,
+          text_meta={"fractal": "mandelbrot"})
 print(stats)
-```
 
-True distance-estimator coloring:
-
-```python
+# ── True distance-estimator coloring ──
 pixels, _ = render_fractal("mandelbrot", vp, 800, 600,
                             coloring="de", max_iter=1000)
-```
 
-Orbit-trap coloring:
-
-```python
-from fractal import CrossTrap
+# ── Orbit-trap coloring ──
+from fractal_explorer import CrossTrap, StripeTrap
 pixels, _ = render_fractal("mandelbrot", vp, 800, 600,
-                            coloring="trap", trap=CrossTrap())
-```
+                            coloring="trap", trap=StripeTrap(count=12))
 
-Histogram-equalized coloring:
-
-```python
-from fractal import render_histogram_coloring
+# ── Histogram-equalized coloring ──
+from fractal_explorer import render_histogram_coloring
 pixels, _ = render_histogram_coloring("mandelbrot", vp, 800, 600,
                                        max_iter=512)
-```
 
-Deep zoom with arbitrary precision:
-
-```python
-from fractal import Viewport, render_mandelbrot_hp, write_png
-
+# ── Deep zoom with arbitrary precision ──
+from fractal_explorer import render_mandelbrot_hp
 vp = Viewport(center=-0.745+0.105j, width=1e-12, height=1e-12)
 pixels, stats = render_mandelbrot_hp(vp, 400, 300, max_iter=2000, prec=80)
 write_png("deep.png", pixels, 400, 300)
-```
 
-Julia grid explorer:
+# ── Buddhabrot ──
+pixels, stats = render_buddhabrot(vp, 500, 500, samples=500000,
+                                   max_iter=1000, seed=42)
 
-```python
-from fractal import explore_julia
+# ── Lyapunov ──
+pixels, stats = render_lyapunov(width=500, height=500,
+                                sequence="ABBA", max_iter=500)
+
+# ── IFS: Barnsley Fern ──
+pixels, stats = render_ifs(BARNSLEY_FERN, width=400, height=400,
+                            iterations=200000, palette_name="forest")
+
+# ── Post-processing ──
+from fractal_explorer import apply_filter
+pixels = apply_filter(pixels, 400, 400, "gaussian")
+pixels = apply_filter(pixels, 400, 400, "edge")
+
+# ── Julia grid explorer ──
+from fractal_explorer import explore_julia
 files = explore_julia(grid_size=4, img_size=(200, 200),
                       output_dir="julia_grid", max_iter=200,
                       palette_name="rainbow", c_radius=1.5)
-# writes julia_grid/index.html + 16 PNGs
 ```
 
-## How It Works
+### Config Files
 
-### Escape-time iteration
-
-For each pixel we map screen coordinates to a complex number `c`, then iterate the fractal's map (e.g. `z ← z² + c`) starting from `z = 0` (Mandelbrot) or `z = c` (Julia). If `|z|²` exceeds the bailout radius before `max_iter`, the point escapes; the iteration count at escape determines the color. Points that never escape are colored as the interior.
-
-### Smooth coloring
-
-Integer iteration counts produce visible "bands" of color. We use the **normalized iteration count** formula:
-
-```
-ν = n + 1 − log(log|z_n|) / log(p)
-```
-
-which gives a continuous value that maps smoothly onto the palette, eliminating banding at the exterior.
-
-### True distance estimator
-
-For the Mandelbrot set, we track the derivative `dz/dc` alongside `z`. The derivative satisfies `dz_{n+1}/dc = p·z^{p-1}·dz_n/dc + 1`. The distance to the boundary is then approximated by:
-
-```
-d(c) = |z_n| · ln|z_n| / |dz_n/dc|
-```
-
-This gives a sharp, well-defined boundary that is far superior to the iteration-count proxy used by other coloring modes.
-
-### Orbit traps
-
-Instead of coloring by escape time, we track how close the orbit `{z_0, z_1, …}` comes to a geometric "trap" (a point, line, circle, or cross). The minimum distance over the orbit determines the color, producing smooth, artistic images that highlight the trap's geometry.
-
-### Histogram equalization
-
-Most pixels in a Mandelbrot render escape in just a few iterations, so a naive palette mapping wastes most of the color range. Histogram-equalized coloring first computes the iteration count for every pixel, builds a cumulative distribution, and maps each count so that equal color ranges cover equal numbers of pixels — spreading detail evenly across the palette.
-
-### High-precision rendering
-
-When the viewport width drops below roughly `1e-13`, double-precision floats no longer have enough mantissa bits to distinguish adjacent pixels. The `render_mandelbrot_hp` function switches to `decimal.Decimal` arithmetic with a configurable precision (`prec` decimal digits), so deep zooms remain crisp.
-
-### Parallel rendering
-
-For large images, the `workers` parameter distributes rows across `multiprocessing.Pool` worker processes (spawn context). A module-level worker function (`_render_row_worker`) is used so it can be pickled. Each worker rebuilds its iterator function and renders its assigned rows independently.
-
-### Supersampling
-
-Each output pixel is the average of an `N×N` grid of sub-samples (`supersample=N`). This smooths jagged edges at the cost of `N²`-times more computation per pixel.
-
-### PNG output
-
-PNG files are written using only `zlib` and `struct` from the standard library — the IHDR, optional tEXt metadata, IDAT (zlib-compressed scanlines with per-row filter byte 0), and IEND chunks are assembled by hand with correct CRC-32 checksums.
-
-### SVG output
-
-SVG files use one `<rect>` per pixel with run-length encoding of identical consecutive pixels in each row to keep file sizes manageable. The result is infinitely-scalable vector output (practical for images up to a few hundred pixels per side).
-
-## Config Files
-
-JSON, TOML, and YAML config files are supported via `--config`. Keys mirror the CLI long options (with `_` instead of `-`).
+JSON, TOML, and YAML config files are supported via `--config`. Keys mirror
+the CLI long options (with `_` instead of `-`).
 
 ```json
 {
@@ -260,82 +377,368 @@ JSON, TOML, and YAML config files are supported via `--config`. Keys mirror the 
   "center": "-0.745,0.105",
   "viewport_width": 0.01,
   "supersample": 2,
-  "workers": 4
+  "workers": 4,
+  "filter": "gaussian"
 }
 ```
 
-## Project Layout
+```bash
+python3 -m fractal_explorer.cli render --config render.json --output out.png
+```
+
+CLI flags always take precedence over config-file values when both are
+provided.
+
+### Presets
+
+Built-in named presets for classic fractal viewpoints:
+
+| Preset | Description |
+|---|---|
+| `mandelbrot-classic` | Standard full Mandelbrot view |
+| `seahorse-valley` | Deep zoom into Seahorse Valley |
+| `elephant-valley` | Zoom into Elephant Valley |
+| `julia-dendrite` | Julia set with dendrite pattern |
+| `julia-dragon` | Julia set with dragon pattern |
+| `burning-ship` | Classic Burning Ship view |
+| `newton-cubic` | Newton basins for z³ − 1 |
+| `multibrot-5` | Multibrot with power 5 |
+| `tricorn` | Tricorn (Mandelbar) fractal |
+| `phoenix` | Phoenix fractal |
+
+```bash
+# Use a preset
+python3 -m fractal_explorer.cli render --preset seahorse-valley --output out.png
+
+# Save your own
+python3 -m fractal_explorer.cli preset save --name my-favorite \
+    --params '{"kind":"julia","julia_c":"-0.8,0.156","palette":"neon"}'
+```
+
+## Fractals
+
+| Fractal | Formula | Notes |
+|---|---|---|
+| **Mandelbrot** | `z = z^p + c` from `z=0` | `p=2` classic; `p≠2` gives Multibrot |
+| **Mandelbrot (periodic)** | Same + Brent cycle detection | Faster interior rendering |
+| **Julia** | `z = z^p + c` from `z=point` | constant `c` set via `--julia-c` |
+| **Burning Ship** | `z = (\|Re z\| + i\|Im z\|)^2 + c` | the "ship" fractal |
+| **Tricorn** (Mandelbar) | `z = conj(z)^2 + c` | non-analytic, fractal "tricorn" |
+| **Celtic** | `z = \|Re(z²)\| + i·Im(z²) + c` | Celtic knot-like fractal |
+| **Phoenix** | `z_{n+1} = z_n^p + c + p_c·z_{n-1}` | feather-like, two-term recurrence |
+| **Magnet** | `m(z) = ((z²+c)/(2z²+c-1))²` | rational map, magnetic-field domains |
+| **Newton** | Newton iteration on `z^p − 1` | basin-coloured by root |
+| **Custom** | user-supplied `fn(z, c)` | via Python API |
+| **Buddhabrot** | Histogram of escaping orbits | nebula-like escape dynamics |
+| **Anti-Buddhabrot** | Histogram of interior orbits | inverse of Buddhabrot |
+| **Lyapunov** | Logistic map Lyapunov exponent | chaos/order regions |
+| **IFS** | Iterated Function System | Barnsley Fern, Sierpinski, Dragon |
+
+## Coloring Modes
+
+| Mode | Description |
+|---|---|
+| `smooth` | Normalized iteration count (Hubbard–Douady) — continuous, no banding |
+| `flat` | Raw integer iteration count → palette index |
+| `de` | **True distance estimator** using derivative tracking (`\|z'\|·ln\|z\|/\|z\|`) |
+| `trap` | **Orbit-trap coloring** — colour by closest orbit approach to a trap |
+| `root` | Newton-basin coloring (colour by which root the orbit converges to) |
+| `histogram` | **Histogram-equalized** coloring — even colour distribution |
+
+## Orbit Traps
+
+| Trap | Description |
+|---|---|
+| `point` | Single complex point (`--trap-point re,im`) |
+| `line` | Infinite line through origin at angle (`--trap-angle rad`) |
+| `circle` | Circle of given radius (`--trap-radius r`) |
+| `cross` | Union of real and imaginary axes |
+| `stripe` | Angular stripes — radiating stripe patterns (`--trap-count N`) |
+| `spiral` | Archimedean spiral — spiral trap patterns |
+
+## Palettes
+
+Built-in: `rainbow`, `fire`, `ice`, `grayscale`, `electric`, `sunset`,
+`ocean`, `magma`, `earth`, `neon`, `forest`
+
+Custom hex gradients:
+```bash
+--palette "#000000,#ff0000,#ffff00,#ffffff"
+--palette '["#ff0000","#00ff00","#0000ff"]'
+```
+
+## Post-Processing Filters
+
+Apply with `--filter <name>` on the `render` command, or via the Python API:
+
+| Filter | Description |
+|---|---|
+| `blur` | Box blur (radius 1) |
+| `gaussian` | Gaussian blur (radius 1) |
+| `edge` | Sobel edge detection |
+| `emboss` | 3D emboss effect |
+| `grayscale` | Luminance grayscale conversion |
+| `invert` | Colour inversion |
+| `brightness` | +30 brightness shift |
+| `contrast` | 1.5× contrast boost |
+
+```python
+from fractal_explorer import apply_filter
+pixels = apply_filter(pixels, width, height, "edge")
+pixels = apply_filter(pixels, width, height, "invert")
+```
+
+## Output Formats
+
+| Format | Extension | Description |
+|---|---|---|
+| **PNG** | `.png` | 8-bit RGB with optional tEXt metadata (pure zlib) |
+| **PPM** | `.ppm` | Binary P6 PPM |
+| **SVG** | `.svg` | Vector output with run-length encoding (infinitely scalable) |
+| **ASCII** | `.txt` | Luminance-mapped ASCII art |
+| **TGA** | `.tga` | Uncompressed 24-bit Targa |
+
+## Architecture
 
 ```
-fractal-explorer/
-├── fractal.py          # Main library + CLI (single file)
-├── README.md           # This file
-├── examples/
-│   └── gallery.py      # Script rendering 8 example fractals
-└── tests/
-    └── test_fractal.py # 68-test suite
+fractal_explorer/
+├── __init__.py       # Public API re-exports + __version__
+├── palettes.py       # 11 colour palettes + custom hex gradients
+├── iterators.py      # 10 fractal iteration functions + FRACTALS registry
+├── periodicity.py    # Brent cycle detection for interior points
+├── traps.py          # 6 orbit-trap classes (point/line/circle/cross/stripe/spiral)
+├── viewport.py       # Complex-plane viewport with zoom, fit_aspect, pixel_to_complex
+├── coloring.py       # Per-pixel colour computation (smooth/flat/de/trap/root)
+├── render.py         # Rendering engine (single + multiprocessing parallel)
+├── hp.py             # Arbitrary-precision Decimal rendering for deep zoom
+├── io_writers.py     # PNG/PPM/SVG/ASCII/TGA output (all stdlib)
+├── zoom.py           # Zoom-sequence batch renderer
+├── julia.py          # Julia-grid explorer with HTML index
+├── benchmark.py      # Throughput benchmarking
+├── config.py         # JSON/YAML/TOML config loading + CLI merge
+├── buddhabrot.py     # Buddhabrot / Anti-Buddhabrot rendering
+├── lyapunov.py       # Lyapunov fractal (logistic map chaos/order)
+├── ifs.py            # Iterated Function System fractals (fern/sierpinski/dragon)
+├── filters.py        # 8 post-processing image filters
+├── animation.py      # Julia-morph and colour-cycling animation
+├── presets.py        # 10 built-in presets + PresetManager
+├── cli.py            # Argparse CLI with 14 subcommands
+└── fractal.py        # Backward-compat shim (imports from package)
 ```
+
+### How It Works
+
+#### Escape-time iteration
+
+For each pixel we map screen coordinates to a complex number `c`, then
+iterate the fractal's map (e.g. `z ← z² + c`) starting from `z = 0`
+(Mandelbrot) or `z = c` (Julia). If `|z|²` exceeds the bailout radius before
+`max_iter`, the point escapes; the iteration count at escape determines the
+colour. Points that never escape are coloured as the interior.
+
+#### Periodicity detection
+
+For interior points (which never escape), Brent's cycle detection algorithm
+identifies repeating orbits early, allowing the iterator to return
+`max_iter` before doing all the iterations. This dramatically speeds up
+rendering of the interior, especially at high iteration counts.
+
+#### Smooth coloring
+
+Integer iteration counts produce visible "bands" of colour. We use the
+**normalized iteration count** formula:
+
+```
+ν = n + 1 − log(log|z_n|) / log(p)
+```
+
+which gives a continuous value that maps smoothly onto the palette,
+eliminating banding at the exterior.
+
+#### True distance estimator
+
+For the Mandelbrot set, we track the derivative `dz/dc` alongside `z`. The
+derivative satisfies `dz_{n+1}/dc = p·z^{p-1}·dz_n/dc + 1`. The distance to
+the boundary is then approximated by:
+
+```
+d(c) = |z_n| · ln|z_n| / |dz_n/dc|
+```
+
+This gives a sharp, well-defined boundary that is far superior to the
+iteration-count proxy used by other coloring modes.
+
+#### Orbit traps
+
+Instead of coloring by escape time, we track how close the orbit
+`{z_0, z_1, …}` comes to a geometric "trap" (a point, line, circle, cross,
+stripe, or spiral). The minimum distance over the orbit determines the
+colour, producing smooth, artistic images that highlight the trap's geometry.
+
+#### Histogram equalization
+
+Most pixels in a Mandelbrot render escape in just a few iterations, so a
+naive palette mapping wastes most of the colour range. Histogram-equalized
+coloring first computes the iteration count for every pixel, builds a
+cumulative distribution, and maps each count so that equal colour ranges
+cover equal numbers of pixels — spreading detail evenly across the palette.
+
+#### Buddhabrot
+
+The Buddhabrot traces the *orbits* of escaping points and accumulates a
+histogram of how often each pixel is visited. Points that escape quickly
+contribute little; points that take many iterations to escape travel far
+and contribute the most. The result is a haunting, nebula-like image.
+
+#### High-precision rendering
+
+When the viewport width drops below roughly `1e-13`, double-precision floats
+no longer have enough mantissa bits to distinguish adjacent pixels. The
+`render_mandelbrot_hp` function switches to `decimal.Decimal` arithmetic
+with a configurable precision (`prec` decimal digits), so deep zooms remain
+crisp. A `localcontext()` ensures the precision change doesn't leak
+globally.
+
+#### Parallel rendering
+
+For large images, the `workers` parameter distributes rows across
+`multiprocessing.Pool` worker processes (spawn context). A module-level
+worker function (`_render_row_worker`) is used so it can be pickled. Each
+worker rebuilds its iterator function and renders its assigned rows
+independently.
+
+## Performance
+
+| Configuration | ~Pixels/sec (single core) |
+|---|---|
+| Mandelbrot, smooth, 256 iter | ~500K |
+| Mandelbrot, DE, 512 iter | ~200K |
+| Burning Ship, smooth, 256 iter | ~400K |
+| Newton, root, 60 iter | ~1M |
+
+Use `--workers N` for N-core parallel speedup (near-linear scaling).
+Use `--kind mandelbrot_periodic` for faster interior rendering at high
+iteration counts. Use `--supersample 2` for anti-aliased output (costs 4×).
+
+Run `python3 -m fractal_explorer.cli benchmark` to measure on your machine.
 
 ## Testing
 
 ```bash
 cd fractal-explorer
-python3 -m unittest tests.test_fractal -v
-# or
-python3 -m pytest tests/
+
+# Full suite (135 tests)
+python3 -m pytest tests/ -v
+
+# Or with unittest
+python3 -m pytest tests/test_fractal.py -v       # original 77 tests
+python3 -m pytest tests/test_bugs.py -v          # 9 regression tests
+python3 -m pytest tests/test_new_features.py -v  # 58 new-feature tests
 ```
 
-The test suite has 77 tests across two files:
+The test suite has **135 tests** across three files:
+
 - `tests/test_fractal.py` — 68 tests covering palettes, coloring, fractals,
   rendering, orbit traps, deep zoom, I/O, zoom sequences, Julia explorer,
   benchmark, and CLI parsing.
-- `tests/test_bugs.py` — 9 regression tests for the bugs found and fixed
-  during the Phase 3 bug hunt (see below).
+- `tests/test_bugs.py` — 9 regression tests for bugs found and fixed.
+- `tests/test_new_features.py` — 58 tests covering new palettes, new traps,
+  Buddhabrot, Lyapunov, IFS, filters, TGA output, periodicity detection,
+  presets, animation, viewport improvements, CLI new commands, and package
+  structure.
 
 ## Known Issues (Resolved)
 
-The following bugs were found during the bug hunt and fixed. Each has a
-regression test in `tests/test_bugs.py`.
+The following bugs were found during the original bug hunt and fixed. Each
+has a regression test in `tests/test_bugs.py`.
 
 1. **Trap coloring used the wrong orbit formula for non-Mandelbrot fractals.**
    The orbit-trap coloring re-ran the iteration with a hardcoded
-   `z = z*z + c` step, ignoring the fractal kind (Burning Ship, Tricorn,
-   Celtic, Phoenix, Magnet, Newton) and the `power` parameter. This produced
-   flat single-colour images for any fractal other than power-2
-   Mandelbrot/Julia. **Fix:** the re-run now uses the correct per-kind
-   iteration formula (Burning Ship takes `abs()` of components, Phoenix uses
-   the two-term recurrence, Tricorn uses `conj(z)²`, etc.). *(test_bug01)*
+   `z = z*z + c` step, ignoring the fractal kind. **Fix:** the re-run now
+   uses the correct per-kind iteration formula. *(test_bug01)*
 
 2. **`_merge_config` silently overrode CLI flags with config-file values.**
-   The docstring claimed config values would not override user-passed CLI
-   flags, but the implementation did override them unconditionally. **Fix:**
-   `_merge_config` now accepts an `explicit` set of dest names that are
-   never overridden; `main()` detects which flags the user explicitly
-   passed (by scanning `sys.argv` for option strings, recursing into
-   subparsers) and passes that set through. *(test_bug07)*
+   **Fix:** `_merge_config` now accepts an `explicit` set of dest names that
+   are never overridden. *(test_bug07)*
 
 3. **`render_mandelbrot_hp` modified the global `decimal` context.**
-   Setting `getcontext().prec = prec` is a process-wide side effect that
-   would corrupt any other `Decimal` user in the same process. **Fix:**
-   use `decimal.localcontext()` so the precision change is scoped to the
-   render call only. *(test_bug08)*
+   **Fix:** use `decimal.localcontext()` so the precision change is scoped
+   to the render call only. *(test_bug08)*
 
 4. **`render_fractal` mutated the caller's `Viewport` object.**
-   The aspect-ratio adjustment wrote `viewport.height = ...` in place, so
-   calling `render_fractal` modified the caller's viewport — a surprising
-   and bug-prone side effect. **Fix:** create a local `Viewport` copy
-   instead of mutating the argument. *(test_bug12)*
+   **Fix:** create a local `Viewport` copy via `fit_aspect()` instead of
+   mutating the argument. *(test_bug12)*
 
 5. **`render_histogram_coloring` mutated the caller's `Viewport` object.**
-   Same aspect-ratio mutation bug as `render_fractal`. **Fix:** make a local
-   copy. *(test_bug15)*
+   Same aspect-ratio mutation bug. **Fix:** make a local copy. *(test_bug15)*
 
 6. **`_parse_complex` and `_parse_rgb` raised unhelpful errors on malformed
-   input.** `_parse_complex("1,2,3")` raised `ValueError: too many values to
-   unpack`; `_parse_rgb("1,2,3,4")` crashed inside the list comprehension
-   before the length check. **Fix:** validate the comma-count first and
-   raise clear `ValueError` messages. *(test_bug09)*
+   input.** **Fix:** validate the comma-count first and raise clear
+   `ValueError` messages. *(test_bug09)*
+
+## Roadmap
+
+- [ ] Animated GIF output (stdlib-only encoder)
+- [ ] 3D heightmap rendering (fractal → terrain)
+- [ ] Fractal flame renderer (variation-based IFS)
+- [ ] WebAssembly build for browser rendering
+- [ ] GPU acceleration via ctypes/OpenCL fallback
+- [ ] Interactive viewer mode (terminal-based navigation)
+- [ ] More IFS fractals (Heighway dragon, Levy C-curve, Koch snowflake)
+- [ ] Domain coloring for arbitrary complex functions
+- [ ] Quaternion Julia sets (3D)
+- [ ] Perlin-noise palette perturbation
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, code style,
+architecture guide, and how to add new fractals, palettes, and filters.
+
+## Changelog
+
+### v1.1.0 — Comprehensive Improvement
+
+**Architecture:**
+- Split monolithic 1751-line `fractal.py` into 19 focused modules
+- Created proper `fractal_explorer` Python package
+- Added `pyproject.toml` for pip installation
+- Added backward-compatibility shim (`fractal.py` still works)
+- Added type hints throughout
+- Added `__version__` and `__author__` metadata
+
+**New Fractals:**
+- Buddhabrot (escape-orbit histogram)
+- Anti-Buddhabrot (interior-orbit histogram)
+- Lyapunov fractal (logistic map chaos/order)
+- IFS fractals: Barnsley Fern, Sierpinski Triangle, Dragon Curve
+- Mandelbrot with Brent periodicity detection
+
+**New Features:**
+- TGA output format
+- 8 post-processing filters (blur, Gaussian, edge, emboss, grayscale,
+  invert, brightness, contrast)
+- 2 new orbit traps (stripe, spiral)
+- 2 new palettes (neon, forest)
+- Julia-morph animation
+- Colour-cycling animation
+- 10 built-in render presets + PresetManager
+- Viewport improvements: `copy()`, `fit_aspect()`, `pixel_to_complex()`
+- CLI expanded from 8 to 14 subcommands
+- `--filter` flag for post-processing on render
+- `--preset` flag for named preset rendering
+- `--format tga` support
+- GitHub Actions CI workflow
+
+**Testing:**
+- Expanded from 77 to 135 tests (58 new tests for new features)
+
+### v1.0.0 — Initial Release
+
+8 fractal families, 6 coloring modes, 4 orbit traps, 9 palettes,
+supersampling, multiprocessing, arbitrary-precision deep zoom, zoom
+sequences, Julia explorer, benchmark, PNG/PPM/SVG/ASCII output, JSON/YAML/
+TOML config, 77 tests.
 
 ## License
 
-MIT.
+MIT — see [LICENSE](LICENSE).

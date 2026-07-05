@@ -307,10 +307,10 @@ class TestOrbitTraps(unittest.TestCase):
         self.assertGreater(t.distance(1 + 1j), 0)
 
     def test_make_trap(self):
+        from fractal_explorer.traps import OrbitTrap
         for name in TRAPS:
             trap = make_trap(name)
-            self.assertIsInstance(trap, tuple([PointTrap, LineTrap,
-                                               CircleTrap, CrossTrap]))
+            self.assertIsInstance(trap, OrbitTrap)
 
     def test_make_trap_bad(self):
         with self.assertRaises(ValueError):

@@ -2,13 +2,31 @@
 gallery_output/
 zoom_frames/
 julia_grid/
+animation/
+presets/
 *.png
 *.ppm
 *.svg
+*.tga
+*.txt
 !examples/*.png
 
 # Python
 __pycache__/
 *.pyc
+*.pyo
 *.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
 .pytest_cache/
+.coverage
+htmlcov/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*~
