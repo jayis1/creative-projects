@@ -1,6 +1,8 @@
 """Fractal Explorer — Test Suite.
 
-Tests for the core rendering, coloring, palettes, I/O, and edge cases.
+Tests for the core rendering, coloring, palettes, fractals, I/O, parallel
+rendering, deep zoom, orbit traps, and edge cases.
+
 Run with: ``python3 -m pytest tests/`` (or ``python3 tests/test_fractal.py``).
 """
 from __future__ import annotations
@@ -15,11 +17,14 @@ import unittest
 # Make the package importable when run directly.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from fractal import (
-    Viewport, render_fractal, render_mandelbrot_hp, write_png, write_ppm,
-    write_ascii, get_palette, PALETTES, FRACTALS,
-    _mandelbrot_iter, _julia_iter, _burning_ship_iter, _tricorn_iter,
-    _newton_iter, _smooth_iter, _hsb_to_rgb, _lerp, _lerp_color,
-    get_fractal, mandelbrot_decimal,
+    Viewport, render_fractal, render_histogram_coloring, render_mandelbrot_hp,
+    render_zoom_sequence, explore_julia, benchmark, write_png, write_ppm,
+    write_ascii, write_svg, get_palette, PALETTES, FRACTALS, DE_CAPABLE,
+    _mandelbrot_iter, _mandelbrot_de_iter, _julia_iter, _burning_ship_iter,
+    _tricorn_iter, _celtic_iter, _phoenix_iter, _magnet_iter, _newton_iter,
+    _smooth_iter, _true_distance, _hsb_to_rgb, _lerp, _lerp_color, _clamp_byte,
+    get_fractal, mandelbrot_decimal, PointTrap, LineTrap, CircleTrap, CrossTrap,
+    make_trap, TRAPS,
 )
 
 
@@ -48,6 +53,20 @@ class TestPalettes(unittest.TestCase):
         for i in range(len(pal) - 1):
             self.assertLessEqual(pal[i][0], pal[i + 1][0])
 
+    def test_palette_size_zero(self):
+        # size 0 should not crash (returns single black)
+        pal = get_palette("fire", 0)
+        self.assertEqual(len(pal), 1)
+
+    def test_custom_hex_bad(self):
+        with self.assertRaises(ValueError):
+            get_palette("#zzzzzz", 16)
+
+    def test_json_hex_list(self):
+        pal = get_palette('["#ff0000","#00ff00","#0000ff"]', 8)
+        self.assertEqual(len(pal), 8)
+        self.assertEqual(pal[0], (255, 0, 0))
+
 
 class TestColorHelpers(unittest.TestCase):
     def test_lerp(self):
@@ -59,9 +78,18 @@ class TestColorHelpers(unittest.TestCase):
         c = _lerp_color((0, 0, 0), (100, 200, 50), 0.5)
         self.assertEqual(c, (50, 100, 25))
 
-    def test_hsb_black(self):
+    def test_hsb_black_white(self):
         self.assertEqual(_hsb_to_rgb(0, 0, 0), (0, 0, 0))
         self.assertEqual(_hsb_to_rgb(0, 0, 1), (255, 255, 255))
+
+    def test_hsb_red(self):
+        # pure red is hue=0, sat=1, val=1
+        self.assertEqual(_hsb_to_rgb(0, 1, 1), (255, 0, 0))
+
+    def test_clamp_byte(self):
+        self.assertEqual(_clamp_byte(-5), 0)
+        self.assertEqual(_clamp_byte(300), 255)
+        self.assertEqual(_clamp_byte(127), 127)
 
 
 class TestViewport(unittest.TestCase):
@@ -78,18 +106,48 @@ class TestViewport(unittest.TestCase):
         vp = Viewport(0, 4.0, None)
         self.assertAlmostEqual(vp.height, 4.0)
 
+    def test_auto_height_aspect(self):
+        vp = Viewport(0, 4.0, None, aspect=2.0)
+        self.assertAlmostEqual(vp.height, 2.0)
+
+    def test_zoom(self):
+        vp = Viewport(-0.5, 3.0, 2.0)
+        vp2 = vp.zoom(0.5)
+        self.assertAlmostEqual(vp2.width, 1.5)
+        self.assertAlmostEqual(vp2.height, 1.0)
+        self.assertEqual(vp2.center, vp.center)
+        # original is untouched
+        self.assertAlmostEqual(vp.width, 3.0)
+
+    def test_serialize(self):
+        vp = Viewport(-0.5 + 0.1j, 3.0, 2.0)
+        d = vp.to_dict()
+        vp2 = Viewport.from_dict(d)
+        self.assertEqual(vp2.center, vp.center)
+        self.assertAlmostEqual(vp2.width, vp.width)
+        self.assertAlmostEqual(vp2.height, vp.height)
+
 
 class TestIterations(unittest.TestCase):
     def test_mandelbrot_origin(self):
-        # c = 0 is in the Mandelbrot set (never escapes)
         it, z2 = _mandelbrot_iter(0, 100, 1 << 16)
-        self.assertEqual(it, 100)  # did not escape
+        self.assertEqual(it, 100)
 
     def test_mandelbrot_escape(self):
-        # c = 2 + 0i escapes quickly
         it, z2 = _mandelbrot_iter(2, 100, 1 << 16)
         self.assertLess(it, 5)
         self.assertGreater(z2, 1 << 16)
+
+    def test_mandelbrot_de(self):
+        it, (z2, dz2) = _mandelbrot_de_iter(2, 100, 1 << 16)
+        self.assertLess(it, 100)
+        self.assertGreater(dz2, 0)
+
+    def test_mandelbrot_de_interior(self):
+        # c=0 is interior; should not crash and return final values
+        it, (z2, dz2) = _mandelbrot_de_iter(0, 50, 1 << 16)
+        self.assertEqual(it, 50)
+        self.assertGreaterEqual(z2, 0)
 
     def test_julia_escape(self):
         it, _ = _julia_iter(2 + 0j, -0.7 + 0.27015j, 100, 1 << 16)
@@ -102,20 +160,43 @@ class TestIterations(unittest.TestCase):
     def test_tricorn(self):
         it, _ = _tricorn_iter(2, 100, 1 << 16)
         self.assertLess(it, 10)
-        # origin stays bounded
         it, _ = _tricorn_iter(0, 50, 1 << 16)
         self.assertEqual(it, 50)
 
+    def test_celtic_escape(self):
+        it, _ = _celtic_iter(2, 100, 1 << 16)
+        self.assertLess(it, 10)
+
+    def test_phoenix_escape(self):
+        it, _ = _phoenix_iter(2, 50, 1 << 16)
+        self.assertLess(it, 50)
+
+    def test_magnet_escape(self):
+        # c=0 converges to the attracting fixed point 0 quickly (escapes)
+        it, _ = _magnet_iter(0, 100, 1 << 16)
+        self.assertLess(it, 100)
+        # c=3 stays bounded (interior) — does not escape
+        it3, _ = _magnet_iter(3, 100, 1 << 16)
+        self.assertEqual(it3, 100)
+
     def test_newton_converges(self):
-        # z^3 - 1 has roots 1, e^{2pi i/3}, e^{4pi i/3}
         it, root = _newton_iter(0.5, 100, 1 << 16, power=3)
         self.assertGreaterEqual(root, 0)
         self.assertLess(root, 3)
 
     def test_smooth_iter(self):
-        # basic sanity: smooth value is non-negative and not crazy
         nu = _smooth_iter(50, 1 << 20, 1 << 16, math.log(2))
         self.assertGreater(nu, 0)
+
+    def test_smooth_iter_zero(self):
+        self.assertEqual(_smooth_iter(0, 0, 1 << 16, math.log(2)), 0.0)
+
+    def test_true_distance_positive(self):
+        d = _true_distance(1e6, 1e4, math.log(2))
+        self.assertGreater(d, 0)
+
+    def test_true_distance_zero(self):
+        self.assertEqual(_true_distance(0, 0, math.log(2)), 0.0)
 
 
 class TestRendering(unittest.TestCase):
@@ -144,23 +225,102 @@ class TestRendering(unittest.TestCase):
         with self.assertRaises(ValueError):
             render_fractal("mandelbrot", vp, 10, 10, max_iter=0)
 
+    def test_invalid_palette_size(self):
+        vp = Viewport(0, 3, 2)
+        with self.assertRaises(ValueError):
+            render_fractal("mandelbrot", vp, 10, 10, palette_size=0)
+
+    def test_invalid_supersample(self):
+        vp = Viewport(0, 3, 2)
+        with self.assertRaises(ValueError):
+            render_fractal("mandelbrot", vp, 10, 10, supersample=0)
+
+    def test_invalid_workers(self):
+        vp = Viewport(0, 3, 2)
+        with self.assertRaises(ValueError):
+            render_fractal("mandelbrot", vp, 10, 10, workers=0)
+
     def test_unknown_fractal(self):
         with self.assertRaises(ValueError):
             get_fractal("does_not_exist")
 
     def test_coloring_modes(self):
         vp = Viewport(-0.5, 3, 2)
-        for mode in ["smooth", "flat", "de"]:
+        for mode in ["smooth", "flat", "de", "trap"]:
             px, _ = render_fractal("mandelbrot", vp, 20, 15, max_iter=50,
                                     coloring=mode)
-            self.assertEqual(len(px), 300)
+            self.assertEqual(len(px), 300, mode)
 
     def test_interior_color(self):
         vp = Viewport(-0.5, 3, 2)
         px, _ = render_fractal("mandelbrot", vp, 20, 15, max_iter=20,
                                 interior_color=(10, 20, 30))
-        # at least one interior pixel (the origin area)
         self.assertIn((10, 20, 30), px)
+
+    def test_supersample(self):
+        vp = Viewport(-0.5, 3, 2)
+        px1, _ = render_fractal("mandelbrot", vp, 20, 15, max_iter=40)
+        px2, _ = render_fractal("mandelbrot", vp, 20, 15, max_iter=40,
+                                  supersample=2)
+        self.assertEqual(len(px1), len(px2))
+
+    def test_histogram_coloring(self):
+        vp = Viewport(-0.5, 3, 2)
+        px, st = render_histogram_coloring("mandelbrot", vp, 20, 15, max_iter=50)
+        self.assertEqual(len(px), 300)
+
+    def test_histogram_invalid(self):
+        vp = Viewport(0, 3, 2)
+        with self.assertRaises(ValueError):
+            render_histogram_coloring("mandelbrot", vp, 0, 10)
+        with self.assertRaises(ValueError):
+            render_histogram_coloring("mandelbrot", vp, 10, 10, max_iter=0)
+
+    def test_workers_parallel(self):
+        # single-process fallback path still works
+        vp = Viewport(-0.5, 3, 2)
+        px, st = render_fractal("mandelbrot", vp, 20, 15, max_iter=40, workers=1)
+        self.assertEqual(len(px), 300)
+
+
+class TestOrbitTraps(unittest.TestCase):
+    def test_point_trap(self):
+        t = PointTrap(0 + 0j)
+        self.assertEqual(t.distance(0 + 0j), 0)
+        self.assertGreater(t.distance(1 + 0j), 0)
+
+    def test_line_trap(self):
+        t = LineTrap(0.0)
+        # point on x-axis is distance 0 from horizontal line
+        self.assertEqual(t.distance(3 + 0j), 0)
+        self.assertGreater(t.distance(0 + 1j), 0)
+
+    def test_circle_trap(self):
+        t = CircleTrap(1.0)
+        self.assertEqual(t.distance(1 + 0j), 0)
+        self.assertGreater(t.distance(2 + 0j), 0)
+
+    def test_cross_trap(self):
+        t = CrossTrap()
+        self.assertEqual(t.distance(1 + 0j), 0)
+        self.assertEqual(t.distance(0 + 1j), 0)
+        self.assertGreater(t.distance(1 + 1j), 0)
+
+    def test_make_trap(self):
+        for name in TRAPS:
+            trap = make_trap(name)
+            self.assertIsInstance(trap, tuple([PointTrap, LineTrap,
+                                               CircleTrap, CrossTrap]))
+
+    def test_make_trap_bad(self):
+        with self.assertRaises(ValueError):
+            make_trap("nonexistent")
+
+    def test_render_with_trap_object(self):
+        vp = Viewport(-0.5, 3, 2)
+        px, _ = render_fractal("mandelbrot", vp, 15, 10, max_iter=40,
+                                coloring="trap", trap=CircleTrap())
+        self.assertEqual(len(px), 150)
 
 
 class TestHighPrecision(unittest.TestCase):
@@ -168,13 +328,22 @@ class TestHighPrecision(unittest.TestCase):
         from decimal import Decimal
         it, z2 = mandelbrot_decimal(Decimal("0"), Decimal("0"), 100,
                                      Decimal(1 << 16), prec=30)
-        self.assertEqual(it, 100)  # origin never escapes
+        self.assertEqual(it, 100)
 
     def test_hp_render(self):
         vp = Viewport(-0.5 + 0j, 0.01, 0.01)
         px, st = render_mandelbrot_hp(vp, 20, 15, max_iter=80, prec=30)
         self.assertEqual(len(px), 300)
         self.assertEqual(st["kind"], "mandelbrot-hp")
+
+    def test_hp_invalid(self):
+        vp = Viewport(0, 1, 1)
+        with self.assertRaises(ValueError):
+            render_mandelbrot_hp(vp, 0, 10)
+        with self.assertRaises(ValueError):
+            render_mandelbrot_hp(vp, 10, 10, max_iter=0)
+        with self.assertRaises(ValueError):
+            render_mandelbrot_hp(vp, 10, 10, prec=5)
 
 
 class TestIO(unittest.TestCase):
@@ -207,6 +376,32 @@ class TestIO(unittest.TestCase):
         finally:
             os.unlink(path)
 
+    def test_png_with_metadata(self):
+        px = [(0, 0, 0)]
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+            path = f.name
+        try:
+            write_png(path, px, 1, 1, text_meta={"Software": "test"})
+            with open(path, "rb") as f:
+                data = f.read()
+            self.assertIn(b"Software", data)
+        finally:
+            os.unlink(path)
+
+    def test_svg(self):
+        px = [(255, 255, 255), (0, 0, 0), (128, 128, 128), (200, 200, 200)]
+        with tempfile.NamedTemporaryFile(suffix=".svg", delete=False) as f:
+            path = f.name
+        try:
+            write_svg(path, px, 4, 1)
+            with open(path) as f:
+                txt = f.read()
+            self.assertIn("<svg", txt)
+            self.assertIn("</svg>", txt)
+            self.assertIn("rect", txt)
+        finally:
+            os.unlink(path)
+
     def test_ascii(self):
         px = [(255, 255, 255), (0, 0, 0), (128, 128, 128), (200, 200, 200)]
         with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as f:
@@ -222,13 +417,62 @@ class TestIO(unittest.TestCase):
             os.unlink(path)
 
 
+class TestZoomAndExplore(unittest.TestCase):
+    def test_zoom_sequence(self):
+        with tempfile.TemporaryDirectory() as d:
+            files = render_zoom_sequence("mandelbrot", -0.5 + 0j, 3.0, 0.3, 3,
+                                          img_size=(20, 15), max_iter=40,
+                                          output_dir=d)
+            self.assertEqual(len(files), 3)
+            for fn in files:
+                self.assertTrue(os.path.exists(os.path.join(d, fn)))
+
+    def test_zoom_invalid(self):
+        with self.assertRaises(ValueError):
+            render_zoom_sequence("mandelbrot", 0, 3, 0.3, 0)
+        with self.assertRaises(ValueError):
+            render_zoom_sequence("mandelbrot", 0, 3, 0, 3)
+        with self.assertRaises(ValueError):
+            render_zoom_sequence("mandelbrot", 0, 0, 0.3, 3)
+        with self.assertRaises(ValueError):
+            render_zoom_sequence("mandelbrot", 0, 3, 3, 3)  # end >= start
+
+    def test_explore_julia(self):
+        with tempfile.TemporaryDirectory() as d:
+            files = explore_julia(grid_size=2, img_size=(20, 20),
+                                  output_dir=d, max_iter=30)
+            self.assertEqual(len(files), 4)
+            self.assertTrue(os.path.exists(os.path.join(d, "index.html")))
+
+
+class TestBenchmark(unittest.TestCase):
+    def test_benchmark(self):
+        res = benchmark(kinds=["mandelbrot"], size=(20, 20), max_iter=30, trials=1)
+        self.assertEqual(len(res), 1)
+        self.assertGreater(res[0]["pixels_per_sec"], 0)
+
+
 class TestCLI(unittest.TestCase):
     def test_info(self):
         from fractal import build_cli
         parser = build_cli()
-        # parse should not raise
         args = parser.parse_args(["info"])
         self.assertEqual(args.command, "info")
+
+    def test_render_parse(self):
+        from fractal import build_cli
+        parser = build_cli()
+        args = parser.parse_args(["render", "--kind", "julia",
+                                   "--julia-c=-0.7,0.27",
+                                   "--supersample", "2"])
+        self.assertEqual(args.kind, "julia")
+
+    def test_explore_parse(self):
+        from fractal import build_cli
+        parser = build_cli()
+        args = parser.parse_args(["explore", "--grid", "3", "--radius", "1.0"])
+        self.assertEqual(args.grid, 3)
+        self.assertEqual(args.radius, 1.0)
 
 
 if __name__ == "__main__":

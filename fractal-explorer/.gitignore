@@ -1,0 +1,14 @@
+# Generated output
+gallery_output/
+zoom_frames/
+julia_grid/
+*.png
+*.ppm
+*.svg
+!examples/*.png
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/

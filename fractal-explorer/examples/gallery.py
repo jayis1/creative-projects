@@ -1,7 +1,16 @@
 """Example gallery: render a few representative fractals to PNG/ASCII."""
 from __future__ import annotations
 import os
-from fractal import Viewport, render_fractal, render_mandelbrot_hp, write_png, write_ascii
+import sys
+
+# Allow running from anywhere by adding the project root to sys.path.
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_ROOT = os.path.dirname(_HERE)
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
+
+from fractal import (Viewport, render_fractal, render_mandelbrot_hp,
+                      write_png, write_ascii)
 
 OUT = os.path.join(os.path.dirname(__file__), "..", "gallery_output")
 OUT = os.path.abspath(OUT)
