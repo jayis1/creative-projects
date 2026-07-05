@@ -690,18 +690,71 @@ def _compute_pixel(c: complex, kind: str, fn, kw, max_iter, coloring, palette,
     if coloring == "trap":
         if trap is None:
             trap = PointTrap()
-        # re-run iteration tracking min distance to trap
+        # Re-run the iteration tracking the minimum distance to the trap.
+        # We must use the *actual* iterator for this fractal kind so the
+        # tracked orbit matches the real orbit (e.g. Burning Ship takes
+        # abs() of components, Phoenix uses a two-term recurrence, etc.).
+        # We re-derive the starting point and step function per kind.
         z = c if kind == "julia" else 0
+        z_prev = 0  # for Phoenix two-term recurrence
         min_d = float("inf")
+        # Pull fractal-specific params out of kw for the re-run.
+        _power = kw.get("power", 2.0)
+        _julia_c = kw.get("julia_c", -0.7 + 0.27015j)
+        _phoenix_c = kw.get("phoenix_c", -0.5)
+        _variant = kw.get("variant", 1)
         for _ in range(it):
             d = trap.distance(z)
             if d < min_d:
                 min_d = d
-            # advance one step (approximate; recompute z)
+            # Advance one step using the correct formula for this kind.
             if kind == "julia":
-                z = z * z + kw.get("julia_c", -0.7 + 0.27015j)
+                z = (z * z + _julia_c if _power == 2
+                     else z ** int(_power) + _julia_c if _power == int(_power)
+                     else complex(z) ** _power + _julia_c)
+            elif kind == "burning_ship":
+                zr, zi = abs(z.real), abs(z.imag)
+                zz = complex(zr, zi)
+                z = (zz * zz + c if _power == 2
+                     else zz ** int(_power) + c)
+            elif kind == "tricorn":
+                z = (z.real * z.real - z.imag * z.imag
+                     - 2j * z.real * z.imag + c)
+            elif kind == "celtic":
+                zr2 = z.real * z.real - z.imag * z.imag
+                zi2 = 2 * z.real * z.imag
+                z = complex(abs(zr2), zi2) + c
+            elif kind == "phoenix":
+                if _power == 2:
+                    z_next = z * z + c + _phoenix_c * z_prev
+                else:
+                    z_next = z ** int(_power) + c + _phoenix_c * z_prev
+                z_prev = z
+                z = z_next
+            elif kind == "magnet":
+                z2 = z * z
+                num = z2 + c
+                den = 2 * z2 + c - 1
+                if den == 0:
+                    break
+                z = (num / den) ** 2
+            elif kind == "newton":
+                # Newton doesn't have a meaningful "orbit trap" but we
+                # still track the iteration point's distance to the trap.
+                if _power == int(_power):
+                    zp = z ** int(_power)
+                    dz = int(_power) * z ** (int(_power) - 1)
+                else:
+                    zp = complex(z) ** _power
+                    dz = _power * (complex(z) ** (_power - 1))
+                if dz == 0:
+                    break
+                z = z - (zp - 1) / dz
             else:
-                z = z * z + c
+                # mandelbrot / multibrot
+                z = (z * z + c if _power == 2
+                     else z ** int(_power) + c if _power == int(_power)
+                     else complex(z) ** _power + c)
         scaled = math.sqrt(min_d) if min_d < float("inf") else 0.0
         idx = max(0, min(palette_size - 1,
                         int(scaled * (palette_size - 1) * 5)))
@@ -846,10 +899,15 @@ def render_fractal(kind: str, viewport: Viewport, width: int, height: int,
 
     palette = get_palette(palette_name, palette_size)
     # Adjust viewport height to match pixel aspect ratio (keep width fixed).
+    # Bug fix: previously this mutated the caller's Viewport in place; now
+    # we create a local copy so the caller's object is untouched.
     px_aspect = width / height
     plane_aspect = viewport.width / viewport.height
     if abs(plane_aspect - px_aspect) > 1e-9:
-        viewport.height = viewport.width / px_aspect
+        viewport = Viewport(viewport.center, viewport.width,
+                            viewport.width / px_aspect)
+    else:
+        viewport = Viewport(viewport.center, viewport.width, viewport.height)
 
     x_min, x_max = viewport.x_range()
     y_min, y_max = viewport.y_range()
@@ -955,10 +1013,14 @@ def render_histogram_coloring(kind: str, viewport: Viewport, width: int,
         raise ValueError("max_iter must be positive")
 
     palette = get_palette(palette_name, palette_size)
+    # Bug fix: don't mutate the caller's Viewport — make a local copy.
     px_aspect = width / height
     plane_aspect = viewport.width / viewport.height
     if abs(plane_aspect - px_aspect) > 1e-9:
-        viewport.height = viewport.width / px_aspect
+        viewport = Viewport(viewport.center, viewport.width,
+                            viewport.width / px_aspect)
+    else:
+        viewport = Viewport(viewport.center, viewport.width, viewport.height)
 
     x_min, x_max = viewport.x_range()
     y_min, y_max = viewport.y_range()
@@ -1047,30 +1109,35 @@ def render_mandelbrot_hp(viewport: Viewport, width: int, height: int,
     if prec < 10:
         raise ValueError("prec must be >= 10")
 
-    getcontext().prec = prec
+    # Use a *local* decimal context so we don't leak precision changes into
+    # the global state (which would affect any other Decimal user in the
+    # process). Bug fix: previously this called getcontext().prec = prec.
+    from decimal import localcontext
     palette = get_palette(palette_name, palette_size)
     x_min, x_max = viewport.x_range()
     y_min, y_max = viewport.y_range()
-    x_min = Decimal(repr(x_min))
-    x_max = Decimal(repr(x_max))
-    y_min = Decimal(repr(y_min))
-    y_max = Decimal(repr(y_max))
-    dx = (x_max - x_min) / width
-    dy = (y_max - y_min) / height
-    bailout_sq = Decimal(1 << 16)
+    with localcontext() as ctx:
+        ctx.prec = prec
+        x_min = Decimal(repr(x_min))
+        x_max = Decimal(repr(x_max))
+        y_min = Decimal(repr(y_min))
+        y_max = Decimal(repr(y_max))
+        dx = (x_max - x_min) / width
+        dy = (y_max - y_min) / height
+        bailout_sq = Decimal(1 << 16)
 
-    pixels = []
-    t0 = time.time()
-    for row in range(height):
-        ci = y_min + (Decimal(row) + Decimal("0.5")) * dy
-        for col in range(width):
-            cr = x_min + (Decimal(col) + Decimal("0.5")) * dx
-            it, z2 = mandelbrot_decimal(cr, ci, max_iter, bailout_sq, prec)
-            if it >= max_iter:
-                pixels.append(interior_color)
-            else:
-                idx = it % palette_size
-                pixels.append(palette[idx])
+        pixels = []
+        t0 = time.time()
+        for row in range(height):
+            ci = y_min + (Decimal(row) + Decimal("0.5")) * dy
+            for col in range(width):
+                cr = x_min + (Decimal(col) + Decimal("0.5")) * dx
+                it, z2 = mandelbrot_decimal(cr, ci, max_iter, bailout_sq, prec)
+                if it >= max_iter:
+                    pixels.append(interior_color)
+                else:
+                    idx = it % palette_size
+                    pixels.append(palette[idx])
     stats = {"width": width, "height": height, "kind": "mandelbrot-hp",
              "prec": prec, "max_iter": max_iter,
              "elapsed": round(time.time() - t0, 4)}
@@ -1332,19 +1399,51 @@ def _load_config(path: str):
     return json.loads(text)
 
 
-def _merge_config(args, cfg: dict):
+def _merge_config(args, cfg: dict, explicit: Optional[set] = None):
     """Merge config-dict values into an argparse Namespace.
 
-    Config values override argparse defaults but do NOT override values the
-    user passed explicitly on the command line. We detect "user did not pass"
-    by checking if the argparse default is still in place — this is handled by
-    the caller marking explicitly-passed args.
+    Config values fill in attributes that the user did *not* explicitly pass
+    on the command line. ``explicit`` is the set of attribute names that were
+    explicitly provided via CLI flags (detected by comparing against the
+    argparse defaults). Attributes in ``explicit`` are never overridden.
     """
+    explicit = explicit or set()
     for k, v in cfg.items():
         ak = k.replace("-", "_")
-        if hasattr(args, ak):
+        if hasattr(args, ak) and ak not in explicit:
             setattr(args, ak, v)
     return args
+
+
+def _detect_explicit_args(parser, argv):
+    """Return the set of dest names the user explicitly passed on the CLI.
+
+    We scan ``argv`` for option strings (e.g. ``--kind``) and map each to its
+    argparse ``dest``. We walk both the top-level parser *and* any subparsers
+    (recursively) so that subcommand flags are detected.
+    """
+    explicit = set()
+    seen_strings = set()
+    # Collect all option strings from the parser and its subparsers.
+    all_option_strings = []  # list of (option_string, dest)
+
+    def _walk(p):
+        for action in p._actions:
+            all_option_strings.append((action.option_strings, action.dest))
+            # subparsers action: recurse into each subparser
+            if hasattr(action, "choices") and isinstance(action.choices, dict):
+                for sub in action.choices.values():
+                    _walk(sub)
+
+    _walk(parser)
+
+    # Find which option strings actually appear in argv.
+    for opt_strings, dest in all_option_strings:
+        for opt in opt_strings:
+            if opt in argv:
+                explicit.add(dest)
+                break
+    return explicit
 
 
 # --------------------------------------------------------------------------- #
@@ -1355,24 +1454,44 @@ def _parse_complex(s):
     """Parse a complex number from a string.
 
     Accepts ``"re,im"``, ``"re+j·im"`` (e.g. ``"-0.7+0.27j"``), or a bare real.
+
+    Raises :class:`ValueError` with a clear message on malformed input.
     """
     if s is None:
         return None
     s = s.strip()
     if "j" in s or "J" in s:
-        return complex(s.replace(" ", ""))
+        try:
+            return complex(s.replace(" ", ""))
+        except ValueError:
+            raise ValueError(f"bad complex number: {s!r}")
     if "," in s:
-        re, im = s.split(",")
-        return complex(float(re), float(im))
-    return complex(float(s))
+        parts = s.split(",")
+        if len(parts) != 2:
+            raise ValueError(f"expected 're,im' but got {s!r}")
+        try:
+            return complex(float(parts[0]), float(parts[1]))
+        except ValueError:
+            raise ValueError(f"bad complex number: {s!r}")
+    try:
+        return complex(float(s))
+    except ValueError:
+        raise ValueError(f"bad complex number: {s!r}")
 
 
 def _parse_rgb(s):
-    """Parse an ``"r,g,b"`` string into a 3-tuple of ints in [0,255]."""
-    parts = [int(x.strip()) for x in s.split(",")]
+    """Parse an ``"r,g,b"`` string into a 3-tuple of ints in [0,255].
+
+    Raises :class:`ValueError` with a clear message on malformed input.
+    """
+    parts = s.split(",")
     if len(parts) != 3:
-        raise ValueError(f"bad RGB: {s!r}")
-    return tuple(_clamp_byte(p) for p in parts)
+        raise ValueError(f"expected 'r,g,b' but got {s!r}")
+    try:
+        vals = [int(x.strip()) for x in parts]
+    except ValueError:
+        raise ValueError(f"bad RGB (non-integer): {s!r}")
+    return tuple(_clamp_byte(p) for p in vals)
 
 
 # --------------------------------------------------------------------------- #
@@ -1426,16 +1545,20 @@ def _build_trap(args):
     return None
 
 
-def _apply_config_file(args):
-    """Load a config file (if any) and merge its values into args."""
+def _apply_config_file(args, explicit=None):
+    """Load a config file (if any) and merge its values into args.
+
+    ``explicit`` is the set of dest names the user explicitly passed on the
+    CLI; these are never overridden by config values. If ``None``, all
+    attributes are overridable (back-compat with direct calls).
+    """
     if not args.config:
         return args
     cfg = _load_config(args.config)
-    return _merge_config(args, cfg)
+    return _merge_config(args, cfg, explicit=explicit)
 
 
 def cmd_render(args):
-    args = _apply_config_file(args)
     center = _parse_complex(args.center)
     vp = Viewport(center, args.viewport_width, args.viewport_height)
     jc = _parse_complex(args.julia_c) if args.julia_c else None
@@ -1613,9 +1736,15 @@ def build_cli():
 def main(argv=None):
     """CLI entry point."""
     parser = build_cli()
-    args = parser.parse_args(argv)
+    raw_argv = argv if argv is not None else sys.argv[1:]
+    args = parser.parse_args(raw_argv)
     logging.basicConfig(level=getattr(logging, args.log_level.upper(),
                                        logging.WARNING))
+    # Detect which dest names the user explicitly passed so that a --config
+    # file does not silently override CLI flags.
+    explicit = _detect_explicit_args(parser, raw_argv)
+    if hasattr(args, "config") and args.config:
+        args = _apply_config_file(args, explicit=explicit)
     args.func(args)
 
 

@@ -285,6 +285,57 @@ python3 -m unittest tests.test_fractal -v
 python3 -m pytest tests/
 ```
 
+The test suite has 77 tests across two files:
+- `tests/test_fractal.py` — 68 tests covering palettes, coloring, fractals,
+  rendering, orbit traps, deep zoom, I/O, zoom sequences, Julia explorer,
+  benchmark, and CLI parsing.
+- `tests/test_bugs.py` — 9 regression tests for the bugs found and fixed
+  during the Phase 3 bug hunt (see below).
+
+## Known Issues (Resolved)
+
+The following bugs were found during the bug hunt and fixed. Each has a
+regression test in `tests/test_bugs.py`.
+
+1. **Trap coloring used the wrong orbit formula for non-Mandelbrot fractals.**
+   The orbit-trap coloring re-ran the iteration with a hardcoded
+   `z = z*z + c` step, ignoring the fractal kind (Burning Ship, Tricorn,
+   Celtic, Phoenix, Magnet, Newton) and the `power` parameter. This produced
+   flat single-colour images for any fractal other than power-2
+   Mandelbrot/Julia. **Fix:** the re-run now uses the correct per-kind
+   iteration formula (Burning Ship takes `abs()` of components, Phoenix uses
+   the two-term recurrence, Tricorn uses `conj(z)²`, etc.). *(test_bug01)*
+
+2. **`_merge_config` silently overrode CLI flags with config-file values.**
+   The docstring claimed config values would not override user-passed CLI
+   flags, but the implementation did override them unconditionally. **Fix:**
+   `_merge_config` now accepts an `explicit` set of dest names that are
+   never overridden; `main()` detects which flags the user explicitly
+   passed (by scanning `sys.argv` for option strings, recursing into
+   subparsers) and passes that set through. *(test_bug07)*
+
+3. **`render_mandelbrot_hp` modified the global `decimal` context.**
+   Setting `getcontext().prec = prec` is a process-wide side effect that
+   would corrupt any other `Decimal` user in the same process. **Fix:**
+   use `decimal.localcontext()` so the precision change is scoped to the
+   render call only. *(test_bug08)*
+
+4. **`render_fractal` mutated the caller's `Viewport` object.**
+   The aspect-ratio adjustment wrote `viewport.height = ...` in place, so
+   calling `render_fractal` modified the caller's viewport — a surprising
+   and bug-prone side effect. **Fix:** create a local `Viewport` copy
+   instead of mutating the argument. *(test_bug12)*
+
+5. **`render_histogram_coloring` mutated the caller's `Viewport` object.**
+   Same aspect-ratio mutation bug as `render_fractal`. **Fix:** make a local
+   copy. *(test_bug15)*
+
+6. **`_parse_complex` and `_parse_rgb` raised unhelpful errors on malformed
+   input.** `_parse_complex("1,2,3")` raised `ValueError: too many values to
+   unpack`; `_parse_rgb("1,2,3,4")` crashed inside the list comprehension
+   before the length check. **Fix:** validate the comma-count first and
+   raise clear `ValueError` messages. *(test_bug09)*
+
 ## License
 
 MIT.
