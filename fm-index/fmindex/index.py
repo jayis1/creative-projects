@@ -23,7 +23,7 @@ wavelet tree.  Queries are O(|pattern| log |Σ|) for count, and O(occ · log n
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Iterator, List, Optional, Tuple
+from typing import Callable, Dict, Iterator, List, Optional, Tuple
 
 from .bwt import SENTINEL, bwt_encode
 from .suffix_array import build_suffix_array, build_suffix_array_naive
@@ -134,6 +134,23 @@ class FMIndex:
 
         # --- cache of the original text length without sentinel -----------------
         self._text_len = self.n - 1  # exclude sentinel
+        # lazy reverse SA lookup, populated on first extract()
+        self._sa_inverse: Optional[List[int]] = None
+
+    __slots__ = (
+        "_raw_text",
+        "sample_rate",
+        "n",
+        "_sa",
+        "_bwt",
+        "_wt",
+        "_c",
+        "_alphabet",
+        "alphabet_size",
+        "_sa_sampled",
+        "_text_len",
+        "_sa_inverse",
+    )
 
     # ==================================================================
     # public read-only properties
@@ -311,7 +328,7 @@ class FMIndex:
         # for _find_row_for_position via a reverse lookup of suffix array.
         # This is fine: extract() is not the hot path; count/locate are.
         # We build a reverse map SA value -> row lazily.
-        if not hasattr(self, "_sa_inverse"):
+        if self._sa_inverse is None:
             self._sa_inverse = [0] * self.n
             for row, val in enumerate(self._sa):
                 self._sa_inverse[val] = row
@@ -408,6 +425,160 @@ class FMIndex:
             for p, mm in sorted(results.items())
         ]
         return matches
+
+    # ==================================================================
+    # wildcard search (character classes / '?')
+    # ==================================================================
+    def search_wildcard(
+        self,
+        pattern: str,
+        wildcard: str = "?",
+    ) -> List[FMIndexMatch]:
+        """Search for *pattern* where *wildcard* matches any single character.
+
+        Uses recursive backward search with backtracking over the alphabet at
+        wildcard positions.  Returns matches sorted by position (exact
+        matches, zero mismatches).
+        """
+        if not pattern:
+            return []
+
+        results: Dict[int, int] = {}  # position -> always 0 (exact)
+
+        def recurse(l: int, r: int, depth: int) -> None:
+            if l >= r:
+                return
+            if depth == len(pattern):
+                for row in range(l, r):
+                    p = self._locate_row(row)
+                    if p + len(pattern) <= self._text_len:
+                        results[p] = 0
+                return
+            ch = pattern[len(pattern) - 1 - depth]
+            if ch == wildcard:
+                for c in self._alphabet:
+                    if c == SENTINEL:
+                        continue
+                    code = ord(c)
+                    rank_l = self._wt.rank(code, l)
+                    rank_r = self._wt.rank(code, r)
+                    if rank_l == rank_r:
+                        continue
+                    recurse(
+                        self._c[code] + rank_l,
+                        self._c[code] + rank_r,
+                        depth + 1,
+                    )
+            else:
+                code = ord(ch)
+                if code not in self._c:
+                    return
+                rank_l = self._wt.rank(code, l)
+                rank_r = self._wt.rank(code, r)
+                if rank_l == rank_r:
+                    return
+                recurse(
+                    self._c[code] + rank_l,
+                    self._c[code] + rank_r,
+                    depth + 1,
+                )
+
+        recurse(0, self.n, 0)
+        return [
+            FMIndexMatch(position=p, mismatches=0, pattern=pattern)
+            for p in sorted(results)
+        ]
+
+    # ==================================================================
+    # multi-pattern search
+    # ==================================================================
+    def locate_multi(
+        self,
+        patterns: List[str],
+    ) -> Dict[str, List[int]]:
+        """Locate multiple patterns in a single pass.
+
+        Returns a dict mapping each pattern to its sorted list of positions.
+        More efficient than calling :meth:`locate` separately when patterns
+        share suffixes, because backward search reuses the BWT structure.
+        """
+        return {p: self.locate(p) for p in patterns}
+
+    def count_multi(
+        self,
+        patterns: List[str],
+    ) -> Dict[str, int]:
+        """Count multiple patterns.  Returns {pattern: count}."""
+        return {p: self.count(p) for p in patterns}
+
+    # ==================================================================
+    # range query: count occurrences within a text window
+    # ==================================================================
+    def count_in_range(
+        self,
+        pattern: str,
+        pos_lo: int,
+        pos_hi: int,
+    ) -> int:
+        """Count occurrences of *pattern* whose start is in [pos_lo, pos_hi)."""
+        positions = self.locate(pattern)
+        return sum(1 for p in positions if pos_lo <= p < pos_hi)
+
+    # ==================================================================
+    # suffix-array based longest common prefix (LCP) array
+    # ==================================================================
+    def lcp_array(self) -> List[int]:
+        """Compute the LCP array via Kasai's algorithm in O(n).
+
+        LCP[i] = length of the longest common prefix between suffix SA[i] and
+        suffix SA[i-1].  LCP[0] is undefined and set to 0.
+        """
+        sa = self._sa
+        text = self._raw_text
+        n = self.n
+        rank = [0] * n
+        for i in range(n):
+            rank[sa[i]] = i
+        lcp = [0] * n
+        h = 0
+        for i in range(n):
+            if rank[i] > 0:
+                j = sa[rank[i] - 1]
+                while i + h < n and j + h < n and text[i + h] == text[j + h]:
+                    h += 1
+                lcp[rank[i]] = h
+                if h > 0:
+                    h -= 1
+            else:
+                h = 0
+        return lcp
+
+    # ==================================================================
+    # longest repeated substring (via LCP array)
+    # ==================================================================
+    def longest_repeated_substring(self, min_len: int = 1) -> Optional[Tuple[str, int]]:
+        """Return the longest substring that appears at least twice.
+
+        Returns (substring, length) or None if no repetition of at least
+        *min_len* exists.  Uses the LCP array.
+        """
+        lcp = self.lcp_array()
+        best_len = min_len - 1
+        best_pos = -1
+        for i in range(1, self.n):
+            if lcp[i] > best_len:
+                # the repeated substring is text[sa[i] : sa[i]+lcp[i]]
+                best_len = lcp[i]
+                best_pos = self._sa[i]
+        if best_pos < 0:
+            return None
+        # the substring may include the sentinel if it reaches the end; trim
+        sub = self._raw_text[best_pos : best_pos + best_len]
+        if SENTINEL in sub:
+            sub = sub[: sub.index(SENTINEL)]
+        if len(sub) < min_len:
+            return None
+        return (sub, len(sub))
 
     # ==================================================================
     # convenience

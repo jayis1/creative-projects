@@ -88,6 +88,7 @@ def _deserialize_index(data: dict) -> FMIndex:
     for i in range(idx.n):
         if idx._sa[i] % idx.sample_rate == 0:
             idx._sa_sampled[i] = idx._sa[i]
+    idx._sa_inverse = None
     return idx
 
 
@@ -226,6 +227,85 @@ def cmd_bench(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
+# wildcard
+# ---------------------------------------------------------------------------
+def cmd_wildcard(args: argparse.Namespace) -> int:
+    idx = _load_index(args.index)
+    matches = idx.search_wildcard(args.pattern, wildcard=args.wildcard_char)
+    for m in matches:
+        print(m.position)
+    print(f"# {len(matches)} match(es)")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# multi
+# ---------------------------------------------------------------------------
+def cmd_multi(args: argparse.Namespace) -> int:
+    idx = _load_index(args.index)
+    patterns = args.patterns
+    if args.file:
+        with open(args.file, "r", encoding="utf-8") as f:
+            patterns = [line.rstrip("\n") for line in f if line.strip()]
+    results = idx.count_multi(patterns)
+    if args.json:
+        print(json.dumps(results))
+    else:
+        for p, c in sorted(results.items()):
+            print(f"{c:>6} {p}")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# lcp
+# ---------------------------------------------------------------------------
+def cmd_lcp(args: argparse.Namespace) -> int:
+    idx = _load_index(args.index)
+    lcp = idx.lcp_array()
+    sa = idx.suffix_array
+    if args.limit:
+        rows = list(zip(sa[: args.limit], lcp[: args.limit]))
+    else:
+        rows = list(zip(sa, lcp))
+    for s, l in rows:
+        print(f"{l:>6} {s}")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# longest-repeat
+# ---------------------------------------------------------------------------
+def cmd_longest_repeat(args: argparse.Namespace) -> int:
+    idx = _load_index(args.index)
+    res = idx.longest_repeated_substring(min_len=args.min_len)
+    if res is None:
+        print("# no repeated substring found")
+        return 1
+    sub, length = res
+    print(f"length: {length}")
+    print(f"substring: {sub!r}")
+    positions = idx.locate(sub)
+    print(f"occurrences: {len(positions)}")
+    for p in positions[:20]:
+        print(f"  {p}")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# info
+# ---------------------------------------------------------------------------
+def cmd_info(args: argparse.Namespace) -> int:
+    idx = _load_index(args.index)
+    print(f"text length   : {idx._text_len:,}")
+    print(f"alphabet size : {idx.alphabet_size}")
+    print(f"alphabet      : {idx.alphabet}")
+    print(f"sample rate   : {idx.sample_rate}")
+    print(f"BWT length    : {idx.n:,}")
+    print(f"sampled SA rows: {len(idx._sa_sampled):,}")
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
 def build_parser() -> argparse.ArgumentParser:
@@ -295,6 +375,38 @@ def build_parser() -> argparse.ArgumentParser:
     p_bench.add_argument("--max-k", type=int, default=16, help="max pattern length")
     p_bench.add_argument("--seed", type=int, default=42, help="RNG seed")
     p_bench.set_defaults(func=cmd_bench)
+
+    # wildcard
+    p_wild = sub.add_parser("wildcard", help="Search with single-char wildcards")
+    p_wild.add_argument("index", help="index file")
+    p_wild.add_argument("pattern", help="pattern (use ? for any char)")
+    p_wild.add_argument("-w", "--wildcard-char", default="?", help="wildcard character")
+    p_wild.set_defaults(func=cmd_wildcard)
+
+    # multi
+    p_multi = sub.add_parser("multi", help="Count multiple patterns at once")
+    p_multi.add_argument("index", help="index file")
+    p_multi.add_argument("patterns", nargs="*", help="patterns to count")
+    p_multi.add_argument("-f", "--file", help="file with one pattern per line")
+    p_multi.add_argument("--json", action="store_true")
+    p_multi.set_defaults(func=cmd_multi)
+
+    # lcp
+    p_lcp = sub.add_parser("lcp", help="Print the LCP array")
+    p_lcp.add_argument("index", help="index file")
+    p_lcp.add_argument("--limit", type=int, default=0, help="limit rows")
+    p_lcp.set_defaults(func=cmd_lcp)
+
+    # longest-repeat
+    p_lr = sub.add_parser("longest-repeat", help="Find the longest repeated substring")
+    p_lr.add_argument("index", help="index file")
+    p_lr.add_argument("--min-len", type=int, default=1, help="minimum length")
+    p_lr.set_defaults(func=cmd_longest_repeat)
+
+    # info
+    p_info = sub.add_parser("info", help="Print index statistics")
+    p_info.add_argument("index", help="index file")
+    p_info.set_defaults(func=cmd_info)
 
     return parser
 

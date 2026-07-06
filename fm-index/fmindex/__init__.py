@@ -19,8 +19,11 @@ The package is organised into small, focused modules:
 
 from .index import FMIndex, FMIndexMatch
 from .bwt import bwt_encode, bwt_decode
-from .wavelet import WaveletTree
+from .wavelet import WaveletTree, BitArray
+from .wavelet_matrix import WaveletMatrix
 from .suffix_array import build_suffix_array, build_suffix_array_naive
+from . import serialize
+from . import analysis
 
 __all__ = [
     "FMIndex",
@@ -28,8 +31,12 @@ __all__ = [
     "bwt_encode",
     "bwt_decode",
     "WaveletTree",
+    "WaveletMatrix",
+    "BitArray",
     "build_suffix_array",
     "build_suffix_array_naive",
+    "serialize",
+    "analysis",
 ]
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
