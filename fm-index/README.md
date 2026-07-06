@@ -204,6 +204,32 @@ fmindex info    index.pkl
 fmindex bench   index.pkl -q 5000 --min-k 6 --max-k 20
 ```
 
+## Known Issues (Resolved)
+
+The following bugs were found during the bug-hunt phase and fixed:
+
+1. **`extract()` off-by-one** — The BWT character at row `r` is `text[SA[r] - 1]`
+   (the character *preceding* the suffix), not the suffix's first character.
+   The original `extract()` started at the row for `SA = pos + length - 1`,
+   which read `text[pos + length - 2]` instead of `text[pos + length - 1]`.
+   **Fix:** start at the row for `SA = pos + length` (one past the last desired
+   character), so the first BWT read gives `text[pos + length - 1]`.
+   *(regression test: `test_extract_randomized`, `test_extract_boundaries`)*
+
+2. **Dead code in `search_approx()`** — A forward-search `recurse` function
+   was defined but never called (only `recurse_back` was used). Removed the
+   dead code and added a clear comment explaining the backward-search
+   recursion.
+
+3. **Dead/misleading code in `serialize.save_binary()`** — A leftover
+   `alpha_bytes` line used the wrong struct format (`<IH` = uint16 count)
+   before being overwritten by the correct `<HI` format. Removed the dead
+   line.
+
+4. **`BitArray.count_ones()` on empty array** — Would raise `IndexError` if
+   called on a `BitArray()` with no bits. Added a guard for empty `_ranks`.
+   *(regression test: `test_bitarray_empty`)*
+
 ## Module layout
 
 ```

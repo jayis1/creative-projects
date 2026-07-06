@@ -122,6 +122,7 @@ class BitArray:
         return lo
 
     def count_ones(self) -> int:
+        # Guard against empty _ranks (BitArray with no bits built).
         return self._ranks[-1] if self._ranks else 0
 
     def count_zeros(self) -> int:

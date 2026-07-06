@@ -271,20 +271,18 @@ class FMIndex:
             raise IndexError(
                 f"extract({pos}, {length}) out of range [0, {self._text_len})"
             )
-        # Find the row whose SA value is `pos` by walking LF from a sampled
-        # row.  Simplest robust approach: walk forward from a sampled entry.
-        # We pick the sampled row whose SA value is closest to but <= pos,
-        # then walk forward via the inverse LF (which we can get from the
-        # wavelet tree's select).
+        # We read the text backwards using the LF-mapping.
         #
-        # However, forward extraction needs the "next" character which is
-        # F[LF^{-1}(row)].  An easier and equally valid approach given that
-        # we have the BWT and the C array: walk *backwards* from the end
-        # position using LF to read characters in reverse, which is the
-        # standard FM-index extract.
-        end = pos + length - 1
-        # locate the row whose SA value == end
-        row = self._find_row_for_position(end)
+        # The BWT character at row r is text[SA[r] - 1] (the character
+        # *preceding* the suffix start), or '$' if SA[r] == 0.  So to read
+        # text[end], we need the row whose SA value is end+1, whose BWT
+        # character is text[end].
+        #
+        # We start at the row for SA = pos + length (one past the last char we
+        # want), read its BWT (= text[pos+length-1]), apply LF to get the row
+        # for SA = pos+length-1, read text[pos+length-2], and so on.
+        end_plus_1 = pos + length  # SA value whose BWT = text[pos+length-1]
+        row = self._find_row_for_position(end_plus_1)
         chars: List[str] = []
         for _ in range(length):
             chars.append(chr(self._wt.access(row)))
@@ -356,40 +354,10 @@ class FMIndex:
 
         results: Dict[int, int] = {}  # position -> min mismatches
 
-        def recurse(l: int, r: int, depth: int, mismatches: int) -> None:
-            if l >= r:
-                return
-            if depth == len(pattern):
-                # record all positions in [l, r)
-                for row in range(l, r):
-                    p = self._locate_row(row)
-                    if p + len(pattern) <= self._text_len:
-                        existing = results.get(p)
-                        if existing is None or mismatches < existing:
-                            results[p] = mismatches
-                return
-            ch = pattern[depth]
-            ch_code = ord(ch)
-            # try every alphabet character at this depth
-            for c in self._alphabet:
-                if c == SENTINEL:
-                    continue
-                code = ord(c)
-                rank_l = self._wt.rank(code, l)
-                rank_r = self._wt.rank(code, r)
-                if rank_l == rank_r:
-                    continue
-                new_l = self._c[code] + rank_l
-                new_r = self._c[code] + rank_r
-                add_mm = 0 if code == ch_code else 1
-                if mismatches + add_mm > max_mismatches:
-                    continue
-                recurse(new_l, new_r, depth + 1, mismatches + add_mm)
-
-        # We search forward (depth = 0 is the first char).  But backward search
-        # processes the pattern from the end.  So we reverse the recursion:
-        # treat depth as the index from the *end* of the pattern.
-        # Re-implement: iterate pattern from last char to first.
+        # Backward search with backtracking: process the pattern from the last
+        # character to the first (depth 0 = last char).  At each depth we try
+        # every alphabet character, accumulating mismatches and pruning
+        # branches that exceed max_mismatches.
         def recurse_back(l: int, r: int, depth: int, mismatches: int) -> None:
             if l >= r:
                 return

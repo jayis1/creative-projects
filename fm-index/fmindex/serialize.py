@@ -100,9 +100,7 @@ def save_binary(idx: FMIndex, path: str) -> None:
     )
     text_bytes = text.encode("utf-8")
     bwt_bytes = bwt.encode("utf-8")
-    alpha_bytes = b"".join(struct.pack("<IH", code, counts[code]) for code in sorted_codes)
-    # Note: counts[code] fits in uint32; struct "<IH" is code(uint16)+count... hmm.
-    # Let me use a wider format for counts to be safe.
+    # Each alphabet entry: code (uint16) + count (uint32), little-endian.
     alpha_bytes = b"".join(
         struct.pack("<HI", code, counts[code]) for code in sorted_codes
     )
