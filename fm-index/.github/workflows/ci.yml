@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    paths:
+      - 'fm-index/**'
+  pull_request:
+    paths:
+      - 'fm-index/**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.11', '3.12', '3.13']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-cov
+          cd fm-index && pip install -e .
+
+      - name: Run tests
+        run: |
+          cd fm-index
+          python -m pytest tests/ -v --cov=fmindex --cov-report=term-missing
+
+      - name: Run smoke test
+        run: |
+          cd fm-index
+          python smoke_test.py
+
+      - name: Run examples
+        run: |
+          cd fm-index
+          for f in examples/*.py; do
+            echo "Running $f..."
+            python "$f" || exit 1
+          done

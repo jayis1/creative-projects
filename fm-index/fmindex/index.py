@@ -28,6 +28,9 @@ from typing import Callable, Dict, Iterator, List, Optional, Tuple
 from .bwt import SENTINEL, bwt_encode
 from .suffix_array import build_suffix_array, build_suffix_array_naive
 from .wavelet import WaveletTree
+from .wavelet_matrix import WaveletMatrix
+from .errors import ConstructionError, QueryError
+from .logging_utils import get_logger, log_time
 
 
 @dataclass
@@ -79,16 +82,24 @@ class FMIndex:
         text: str,
         sample_rate: int = 16,
         use_naive_sa: bool = False,
+        backend: str = "wavelet_tree",
     ):
         if not isinstance(text, str):
             raise TypeError("text must be a str")
         if sample_rate < 1:
             raise ValueError("sample_rate must be >= 1")
+        if backend not in ("wavelet_tree", "wavelet_matrix"):
+            raise ValueError(
+                f"backend must be 'wavelet_tree' or 'wavelet_matrix', got {backend!r}"
+            )
+
+        self._logger = get_logger()
+        self._backend_name = backend
 
         # --- handle the sentinel ------------------------------------------------
         if SENTINEL in text:
             if text.count(SENTINEL) > 1 or text[-1] != SENTINEL:
-                raise ValueError(
+                raise ConstructionError(
                     "sentinel '$' may only appear once, as the final character"
                 )
             self._raw_text = text
@@ -99,16 +110,22 @@ class FMIndex:
         self.n = len(self._raw_text)
 
         # --- build the suffix array and BWT ------------------------------------
-        if use_naive_sa:
-            sa = build_suffix_array_naive(self._raw_text)
-        else:
-            sa = build_suffix_array(self._raw_text)
+        with log_time(f"SA construction (n={self.n})"):
+            if use_naive_sa:
+                sa = build_suffix_array_naive(self._raw_text)
+            else:
+                sa = build_suffix_array(self._raw_text)
         self._sa = sa
         bwt, sa = bwt_encode(self._raw_text, sa)
         self._bwt = bwt
 
-        # --- wavelet tree over the BWT ------------------------------------------
-        self._wt = WaveletTree([ord(c) for c in bwt])
+        # --- wavelet tree or matrix over the BWT -------------------------------
+        with log_time(f"wavelet construction ({backend})"):
+            bwt_codes = [ord(c) for c in bwt]
+            if backend == "wavelet_matrix":
+                self._wt = WaveletMatrix(bwt_codes)
+            else:
+                self._wt = WaveletTree(bwt_codes)
 
         # --- C array: number of chars lex-smaller than c -----------------------
         # counts of every symbol in the text (== counts in BWT since BWT is a perm)
@@ -138,6 +155,8 @@ class FMIndex:
         self._sa_inverse: Optional[List[int]] = None
 
     __slots__ = (
+        "_logger",
+        "_backend_name",
         "_raw_text",
         "sample_rate",
         "n",
@@ -174,6 +193,11 @@ class FMIndex:
     def suffix_array(self) -> List[int]:
         """The full suffix array (a copy)."""
         return list(self._sa)
+
+    @property
+    def backend(self) -> str:
+        """The wavelet backend in use (``"wavelet_tree"`` or ``"wavelet_matrix"``)."""
+        return self._backend_name
 
     # ==================================================================
     # LF mapping
@@ -214,6 +238,8 @@ class FMIndex:
 
     def count(self, pattern: str) -> int:
         """Return the number of occurrences of *pattern* in the text."""
+        if not isinstance(pattern, str):
+            raise TypeError("pattern must be a str")
         interval = self._backward_search_interval(pattern)
         if interval is None:
             return 0
@@ -560,8 +586,81 @@ class FMIndex:
     def __repr__(self) -> str:
         return (
             f"FMIndex(text_len={self._text_len}, alphabet_size={self.alphabet_size}, "
-            f"sample_rate={self.sample_rate})"
+            f"sample_rate={self.sample_rate}, backend={self._backend_name!r})"
         )
+
+    # ==================================================================
+    # batch locate: multiple patterns in one call
+    # ==================================================================
+    def batch_locate(
+        self,
+        patterns: List[str],
+        unique: bool = True,
+    ) -> Dict[str, List[int]]:
+        """Locate multiple patterns efficiently.
+
+        Parameters
+        ----------
+        patterns:
+            List of patterns to locate.
+        unique:
+            If True, deduplicate identical patterns (locate once, copy result).
+
+        Returns a dict mapping each pattern to its sorted list of positions.
+        """
+        if not isinstance(patterns, list):
+            raise TypeError("patterns must be a list of str")
+        results: Dict[str, List[int]] = {}
+        cache: Dict[str, List[int]] = {}
+        for p in patterns:
+            if not isinstance(p, str):
+                raise TypeError("each pattern must be a str")
+            if unique and p in cache:
+                results[p] = list(cache[p])
+            else:
+                pos = self.locate(p)
+                cache[p] = pos
+                results[p] = list(pos)
+        return results
+
+    # ==================================================================
+    # first / last occurrence
+    # ==================================================================
+    def first_occurrence(self, pattern: str) -> Optional[int]:
+        """Return the first (smallest) position of *pattern*, or None."""
+        positions = self.locate(pattern)
+        return positions[0] if positions else None
+
+    def last_occurrence(self, pattern: str) -> Optional[int]:
+        """Return the last (largest) position of *pattern*, or None."""
+        positions = self.locate(pattern)
+        return positions[-1] if positions else None
+
+    # ==================================================================
+    # memory estimation
+    # ==================================================================
+    def estimate_memory_bytes(self) -> int:
+        """Estimate the in-memory size of the index in bytes.
+
+        Accounts for the BWT string, suffix array, sampled SA, C array,
+        and wavelet tree/matrix bit arrays.  This is an approximation
+        (Python object overhead is hard to measure exactly).
+        """
+        # suffix array: list of n ints
+        sa_bytes = self.n * 28  # ~28 bytes per Python int in a list
+        # BWT string: n bytes (plus str overhead)
+        bwt_bytes = self.n + 49
+        # sampled SA dict
+        sampled_bytes = len(self._sa_sampled) * 100  # rough dict entry cost
+        # C array dict
+        c_bytes = self.alphabet_size * 100
+        # wavelet tree: ~n bits per level × log(σ) levels
+        import math
+        levels = max(1, math.ceil(math.log2(self.alphabet_size))) if self.alphabet_size > 1 else 1
+        wt_bytes = (self.n * levels) // 8
+        # raw text (if retained)
+        text_bytes = self.n + 49
+        return sa_bytes + bwt_bytes + sampled_bytes + c_bytes + wt_bytes + text_bytes
 
     # ==================================================================
     # iteration over all distinct k-mers (optional helper)

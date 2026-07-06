@@ -4,18 +4,34 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fmindex"
-version = "1.0.0"
+version = "2.0.0"
 description = "FM-Index compressed full-text index in pure Python"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "creative-projects" }]
-keywords = ["fm-index", "bwt", "suffix-array", "wavelet-tree", "compression", "full-text-index"]
+keywords = [
+    "fm-index", "bwt", "suffix-array", "wavelet-tree", "wavelet-matrix",
+    "compression", "full-text-index", "bioinformatics", "text-search",
+    "run-length-encoding", "burrows-wheeler",
+]
 classifiers = [
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "License :: OSI Approved :: MIT License",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Topic :: Text Processing :: Indexing",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
 ]
+
+[project.optional-dependencies]
+yaml = ["pyyaml>=6.0"]
+dev = ["pytest>=7.0", "pytest-cov>=4.0"]
 
 [project.scripts]
 fmindex = "fmindex.cli:main"
@@ -25,3 +41,4 @@ include = ["fmindex*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "-q"
