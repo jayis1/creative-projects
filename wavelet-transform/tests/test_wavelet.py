@@ -43,7 +43,7 @@ class TestWavelets(unittest.TestCase):
         with self.assertRaises(ValueError):
             Daubechies(0)
         with self.assertRaises(ValueError):
-            Daubechies(5)
+            Daubechies(11)
 
     def test_symlet(self):
         for N in [2, 3, 4, 5]:
