@@ -176,11 +176,15 @@ class Engine:
         raise EngineError(f"Unknown AST node type: {type(node).__name__}")
 
     def _resolve_ref(self, sheet_name: str, row: int, col: int) -> Any:
-        """Resolve a cell reference to its value (recursively evaluating)."""
+        """Resolve a cell reference to its value (recursively evaluating).
+
+        Empty cells return None, which is treated as 0 in arithmetic
+        (via _coerce_num) and as "" in string concatenation (via _to_str_val).
+        """
         if sheet_name not in self.sheets:
             return CellError(ErrorType.REF, f"Sheet {sheet_name!r} not found")
         val = self.evaluate_cell(sheet_name, row, col)
-        return val if val is not None else 0.0  # empty cells = 0 in arithmetic
+        return val  # None for empty cells — handled by _coerce_num and _to_str_val
 
     def _resolve_range(self, node: RangeRef, current_sheet: str) -> List[Any]:
         """Resolve a range reference to a 2D list (list of rows) of cell values.
@@ -282,26 +286,46 @@ class Engine:
         return str(v)
 
     def _apply_comparison(self, op: str, left: Any, right: Any) -> bool:
-        """Apply a comparison operator, with Excel-like type coercion."""
-        # Excel comparison: numbers compared as numbers, strings compared as strings
-        # (case-insensitive), booleans > numbers > strings in mixed comparisons
+        """Apply a comparison operator, with Excel-like type coercion.
+
+        Excel type ordering: boolean > string > number.
+        Within same type: numbers compared numerically, strings case-insensitively.
+        """
         l, r = left, right
-        # Handle None as 0 for numeric comparison, "" for string comparison
+        # Handle None as 0 for numeric comparison
         if l is None:
             l = 0
         if r is None:
             r = 0
 
-        # If both are numeric (int/float, but not bool)
-        l_num = isinstance(l, (int, float)) and not isinstance(l, bool)
-        r_num = isinstance(r, (int, float)) and not isinstance(r, bool)
-        if l_num and r_num:
-            pass  # compare as numbers
-        elif isinstance(l, str) and isinstance(r, str):
+        # Determine type rank: bool=3, string=2, number=1
+        def _type_rank(v: Any) -> int:
+            if isinstance(v, bool):
+                return 3
+            if isinstance(v, str):
+                return 2
+            if isinstance(v, (int, float)):
+                return 1
+            return 0
+
+        l_rank = _type_rank(l)
+        r_rank = _type_rank(r)
+
+        # If different types, compare by type rank (higher rank is "greater")
+        if l_rank != r_rank:
+            if op == "=":
+                return False
+            if op == "<>":
+                return True
+            if op in (">", ">="):
+                return l_rank > r_rank
+            if op in ("<", "<="):
+                return l_rank < r_rank
+
+        # Same type — compare directly
+        if isinstance(l, str) and isinstance(r, str):
             l = l.upper()
             r = r.upper()
-        elif isinstance(l, bool) or isinstance(r, bool):
-            pass  # compare as-is (Python handles bool vs bool, bool vs int)
 
         if op == "=":
             return l == r

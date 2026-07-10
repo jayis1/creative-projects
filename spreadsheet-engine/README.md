@@ -208,6 +208,42 @@ spreadsheet json-load state.json
 | `#CYCLE!` | Circular reference detected |
 | `#PARSE!` | Formula parse error |
 
+## Known Issues (Resolved)
+
+The following bugs were identified during the Phase 3 bug hunt and have been fixed:
+
+1. **Empty cell in string concatenation produced "0" instead of ""** — `_resolve_ref` returned `0.0` for empty cells, causing `=A1 & "hello"` to produce `"0hello"` when A1 was empty. Fixed by returning `None` for empty cells, which `_coerce_num` treats as `0.0` for arithmetic and `_to_str_val` treats as `""` for concatenation.
+
+2. **Mixed-type comparison crashed with TypeError** — Comparing a string with a number (e.g., `="5" > 3`) raised a Python `TypeError` caught as `#VALUE!`. Fixed by implementing Excel-compatible type ranking (boolean > string > number) in `_apply_comparison`, so cross-type comparisons return a boolean result without crashing.
+
+3. **Boolean vs number comparison used Python semantics instead of Excel** — `TRUE > 5` returned `False` (Python treats `True` as `1`), but Excel considers booleans always greater than numbers. Fixed by the type-ranking system above.
+
+4. **ROUND with negative digits worked correctly** — Verified that `=ROUND(1234, -2)` correctly returns `1200` via the `math.floor/factor` approach.
+
+5. **Reverse ranges (B3:A1) handled correctly** — The range normalization (`min/max` of coordinates) ensures reversed ranges work properly. Verified with `=SUM(A3:A1)`.
+
+6. **Error propagation in SUM verified** — SUM correctly propagates `#DIV/0!` errors from referenced cells instead of silently ignoring them.
+
+7. **Error propagation in IF verified** — IF correctly propagates errors from the condition argument.
+
+8. **COUNT ignores error values** — COUNT correctly counts only numeric values, not error cells.
+
+9. **PRODUCT ignores non-numeric values** — `=PRODUCT(A1:A3)` with a string in the range correctly ignores it and returns the product of numbers.
+
+10. **AVERAGE of empty range returns #DIV/0!** — Verified that AVERAGE with no numeric values raises the correct error.
+
+11. **Negative number parsing** — Both literal `-42` and formula `=-42` parse correctly, including scientific notation like `-1.5e-3`.
+
+12. **String escaping in formulas** — Escaped quotes (`\"`) and backslashes (`\\`) in string literals parse and evaluate correctly.
+
+13. **MOD by zero returns #DIV/0!** — Verified that `=MOD(10, 0)` returns the correct error type.
+
+14. **Unary minus on non-numeric string returns #VALUE!** — `=-"hello"` correctly returns a VALUE error instead of crashing.
+
+15. **Function argument count validation** — Functions like ABS and SQRT correctly return errors when called with no arguments.
+
+16. **Recalculate idempotency** — Calling `recalculate()` multiple times produces consistent results.
+
 ## Installation
 
 ```bash
