@@ -32,6 +32,7 @@ class ErrorType(Enum):
     NA = "#N/A"
     CYCLE = "#CYCLE!"
     PARSE = "#PARSE!"
+    NULL = "#NULL!"
 
 
 # ---------------------------------------------------------------------------

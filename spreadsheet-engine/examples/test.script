@@ -1,0 +1,12 @@
+# Test script for spreadsheet CLI
+addsheet Revenue
+set Revenue A1 Month
+set Revenue B1 "Product A"
+set Revenue B2 10000
+set Revenue B3 12000
+set Revenue B4 15000
+set Revenue B5 =SUM(B2:B4)
+set Revenue A5 "Q1 Total"
+addsheet Summary
+set Summary A1 =Revenue!B5
+name RevenueSummary Summary A1

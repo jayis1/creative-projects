@@ -1,0 +1,44 @@
+# Spreadsheet Engine Configuration Example
+# Load with: spreadsheet load-config config.yaml
+
+sheets:
+  - name: Revenue
+    cells:
+      A1: "Month"
+      B1: "Product A"
+      C1: "Product B"
+      D1: "Total"
+      A2: "Jan"
+      B2: "10000"
+      C2: "8000"
+      D2: "=B2+C2"
+      A3: "Feb"
+      B3: "12000"
+      C3: "9500"
+      D3: "=B3+C3"
+      A4: "Mar"
+      B4: "15000"
+      C4: "11000"
+      D4: "=B4+C4"
+      A5: "Q1 Total"
+      B5: "=SUM(B2:B4)"
+      C5: "=SUM(C2:C4)"
+      D5: "=SUM(D2:D4)"
+
+  - name: Summary
+    cells:
+      A1: "Q1 Revenue"
+      B1: "=Revenue!D5"
+      A2: "Avg Monthly"
+      B2: "=AVERAGE(Revenue!D2:D4)"
+      A3: "Max Month"
+      B3: "=MAX(Revenue!D2:D4)"
+      A4: "Growth Rate"
+      B4: "=(Revenue!D4-Revenue!D2)/Revenue!D2"
+
+named_ranges:
+  Q1Total: "Summary!B1"
+  AvgMonthly: "Summary!B2"
+
+options:
+  auto_recalc: true
