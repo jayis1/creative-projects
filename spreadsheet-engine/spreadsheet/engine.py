@@ -183,7 +183,11 @@ class Engine:
         return val if val is not None else 0.0  # empty cells = 0 in arithmetic
 
     def _resolve_range(self, node: RangeRef, current_sheet: str) -> List[Any]:
-        """Resolve a range reference to a flat list of cell values."""
+        """Resolve a range reference to a 2D list (list of rows) of cell values.
+
+        For single-row or single-column ranges, returns a flat list.
+        For 2D ranges, returns a list of lists (rows).
+        """
         sheet_name = node.sheet if node.sheet else current_sheet
         if sheet_name not in self.sheets:
             return [CellError(ErrorType.REF, f"Sheet {sheet_name!r} not found")]
@@ -191,12 +195,27 @@ class Engine:
         c1, c2 = node.start.col, node.end.col
         r_lo, r_hi = min(r1, r2), max(r1, r2)
         c_lo, c_hi = min(c1, c2), max(c1, c2)
-        result = []
+        num_rows = r_hi - r_lo + 1
+        num_cols = c_hi - c_lo + 1
+
+        if num_rows == 1 or num_cols == 1:
+            # Flat list for single-row or single-column ranges
+            result = []
+            for r in range(r_lo, r_hi + 1):
+                for c in range(c_lo, c_hi + 1):
+                    val = self.evaluate_cell(sheet_name, r, c)
+                    result.append(val)
+            return result
+
+        # 2D range: return list of rows
+        rows = []
         for r in range(r_lo, r_hi + 1):
+            row = []
             for c in range(c_lo, c_hi + 1):
                 val = self.evaluate_cell(sheet_name, r, c)
-                result.append(val)
-        return result
+                row.append(val)
+            rows.append(row)
+        return rows
 
     def _apply_binop(self, op: str, left: Any, right: Any) -> Any:
         """Apply a binary operator to two evaluated values."""
@@ -485,6 +504,178 @@ class Engine:
     def display(self, sheet_name: str, max_rows: int = 20, max_cols: int = 10) -> str:
         """Display a sheet as an ASCII grid."""
         return self.get_sheet(sheet_name).to_grid(max_rows, max_cols)
+
+    # ---- named ranges ----
+
+    def define_name(self, name: str, sheet: str, ref: str) -> None:
+        """Define a named range that can be referenced in formulas."""
+        if not hasattr(self, "_named_ranges"):
+            self._named_ranges = {}
+        from .named_ranges import NamedRangeManager
+        if not hasattr(self, "_nrm"):
+            self._nrm = NamedRangeManager()
+        self._nrm.define(name, sheet, ref)
+
+    def get_name(self, name: str):
+        """Get a named range by name."""
+        if not hasattr(self, "_nrm"):
+            return None
+        return self._nrm.get(name)
+
+    def list_names(self):
+        """List all defined named ranges."""
+        if not hasattr(self, "_nrm"):
+            return {}
+        return self._nrm.list()
+
+    # ---- formula auditing ----
+
+    def trace_precedents(self, sheet: str, ref: str) -> list:
+        """Return all cells that the given cell depends on."""
+        row, col = parse_a1(ref)
+        cell = self.get_sheet(sheet).cells.get((row, col))
+        if cell is None or cell.type != CellType.FORMULA:
+            return []
+        try:
+            if cell.formula is None:
+                cell.formula = parse_formula(cell.raw)
+            refs = extract_refs(cell.formula)
+            return [(s or sheet, r, c) for s, r, c in refs]
+        except Exception:
+            return []
+
+    def trace_dependents(self, sheet: str, ref: str) -> list:
+        """Return all cells that depend on the given cell."""
+        row, col = parse_a1(ref)
+        target = (sheet, row, col)
+        deps, dependents = self._build_dependency_graph()
+        return list(dependents.get(target, set()))
+
+    def audit_cell(self, sheet: str, ref: str) -> dict:
+        """Full audit of a cell: value, formula, precedents, dependents."""
+        row, col = parse_a1(ref)
+        cell = self.get_sheet(sheet).cells.get((row, col))
+        if cell is None:
+            return {"ref": ref, "sheet": sheet, "status": "empty"}
+        return {
+            "ref": ref,
+            "sheet": sheet,
+            "raw": cell.raw,
+            "value": _format_value(cell.value),
+            "type": cell.type.name,
+            "precedents": [
+                {"sheet": s, "ref": format_a1(r, c)}
+                for s, r, c in self.trace_precedents(sheet, ref)
+            ],
+            "dependents": [
+                {"sheet": s, "ref": format_a1(r, c)}
+                for s, r, c in self.trace_dependents(sheet, ref)
+            ],
+        }
+
+    # ---- incremental recalculation ----
+
+    def recalculate_affected(self, changed_cells: list) -> dict:
+        """Recalculate only cells affected by changes to the given cells.
+
+        Args:
+            changed_cells: list of (sheet_name, row, col) tuples
+
+        Returns:
+            stats dict with 'evaluated', 'errors', 'cycles' counts
+        """
+        deps, dependents = self._build_dependency_graph()
+
+        # Collect all cells that need recalculation (transitive dependents)
+        to_recalc: set = set()
+        queue: deque = deque(changed_cells)
+        while queue:
+            key = queue.popleft()
+            if key in to_recalc:
+                continue
+            to_recalc.add(key)
+            for dep in dependents.get(key, set()):
+                if dep not in to_recalc:
+                    queue.append(dep)
+
+        # Filter to only formula cells
+        formula_cells = {k for k in to_recalc if k in deps}
+
+        # Topological sort of just the affected formula cells
+        in_degree: dict = {}
+        for key in formula_cells:
+            in_degree[key] = 0
+            for dep in deps[key]:
+                if dep in formula_cells:
+                    in_degree[key] += 1
+
+        queue: deque = deque(k for k, d in in_degree.items() if d == 0)
+        order = []
+        while queue:
+            key = queue.popleft()
+            order.append(key)
+            for dependent in dependents.get(key, set()):
+                if dependent in in_degree:
+                    in_degree[dependent] -= 1
+                    if in_degree[dependent] == 0:
+                        queue.append(dependent)
+
+        cyclic = [key for key, deg in in_degree.items() if deg > 0]
+
+        evaluated = 0
+        errors = 0
+        cycles = 0
+
+        for key in order:
+            sheet_name, row, col = key
+            self._eval_stack.clear()
+            result = self.evaluate_cell(sheet_name, row, col)
+            evaluated += 1
+            if isinstance(result, CellError):
+                if result.type == ErrorType.CYCLE:
+                    cycles += 1
+                else:
+                    errors += 1
+
+        for key in cyclic:
+            sheet_name, row, col = key
+            cell = self.sheets[sheet_name].cells.get((row, col))
+            if cell is not None:
+                cell.value = CellError(ErrorType.CYCLE, f"Circular reference at {format_a1(row, col)}")
+                cell.type = CellType.ERROR
+                cycles += 1
+
+        return {"evaluated": evaluated, "errors": errors, "cycles": cycles}
+
+    # ---- sheet operations ----
+
+    def copy_sheet(self, src: str, dest: str) -> None:
+        """Copy all cells from src sheet to dest sheet (creates dest if needed)."""
+        src_sheet = self.get_sheet(src)
+        if dest not in self.sheets:
+            self.add_sheet(dest)
+        dest_sheet = self.get_sheet(dest)
+        for (r, c), cell in src_sheet.cells.items():
+            if not cell.is_empty():
+                dest_sheet.set(r, c, cell.raw)
+
+    def clear_sheet(self, name: str) -> None:
+        """Remove all cells from a sheet."""
+        sheet = self.get_sheet(name)
+        sheet.cells.clear()
+
+    def get_formula(self, sheet: str, ref: str) -> str:
+        """Get the raw formula text of a cell."""
+        row, col = parse_a1(ref)
+        cell = self.get_sheet(sheet).cells.get((row, col))
+        if cell is None:
+            return ""
+        return cell.raw
+
+    def list_functions(self) -> list:
+        """Return a sorted list of all available function names."""
+        from .functions import FUNCTIONS
+        return sorted(FUNCTIONS.keys())
 
 
 def _serialize_value(v: Any) -> Any:
