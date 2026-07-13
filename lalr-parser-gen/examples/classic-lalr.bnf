@@ -1,0 +1,14 @@
+// Classic LALR(1) grammar that is NOT SLR(1)
+// Demonstrates why LALR(1) is more powerful than SLR(1).
+%start S
+
+S : L '=' R
+  | R
+  ;
+
+L : '*' R
+  | ID
+  ;
+
+R : L
+  ;
