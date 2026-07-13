@@ -51,6 +51,13 @@ class PrecedenceTable:
         self._levels: List[Precedence] = []
         self._terminal_level: Dict[str, int] = {}
         self._terminal_assoc: Dict[str, str] = {}
+        # Production-specific precedence overrides from %prec directives.
+        # Maps production index -> precedence level.
+        self._production_overrides: Dict[int, int] = {}
+
+    def add_production_override(self, prod_index: int, level: int) -> None:
+        """Override a production's precedence level (from %prec directive)."""
+        self._production_overrides[prod_index] = level
 
     def add_level(self, level: int, associativity: str, terminals: List[str]) -> None:
         if associativity not in ("left", "right", "nonassoc"):
@@ -73,8 +80,14 @@ class PrecedenceTable:
         return self._terminal_assoc.get(terminal)
 
     def production_precedence(self, grammar: Grammar, prod_index: int) -> int:
-        """Get the precedence of a production = precedence of its
-        rightmost terminal symbol."""
+        """Get the precedence of a production.
+
+        If a %prec override was declared, use that.  Otherwise use the
+        precedence of the rightmost terminal symbol in the body.
+        """
+        # Check for %prec override first
+        if prod_index in self._production_overrides:
+            return self._production_overrides[prod_index]
         prod = grammar.production_by_index(prod_index)
         for sym in reversed(prod.body):
             if self.has_precedence(sym):

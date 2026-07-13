@@ -240,8 +240,47 @@ lalr-parser-gen/
 
 ```bash
 PYTHONPATH=. python -m pytest tests/ -v
-# 46 tests, all passing
+# 73 tests, all passing
 ```
+
+## Known Issues (Resolved)
+
+### Bug 1: FIRST set not including epsilon for epsilon productions
+**Status**: Fixed in Phase 1. The `_compute_first` method skipped epsilon
+productions (`body = ()`) instead of adding `EPSILON` to the FIRST set.
+Added explicit handling for empty productions.
+
+### Bug 2: SLR(1) table missing reduce→shift conflict detection
+**Status**: Fixed in Phase 3. The `SLRTable._set_action` method only
+recorded `shift→reduce` conflicts but missed `reduce→shift` conflicts
+(where the reduce action was inserted first). This meant the classic
+non-SLR grammar appeared conflict-free when loaded from BNF. Added the
+missing `elif existing[0] == "reduce" and action[0] == "shift"` branch
+with proper conflict reporting.
+
+### Bug 3: `%prec` directive adding fake terminal to production body
+**Status**: Fixed in Phase 3. The BNF loader's `_tokenize_rhs` function
+did not recognize the `%prec` directive, so `%prec UMINUS` was parsed
+as two additional symbols (`%prec` and `UMINUS`) in the production body.
+This caused `UMINUS` to appear as a spurious terminal in the grammar
+and corrupted the production structure. The fix:
+- `_tokenize_rhs` now detects `%prec TERMINAL` at the end of a production
+  alternative, strips it from the symbol list, and returns the override
+  terminal name separately.
+- `load_bnf_full` stores the override in a `prec_overrides` dict.
+- `PrecedenceTable` gained `add_production_override()` and
+  `production_precedence()` now checks overrides before falling back to
+  the rightmost-terminal rule.
+- BNF precedence directives (`%left`, `%right`, `%nonassoc`) now strip
+  quotes from terminal names (e.g. `'+'` → `+`).
+
+### Bug 4: BNF loader not stripping quotes from precedence terminals
+**Status**: Fixed in Phase 3. When `%left '+' '-'` was parsed, the
+quoted terminal names were stored as `'+''` and `'-'` (with quotes)
+in the precedence table, while the grammar stored them as `+` and `-`
+(without quotes). This mismatch meant `has_precedence('+')` returned
+`False`, so no conflicts were resolved. Added quote-stripping for
+precedence directive arguments.
 
 ## License
 
