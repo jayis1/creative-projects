@@ -14,9 +14,12 @@ being efficient enough for real-world grammars (hundreds of productions).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, FrozenSet, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Dict, FrozenSet, List, Optional, Set, Tuple
 
 from .grammar import EPSILON, Grammar, Production
+
+if TYPE_CHECKING:
+    from .precedence import PrecedenceTable
 
 
 # --------------------------------------------------------------------------- #
@@ -310,10 +313,18 @@ class LALR1Builder:
 # Table construction
 # --------------------------------------------------------------------------- #
 class LALRTable:
-    """ACTION and GOTO tables for an LALR(1) parser."""
+    """ACTION and GOTO tables for an LALR(1) parser.
 
-    def __init__(self, grammar: Grammar) -> None:
+    Args:
+        grammar: the Grammar to build tables for.
+        precedence: optional PrecedenceTable for conflict resolution.
+    """
+
+    def __init__(
+        self, grammar: Grammar, precedence: "PrecedenceTable | None" = None
+    ) -> None:
         self.grammar = grammar
+        self.precedence = precedence
         self.automaton = LR0Automaton(grammar)
         self.lalr = LALR1Builder(grammar, self.automaton)
         self.num_states = len(self.automaton.states)
@@ -322,6 +333,7 @@ class LALRTable:
         # GOTO[state][nonterminal] = state
         self.goto: Dict[int, Dict[str, int]] = {}
         self.conflicts: List[str] = []
+        self.resolved_conflicts: List[str] = []
         self._build_tables()
 
     def _build_tables(self) -> None:
@@ -363,7 +375,37 @@ class LALRTable:
         if existing is None:
             self.action[state][terminal] = action
         elif existing != action:
-            # Conflict!
+            # Attempt precedence-based resolution for shift/reduce conflicts
+            if self.precedence is not None:
+                shift_act = None
+                reduce_act = None
+                if existing[0] == "shift" and action[0] == "reduce":
+                    shift_act = existing
+                    reduce_act = action
+                elif existing[0] == "reduce" and action[0] == "shift":
+                    reduce_act = existing
+                    shift_act = action
+
+                if shift_act is not None and reduce_act is not None:
+                    # Both actions have precedence info?
+                    term_prec = self.precedence.get_precedence(terminal)
+                    prod_prec = self.precedence.production_precedence(
+                        self.grammar, reduce_act[1]
+                    )
+                    if term_prec >= 0 or prod_prec >= 0:
+                        winner = self.precedence.resolve_conflict(
+                            self.grammar, state, terminal,
+                            shift_act, reduce_act,
+                        )
+                        self.action[state][terminal] = winner
+                        self.resolved_conflicts.append(
+                            f"Resolved S/R conflict in state {state} on "
+                            f"'{terminal}': chose {winner[0]} "
+                            f"(term_prec={term_prec}, prod_prec={prod_prec})"
+                        )
+                        return
+
+            # Unresolved conflict — record it
             if existing[0] == "shift" and action[0] == "reduce":
                 self.conflicts.append(
                     f"Shift/reduce conflict in state {state} on '{terminal}': "
@@ -403,10 +445,82 @@ class LALRTable:
             f"LALR(1) Table: {self.num_states} states, "
             f"{len(self.grammar.productions)} productions",
         ]
+        if self.resolved_conflicts:
+            lines.append(f"Resolved conflicts ({len(self.resolved_conflicts)}):")
+            for c in self.resolved_conflicts:
+                lines.append(f"  {c}")
         if self.has_conflicts:
-            lines.append(f"Conflicts ({len(self.conflicts)}):")
+            lines.append(f"Unresolved conflicts ({len(self.conflicts)}):")
             for c in self.conflicts:
                 lines.append(f"  {c}")
         else:
-            lines.append("No conflicts — grammar is LALR(1).")
+            if not self.resolved_conflicts:
+                lines.append("No conflicts — grammar is LALR(1).")
         return "\n".join(lines)
+
+    def to_json(self) -> dict:
+        """Serialize the table to a JSON-serializable dict."""
+        productions = [
+            {"index": p.index, "head": p.head, "body": list(p.body)}
+            for p in self.grammar.productions
+        ]
+        action = {}
+        for state, entries in self.action.items():
+            action[str(state)] = {
+                terminal: list(action_tuple)
+                for terminal, action_tuple in entries.items()
+            }
+        goto = {}
+        for state, entries in self.goto.items():
+            goto[str(state)] = dict(entries)
+        return {
+            "version": "1.0",
+            "grammar": {
+                "productions": productions,
+                "start": self.grammar.user_start,
+                "terminals": sorted(self.grammar.terminals),
+                "nonterminals": sorted(
+                    self.grammar.nonterminals - {Grammar.AUGMENTED_START}
+                ),
+            },
+            "num_states": self.num_states,
+            "action": action,
+            "goto": goto,
+            "conflicts": self.conflicts,
+            "resolved_conflicts": self.resolved_conflicts,
+        }
+
+    def to_json_str(self, indent: int = 2) -> str:
+        """Serialize the table to a JSON string."""
+        import json
+        return json.dumps(self.to_json(), indent=indent)
+
+    @classmethod
+    def from_json(cls, data: dict) -> "LALRTable":
+        """Reconstruct a LALRTable from a JSON dict.
+
+        Note: This creates a lightweight table without the full automaton.
+        The action/goto tables are populated directly from the JSON data.
+        Use this for loading pre-computed tables for parsing.
+        """
+        grammar = Grammar(
+            [(p["head"], p["body"]) for p in data["grammar"]["productions"][1:]],
+            start=data["grammar"]["start"],
+        )
+        table = cls.__new__(cls)
+        table.grammar = grammar
+        table.precedence = None
+        table.automaton = None  # Not available from JSON
+        table.lalr = None
+        table.num_states = data["num_states"]
+        table.action = {
+            int(state): {t: tuple(a) for t, a in entries.items()}
+            for state, entries in data["action"].items()
+        }
+        table.goto = {
+            int(state): {nt: int(s) for nt, s in entries.items()}
+            for state, entries in data["goto"].items()
+        }
+        table.conflicts = data.get("conflicts", [])
+        table.resolved_conflicts = data.get("resolved_conflicts", [])
+        return table

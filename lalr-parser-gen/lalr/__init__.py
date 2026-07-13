@@ -1,7 +1,8 @@
 """LALR(1) parser generator package.
 
 A from-scratch implementation of LALR(1) parser table generation with
-an LR parser driver, BNF grammar loader, and CLI.
+an LR parser driver, BNF grammar loader, SLR(1) comparison, precedence/
+associativity resolution, JSON table serialization, and CLI.
 
 Quick start::
 
@@ -28,22 +29,28 @@ Quick start::
 
 from .grammar import Grammar, Production, EPSILON
 from .table import LALRTable, LR0Automaton, LALR1Builder, LR0Item, LALR1Item
+from .slr_table import SLRTable
+from .precedence import PrecedenceTable, Precedence
 from .parser import Parser, ParseError, Token
-from .bnf_loader import load_bnf, GrammarParseError
+from .bnf_loader import load_bnf, load_bnf_full, GrammarParseError
 
-__version__ = "1.0.0"
+__version__ = "2.0.0"
 __all__ = [
     "Grammar",
     "Production",
     "EPSILON",
     "LALRTable",
+    "SLRTable",
     "LR0Automaton",
     "LALR1Builder",
     "LR0Item",
     "LALR1Item",
+    "PrecedenceTable",
+    "Precedence",
     "Parser",
     "ParseError",
     "Token",
     "load_bnf",
+    "load_bnf_full",
     "GrammarParseError",
 ]

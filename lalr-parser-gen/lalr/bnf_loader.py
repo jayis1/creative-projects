@@ -4,6 +4,10 @@ Supports a simple but practical BNF-ish syntax::
 
     %token   NUMBER  ID  '+'  '-'  '*'  '/'  '('  ')'
     %start   expr
+    %left    '+'  '-'
+    %left    '*'
+    %right   '^'
+    %nonassoc UMINUS
 
     expr   : term '+' expr
            | term
@@ -24,6 +28,9 @@ on the RHS that isn't a non-terminal (identifier starting with lowercase
 or uppercase letter) is treated as a terminal.
 
 Quoted terminals can contain any character, e.g. ``'('``  ``'->'``.
+
+Precedence/associativity directives (``%left``, ``%right``, ``%nonassoc``)
+are parsed and returned alongside the grammar.
 """
 
 from __future__ import annotations
@@ -32,6 +39,7 @@ import re
 from typing import List, Optional, Tuple
 
 from .grammar import Grammar
+from .precedence import PrecedenceTable
 
 
 class GrammarParseError(Exception):
@@ -39,7 +47,19 @@ class GrammarParseError(Exception):
 
 
 def load_bnf(text: str) -> Grammar:
-    """Parse a BNF grammar definition string into a Grammar object."""
+    """Parse a BNF grammar definition string into a Grammar object.
+
+    This is a convenience wrapper that returns just the grammar.
+    Use ``load_bnf_full`` to also get precedence information.
+    """
+    grammar, _ = load_bnf_full(text)
+    return grammar
+
+
+def load_bnf_full(text: str) -> Tuple[Grammar, PrecedenceTable]:
+    """Parse a BNF grammar definition string, returning both the
+    Grammar and a PrecedenceTable (from %left/%right/%nonassoc directives).
+    """
     # Strip comments
     lines = []
     for raw in text.splitlines():
@@ -53,9 +73,10 @@ def load_bnf(text: str) -> Grammar:
     # Extract directives
     tokens_decl: List[str] = []
     start_decl: Optional[str] = None
+    precedence = PrecedenceTable()
+    prec_level = 0
 
     directive_re = re.compile(r"%(\w+)\s+(.+)")
-    # Process directives line by line (they must be on their own lines)
     remaining_lines = []
     for line in text.splitlines():
         m = directive_re.match(line.strip())
@@ -70,15 +91,21 @@ def load_bnf(text: str) -> Grammar:
                         f"%start expects exactly one argument, got: {args}"
                     )
                 start_decl = args[0]
-            elif directive == "left":
-                # associativity directive (parsed but only stored for reference)
-                pass
-            elif directive == "right":
-                pass
-            elif directive == "nonassoc":
-                pass
+            elif directive in ("left", "right", "nonassoc"):
+                prec_level += 1
+                assoc = "left" if directive == "left" else (
+                    "right" if directive == "right" else "nonassoc"
+                )
+                # Strip quotes from terminal names in precedence declarations
+                clean_args = []
+                for a in args:
+                    if len(a) >= 2 and a[0] == "'" and a[-1] == "'":
+                        clean_args.append(a[1:-1])
+                    else:
+                        clean_args.append(a)
+                precedence.add_level(prec_level, assoc, clean_args)
             else:
-                # Unknown directive — ignore but warn
+                # Unknown directive — keep in remaining lines
                 remaining_lines.append(line)
         else:
             remaining_lines.append(line)
@@ -86,9 +113,7 @@ def load_bnf(text: str) -> Grammar:
     text = "\n".join(remaining_lines)
 
     # Now parse productions.
-    # Tokenize the production section: split into tokens handling quoted strings
     quoted_re = re.compile(r"'([^']*)'")
-    # Replace quoted strings with placeholders, then restore
     quoted_tokens: List[str] = []
 
     def _save_quote(m: re.Match) -> str:
@@ -97,7 +122,6 @@ def load_bnf(text: str) -> Grammar:
 
     text = quoted_re.sub(_save_quote, text)
 
-    # Split into productions by ';'
     chunks = text.split(";")
     productions: List[Tuple[str, List[str]]] = []
 
@@ -105,7 +129,6 @@ def load_bnf(text: str) -> Grammar:
         chunk = chunk.strip()
         if not chunk:
             continue
-        # Split head from body by ':'
         if ":" not in chunk:
             raise GrammarParseError(f"Production missing ':': {chunk!r}")
         head, body_str = chunk.split(":", 1)
@@ -113,7 +136,6 @@ def load_bnf(text: str) -> Grammar:
         if not head:
             raise GrammarParseError(f"Empty production head in: {chunk!r}")
 
-        # Split alternatives by '|' (but not inside quotes — already handled)
         alternatives = body_str.split("|")
         for alt in alternatives:
             symbols = _tokenize_rhs(alt.strip(), quoted_tokens)
@@ -125,10 +147,8 @@ def load_bnf(text: str) -> Grammar:
     start = start_decl if start_decl is not None else productions[0][0]
     grammar = Grammar(productions, start=start)
 
-    # Validate that %token declarations match
-    _ = tokens_decl  # Could verify these exist; for now just accept.
-
-    return grammar
+    _ = tokens_decl
+    return grammar, precedence
 
 
 def _tokenize_rhs(s: str, quoted_tokens: List[str]) -> List[str]:

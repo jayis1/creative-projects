@@ -1,0 +1,16 @@
+// Simple arithmetic expression grammar with precedence
+%start expr
+%left '+' '-'
+%left '*' '/'
+%right '^'
+%right UMINUS
+
+expr   : expr '+' expr
+       | expr '-' expr
+       | expr '*' expr
+       | expr '/' expr
+       | expr '^' expr
+       | '-' expr %prec UMINUS
+       | '(' expr ')'
+       | NUMBER
+       ;

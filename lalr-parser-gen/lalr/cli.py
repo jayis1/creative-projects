@@ -5,6 +5,9 @@ Usage:
   python -m lalr.cli grammar_file --action=table
   python -m lalr.cli grammar_file --action=conflicts
   python -m lalr.cli grammar_file --action=dump --output=table.txt
+  python -m lalr.cli grammar_file --action=slr-compare
+  python -m lalr.cli grammar_file --action=save-table --output=table.json
+  python -m lalr.cli grammar_file --action=load-table table.json --input="..."
 """
 
 from __future__ import annotations
@@ -14,21 +17,26 @@ import json
 import sys
 from typing import List
 
-from .bnf_loader import load_bnf
+from .bnf_loader import load_bnf_full
+from .grammar import Grammar
 from .parser import Parser, Token
+from .precedence import PrecedenceTable
+from .slr_table import SLRTable
 from .table import LALRTable
 
 
-def _load_grammar(path: str):
+def _load_grammar_and_prec(path: str):
     with open(path) as f:
         text = f.read()
-    return load_bnf(text)
+    return load_bnf_full(text)
 
 
 def _lex_simple(text: str, terminals: set):
     """Very simple lexer: splits on whitespace, but keeps multi-char
     quoted terminals.  This is a convenience for testing — real users
     should provide their own lexer."""
+    import re
+
     tokens = []
     i = 0
     while i < len(text):
@@ -45,31 +53,32 @@ def _lex_simple(text: str, terminals: set):
             tokens.append(Token(matched, matched, i))
             i += len(matched)
         else:
-            # Try to match an identifier-like token
-            import re
-
             m = re.match(r"[A-Za-z_][A-Za-z0-9_]*", text[i:])
             if m:
                 word = m.group()
                 if word in terminals:
                     tokens.append(Token(word, word, i))
+                elif "ID" in terminals:
+                    tokens.append(Token("ID", word, i))
                 else:
-                    # Treat as a generic ID token if 'ID' is a terminal
-                    if "ID" in terminals:
-                        tokens.append(Token("ID", word, i))
-                    else:
-                        print(
-                            f"Warning: unrecognized token '{word}' at pos {i}",
-                            file=sys.stderr,
-                        )
-                        tokens.append(Token(word, word, i))
+                    print(
+                        f"Warning: unrecognized token '{word}' at pos {i}",
+                        file=sys.stderr,
+                    )
+                    tokens.append(Token(word, word, i))
                 i += len(word)
             else:
-                print(
-                    f"Warning: unrecognized character '{text[i]}' at pos {i}",
-                    file=sys.stderr,
-                )
-                i += 1
+                # Try to match a number
+                m = re.match(r"\d+", text[i:])
+                if m and "NUMBER" in terminals:
+                    tokens.append(Token("NUMBER", m.group(), i))
+                    i += len(m.group())
+                else:
+                    print(
+                        f"Warning: unrecognized character '{text[i]}' at pos {i}",
+                        file=sys.stderr,
+                    )
+                    i += 1
     return tokens
 
 
@@ -81,32 +90,42 @@ def main(argv: List[str] | None = None) -> int:
     parser.add_argument("grammar", help="Path to BNF grammar file")
     parser.add_argument(
         "--action",
-        choices=["parse", "table", "conflicts", "dump", "states", "first-follow"],
+        choices=[
+            "parse", "table", "conflicts", "dump", "states",
+            "first-follow", "slr-compare", "save-table", "load-table",
+            "precedence",
+        ],
         default="table",
         help="What to do (default: table)",
     )
     parser.add_argument("--input", default=None, help="Input string to parse")
     parser.add_argument("--output", "-o", default=None, help="Output file")
     parser.add_argument("--debug", action="store_true", help="Debug parsing")
+    parser.add_argument(
+        "--table-file", default=None,
+        help="Pre-computed table JSON (for load-table action)",
+    )
     args = parser.parse_args(argv)
 
-    grammar = _load_grammar(args.grammar)
-    table = LALRTable(grammar)
+    if args.action == "load-table":
+        return _cmd_load_table(args)
+
+    grammar, precedence = _load_grammar_and_prec(args.grammar)
+    table = LALRTable(grammar, precedence=precedence)
 
     if args.action == "table":
         print(table.summary())
         if table.has_conflicts:
-            print("\nConflicts:")
-            for c in table.conflicts:
-                print(f"  {c}")
             return 1
 
     elif args.action == "conflicts":
         if table.has_conflicts:
-            print(f"{len(table.conflicts)} conflict(s):")
+            print(f"{len(table.conflicts)} unresolved conflict(s):")
             for c in table.conflicts:
                 print(f"  {c}")
             return 1
+        elif table.resolved_conflicts:
+            print(f"No unresolved conflicts ({len(table.resolved_conflicts)} resolved by precedence).")
         else:
             print("No conflicts — grammar is LALR(1).")
         return 0
@@ -135,11 +154,43 @@ def main(argv: List[str] | None = None) -> int:
                 continue
             print(f"  {nt}: {sorted(grammar.follow[nt])}")
 
+    elif args.action == "slr-compare":
+        slr = SLRTable(grammar)
+        print("=== LALR(1) ===")
+        print(table.summary())
+        print()
+        print("=== SLR(1) ===")
+        print(slr.summary())
+        print()
+        if table.has_conflicts and not slr.has_conflicts:
+            print("Unexpected: LALR has conflicts but SLR doesn't!")
+        elif not table.has_conflicts and slr.has_conflicts:
+            print("Grammar is LALR(1) but NOT SLR(1) — LALR is more powerful.")
+        elif not table.has_conflicts and not slr.has_conflicts:
+            print("Grammar is both LALR(1) and SLR(1).")
+        else:
+            print("Grammar is neither LALR(1) nor SLR(1) — needs rewriting.")
+
+    elif args.action == "save-table":
+        data = table.to_json()
+        out = json.dumps(data, indent=2)
+        if args.output:
+            with open(args.output, "w") as f:
+                f.write(out)
+            print(f"Table saved to {args.output}")
+        else:
+            print(out)
+
+    elif args.action == "precedence":
+        if precedence.levels:
+            print(precedence.describe())
+        else:
+            print("No precedence declarations found.")
+
     elif args.action == "parse":
         if args.input is None:
             print("Error: --input required for parse action", file=sys.stderr)
             return 2
-        # Simple lexer
         tokens = _lex_simple(args.input, grammar.terminals - {"$"})
         p = Parser(grammar, table=table)
         p.debug = args.debug
@@ -153,6 +204,29 @@ def main(argv: List[str] | None = None) -> int:
     return 0
 
 
+def _cmd_load_table(args) -> int:
+    """Load a pre-computed table and parse input."""
+    if args.table_file is None:
+        print("Error: --table-file required for load-table action", file=sys.stderr)
+        return 2
+    with open(args.table_file) as f:
+        data = json.load(f)
+    table = LALRTable.from_json(data)
+    if args.input is None:
+        print("Error: --input required for parse action", file=sys.stderr)
+        return 2
+    tokens = _lex_simple(args.input, table.grammar.terminals - {"$"})
+    p = Parser(table.grammar, table=table)
+    p.debug = args.debug
+    try:
+        result = p.parse(tokens)
+        print(f"Parse successful. Result: {result}")
+    except Exception as e:
+        print(f"Parse error: {e}", file=sys.stderr)
+        return 1
+    return 0
+
+
 def _dump_table(grammar, table) -> str:
     lines = []
     lines.append(f"Grammar: {len(grammar.productions)} productions, "
@@ -161,7 +235,6 @@ def _dump_table(grammar, table) -> str:
     for p in grammar.productions:
         lines.append(f"  {p.index}: {p}")
     lines.append("")
-    # ACTION table
     terms = sorted(grammar.terminals)
     lines.append("ACTION table:")
     header = f"{'State':>6} " + " ".join(f"{t:>8}" for t in terms)
@@ -182,7 +255,6 @@ def _dump_table(grammar, table) -> str:
                 cell = ""
             row += f" {cell:>8}"
         lines.append(row)
-    # GOTO table
     nonterms = sorted(grammar.nonterminals - {Grammar.AUGMENTED_START})
     lines.append("\nGOTO table:")
     header = f"{'State':>6} " + " ".join(f"{nt:>8}" for nt in nonterms)
@@ -213,5 +285,4 @@ def _dump_states(grammar, table) -> None:
 
 
 if __name__ == "__main__":
-    from .grammar import Grammar
     sys.exit(main())

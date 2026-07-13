@@ -9,10 +9,13 @@ This project implements a complete LALR(1) parser generator, including:
 - **Grammar representation** with nullable, FIRST, and FOLLOW set computation
 - **LR(0) automaton** construction (canonical collection of item sets)
 - **LALR(1) lookahead computation** via the DeRemer-Pennello propagation algorithm
+- **SLR(1) table builder** for comparison (demonstrates LALR's superiority)
 - **ACTION/GOTO table** construction with conflict detection
+- **Precedence & associativity** declarations for conflict resolution (yacc-style)
 - **Table-driven LR parser** with semantic actions
-- **BNF grammar loader** for loading grammars from text files
-- **CLI** for table inspection, conflict analysis, and parsing
+- **BNF grammar loader** with `%token`, `%start`, `%left`, `%right`, `%nonassoc` directives
+- **JSON table serialization** for saving/loading pre-computed parse tables
+- **CLI** with 10 subcommands for table inspection, conflict analysis, SLR comparison, and parsing
 
 LALR(1) is more powerful than SLR(1) (it handles grammars where SLR would
 report spurious conflicts) while producing tables as compact as LR(0).
@@ -47,14 +50,25 @@ For each state:
 - **Accept**: If `S' → S•` with `$`, set `ACTION[s, $] = accept`.
 - **Goto**: If `A → α•Bβ` and `GOTO[s, B] = s'`, set `GOTO[s, B] = s'`.
 
-Conflicts (shift/reduce, reduce/reduce) are detected and reported.
+Conflicts (shift/reduce, reduce/reduce) are detected and reported. When
+precedence declarations are available, shift/reduce conflicts are resolved
+automatically using yacc-style rules.
 
-### 4. Parsing
+### 4. Precedence & Associativity
 
-The parser maintains a state stack and value stack. For each input token:
-- **Shift**: Push the token value and new state.
-- **Reduce**: Pop `|body|` values, apply the semantic action, push result.
-- **Accept**: Return the final semantic value.
+Precedence levels are declared with `%left`, `%right`, and `%nonassoc`:
+- Higher levels bind tighter
+- A production's precedence = precedence of its rightmost terminal
+- On a shift/reduce conflict:
+  - Terminal prec > production prec → shift
+  - Terminal prec < production prec → reduce
+  - Equal: left → reduce, right → shift, nonassoc → error
+
+### 5. SLR(1) Comparison
+
+The SLR(1) builder uses FOLLOW sets for reduce lookaheads. Running
+`--action=slr-compare` shows whether a grammar is LALR(1)-only or both
+LALR(1) and SLR(1), making it an excellent educational tool.
 
 ## Usage
 
@@ -94,30 +108,51 @@ result = parser.parse([
 # result = 14
 ```
 
-### BNF Grammar Files
+### BNF Grammar Files with Precedence
 
 ```bnf
-// examples/expr.bnf
+// examples/expr_prec.bnf
 %start expr
+%left '+' '-'
+%left '*' '/'
+%right '^'
+%right UMINUS
 
-expr   : expr '+' term
-       | term
-       ;
-
-term   : term '*' factor
-       | factor
-       ;
-
-factor : '(' expr ')'
+expr   : expr '+' expr
+       | expr '-' expr
+       | expr '*' expr
+       | expr '/' expr
+       | expr '^' expr
+       | '-' expr %prec UMINUS
+       | '(' expr ')'
        | NUMBER
        ;
 ```
 
 ```python
-from lalr import load_bnf, LALRTable, Parser
+from lalr import load_bnf_full, LALRTable, Parser
 
-grammar = load_bnf(open("examples/expr.bnf").read())
+with open("examples/expr_prec.bnf") as f:
+    grammar, precedence = load_bnf_full(f.read())
+table = LALRTable(grammar, precedence=precedence)
+# All 25 shift/reduce conflicts resolved by precedence
+```
+
+### JSON Table Serialization
+
+```python
+# Save table
 table = LALRTable(grammar)
+json_str = table.to_json_str()
+with open("table.json", "w") as f:
+    f.write(json_str)
+
+# Load table
+import json
+with open("table.json") as f:
+    data = json.loads(f.read())
+restored = LALRTable.from_json(data)
+parser = Parser(restored.grammar, table=restored)
 ```
 
 ### CLI
@@ -129,6 +164,9 @@ python -m lalr.cli examples/expr.bnf --action=table
 # Check for conflicts only
 python -m lalr.cli examples/classic-lalr.bnf --action=conflicts
 
+# Compare LALR(1) vs SLR(1)
+python -m lalr.cli examples/classic-lalr.bnf --action=slr-compare
+
 # Dump full ACTION/GOTO tables
 python -m lalr.cli examples/expr.bnf --action=dump -o table.txt
 
@@ -138,6 +176,13 @@ python -m lalr.cli examples/expr.bnf --action=states
 # Show FIRST and FOLLOW sets
 python -m lalr.cli examples/expr.bnf --action=first-follow
 
+# Show precedence levels
+python -m lalr.cli examples/expr_prec.bnf --action=precedence
+
+# Save/load pre-computed tables
+python -m lalr.cli examples/expr.bnf --action=save-table -o table.json
+python -m lalr.cli examples/expr.bnf --action=load-table --table-file=table.json --input="NUMBER + NUMBER"
+
 # Parse an input string
 python -m lalr.cli examples/expr.bnf --action=parse --input="NUMBER + NUMBER * NUMBER"
 ```
@@ -145,16 +190,25 @@ python -m lalr.cli examples/expr.bnf --action=parse --input="NUMBER + NUMBER * N
 ## Examples
 
 - `examples/expr.bnf` — Arithmetic expression grammar
+- `examples/expr_prec.bnf` — Ambiguous expression grammar with precedence
 - `examples/classic-lalr.bnf` — The classic LALR(1)-but-not-SLR(1) grammar
+- `examples/json.bnf` — JSON grammar definition
 - `examples/calculator.py` — Full calculator with semantic actions
+- `examples/json_parser.py` — Complete JSON parser with dict/list construction
 
 ## The Classic LALR(1) Grammar
 
 The grammar `S → L=R | R`, `L → *R | id`, `R → L` is the textbook example
 of a grammar that is **LALR(1) but not SLR(1)**. SLR(1) would use FOLLOW(R)
 which includes `=` (from `S → L=R`), causing a shift/reduce conflict when
-seeing `=` in state with `R → L•`. LALR(1) correctly distinguishes the
+seeing `=` in the state with `R → L•`. LALR(1) correctly distinguishes the
 contexts and reports no conflicts.
+
+Run the comparison:
+```bash
+python -m lalr.cli examples/classic-lalr.bnf --action=slr-compare
+# Output: "Grammar is LALR(1) but NOT SLR(1) — LALR is more powerful."
+```
 
 ## Project Structure
 
@@ -163,16 +217,22 @@ lalr-parser-gen/
 ├── lalr/
 │   ├── __init__.py       # Package exports
 │   ├── grammar.py        # Grammar, Production, FIRST/FOLLOW/nullable
-│   ├── table.py          # LR0Automaton, LALR1Builder, LALRTable
+│   ├── table.py          # LR0Automaton, LALR1Builder, LALRTable (with JSON serialization)
+│   ├── slr_table.py      # SLRTable for comparison
+│   ├── precedence.py     # PrecedenceTable for conflict resolution
 │   ├── parser.py         # Parser driver, Token, ParseError
-│   ├── bnf_loader.py     # BNF grammar file loader
-│   └── cli.py            # Command-line interface
+│   ├── bnf_loader.py     # BNF grammar loader with precedence directives
+│   └── cli.py            # Command-line interface (10 subcommands)
 ├── tests/
-│   └── test_lalr.py      # 30 tests
+│   ├── test_lalr.py      # 30 core tests
+│   └── test_enhanced.py  # 16 enhanced feature tests
 ├── examples/
 │   ├── expr.bnf          # Arithmetic grammar
+│   ├── expr_prec.bnf     # Ambiguous grammar with precedence
 │   ├── classic-lalr.bnf  # Classic non-SLR LALR grammar
-│   └── calculator.py     # Calculator demo
+│   ├── json.bnf          # JSON grammar
+│   ├── calculator.py     # Calculator demo
+│   └── json_parser.py    # JSON parser demo
 └── README.md
 ```
 
@@ -180,6 +240,7 @@ lalr-parser-gen/
 
 ```bash
 PYTHONPATH=. python -m pytest tests/ -v
+# 46 tests, all passing
 ```
 
 ## License
