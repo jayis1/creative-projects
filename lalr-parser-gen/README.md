@@ -343,7 +343,7 @@ print(report)
 
 ```json
 {
-    "grammar_file": "examples/expr.bnf",
+    "grammar_file": "expr.bnf",
     "lexer": {
         "skip": "[ \\t\\n]+",
         "tokens": [
