@@ -1,0 +1,28 @@
+{
+    "grammar_file": "examples/expr.bnf",
+    "lexer": {
+        "skip": "[ \\t\\n]+",
+        "tokens": [
+            {"name": "NUMBER", "pattern": "\\d+", "action": "int"},
+            {"name": "ID", "pattern": "[A-Za-z_][A-Za-z0-9_]*"},
+            {"name": "+", "pattern": "\\+", "priority": 5},
+            {"name": "-", "pattern": "-", "priority": 5},
+            {"name": "*", "pattern": "\\*", "priority": 5},
+            {"name": "/", "pattern": "/", "priority": 5},
+            {"name": "(", "pattern": "\\(", "priority": 5},
+            {"name": ")", "pattern": "\\)", "priority": 5}
+        ],
+        "keywords": {}
+    },
+    "parser": {
+        "debug": false,
+        "error_recovery": false,
+        "sync_tokens": [],
+        "max_errors": 50
+    },
+    "logging": {
+        "level": "WARNING",
+        "format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        "file": null
+    }
+}

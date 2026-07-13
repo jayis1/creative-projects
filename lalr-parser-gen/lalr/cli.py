@@ -82,6 +82,74 @@ def _lex_simple(text: str, terminals: set):
     return tokens
 
 
+def _cmd_visualize(args) -> int:
+    """Generate Graphviz DOT output of the automaton."""
+    from .visualize import automaton_to_dot, conflict_report
+    grammar, precedence = _load_grammar_and_prec(args.grammar)
+    table = LALRTable(grammar, precedence=precedence)
+    dot = automaton_to_dot(
+        table,
+        title=args.grammar,
+        show_lookaheads=args.lookaheads,
+        horizontal=args.horizontal,
+    )
+    if args.output:
+        with open(args.output, "w") as f:
+            f.write(dot)
+        print(f"DOT file written to {args.output}")
+        print(f"Render with: dot -Tpng {args.output} -o {args.output}.png")
+    else:
+        print(dot)
+    return 0
+
+
+def _cmd_config(args) -> int:
+    """Load a config file and run the parser."""
+    from .config import LALRConfig
+    config = LALRConfig.load(args.config_file)
+    config.apply_logging()
+    if not config.grammar_file:
+        print("Error: config file has no grammar_file", file=sys.stderr)
+        return 2
+    with open(config.grammar_file) as f:
+        grammar, precedence = load_bnf_full(f.read())
+    table = LALRTable(grammar, precedence=precedence)
+    if args.input:
+        tokens = _lex_simple(args.input, grammar.terminals - {"$"})
+        from .parser import Parser as StdParser
+        from .error_recovery import RecoveringParser
+        if config.parser.error_recovery:
+            p = RecoveringParser(
+                grammar, table=table,
+                sync_tokens=set(config.parser.sync_tokens),
+                max_errors=config.parser.max_errors,
+            )
+            p.debug = args.debug
+            errors = []
+            try:
+                result = p.parse(tokens, on_error=errors.append)
+                print(f"Parse successful. Result: {result}")
+                if errors:
+                    print(f"\n{len(errors)} error(s) recovered:")
+                    for e in errors:
+                        print(f"  {e}")
+            except Exception as e:
+                print(f"Parse error: {e}", file=sys.stderr)
+                return 1
+        else:
+            p = StdParser(grammar, table=table)
+            p.debug = args.debug
+            try:
+                result = p.parse(tokens)
+                print(f"Parse successful. Result: {result}")
+            except Exception as e:
+                print(f"Parse error: {e}", file=sys.stderr)
+                return 1
+    else:
+        print(table.summary())
+    return 0
+
+
 def main(argv: List[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="lalr",
@@ -93,7 +161,7 @@ def main(argv: List[str] | None = None) -> int:
         choices=[
             "parse", "table", "conflicts", "dump", "states",
             "first-follow", "slr-compare", "save-table", "load-table",
-            "precedence",
+            "precedence", "visualize", "config",
         ],
         default="table",
         help="What to do (default: table)",
@@ -105,10 +173,32 @@ def main(argv: List[str] | None = None) -> int:
         "--table-file", default=None,
         help="Pre-computed table JSON (for load-table action)",
     )
+    parser.add_argument(
+        "--lookaheads", action="store_true",
+        help="Show LALR(1) lookaheads in visualization",
+    )
+    parser.add_argument(
+        "--horizontal", action="store_true",
+        help="Horizontal layout for visualization",
+    )
+    parser.add_argument(
+        "--config-file", default=None,
+        help="JSON configuration file (for config action)",
+    )
     args = parser.parse_args(argv)
 
     if args.action == "load-table":
         return _cmd_load_table(args)
+
+    if args.action == "visualize":
+        return _cmd_visualize(args)
+
+    if args.action == "config":
+        if args.config_file is None:
+            print("Error: --config-file required for config action",
+                  file=sys.stderr)
+            return 2
+        return _cmd_config(args)
 
     grammar, precedence = _load_grammar_and_prec(args.grammar)
     table = LALRTable(grammar, precedence=precedence)
