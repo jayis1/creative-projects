@@ -14,13 +14,54 @@ Public API
     Condition       – a single pattern / test on a fact
     Var, Const      – helpers for building conditions
     ConflictResolution – agenda strategy enum
+    EngineListener  – protocol for event observers
+
+Serialization
+-------------
+    load_json       – load rules/facts from JSON
+    load_yaml        – load rules/facts from YAML (requires PyYAML)
+    load_file        – auto-detect format from extension
+    load_engine      – load file → return configured Engine
+    save_facts       – save working memory to JSON
+    save_facts_yaml  – save working memory to YAML
+    save_state       – save full engine state to JSON
 """
 
-from .engine import Engine, Fact, Rule, Condition, Var, Const, ConflictResolution
-from .exceptions import ReteError
-from .serialization import load_json, load_engine, save_facts, save_state
+from .engine import (
+    Engine,
+    Fact,
+    Rule,
+    Condition,
+    Var,
+    Const,
+    ConflictResolution,
+    EngineListener,
+    AlphaNode,
+    BetaMemory,
+    JoinNode,
+    ProductionNode,
+    DummyBeta,
+)
+from .exceptions import (
+    ReteError,
+    RuleError,
+    FactError,
+    MatchError,
+    InfiniteLoopError,
+    SerializationError,
+)
+from .serialization import (
+    load_json,
+    load_yaml,
+    load_file,
+    load_engine,
+    save_facts,
+    save_facts_yaml,
+    save_state,
+)
 
 __all__ = [
+    # Core
     "Engine",
     "Fact",
     "Rule",
@@ -28,11 +69,28 @@ __all__ = [
     "Var",
     "Const",
     "ConflictResolution",
+    "EngineListener",
+    # Network nodes
+    "AlphaNode",
+    "BetaMemory",
+    "JoinNode",
+    "ProductionNode",
+    "DummyBeta",
+    # Exceptions
     "ReteError",
+    "RuleError",
+    "FactError",
+    "MatchError",
+    "InfiniteLoopError",
+    "SerializationError",
+    # Serialization
     "load_json",
+    "load_yaml",
+    "load_file",
     "load_engine",
     "save_facts",
+    "save_facts_yaml",
     "save_state",
 ]
 
-__version__ = "2.0.0"
+__version__ = "3.0.0"

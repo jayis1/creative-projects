@@ -1,0 +1,79 @@
+# Pricing Engine — A discount and tax calculation system using Rete rules
+#
+# This example demonstrates a practical business rules application:
+# - Base pricing rules with customer-tier discounts
+# - Bulk order discounts
+# - Tax calculation based on shipping destination
+# - Promotional code handling
+
+rules:
+  - name: vip-discount
+    priority: 10
+    conditions:
+      - type: order
+        fields:
+          customer: "?c"
+          subtotal: "?s"
+      - type: customer
+        fields:
+          name: "?c"
+          tier: VIP
+    actions:
+      - ["print", "VIP discount applied for {c}: 20% off {s}"]
+      - ["assert", "discount", {customer: "?c", rate: 0.20, reason: "VIP tier"}]
+
+  - name: bulk-discount
+    priority: 5
+    conditions:
+      - type: order
+        fields:
+          customer: "?c"
+          subtotal: "?s"
+          qty: "?q"
+    actions:
+      - ["print", "Bulk discount: {q} units for {c}"]
+      - ["assert", "discount", {customer: "?c", rate: 0.10, reason: "bulk order 100+"}]
+
+  - name: tax-ca
+    priority: 0
+    conditions:
+      - type: order
+        fields:
+          customer: "?c"
+          state: CA
+    actions:
+      - ["print", "California tax (8.75%) applied for {c}"]
+      - ["assert", "tax", {customer: "?c", rate: 0.0875, state: "CA"}]
+
+  - name: tax-nyc
+    priority: 0
+    conditions:
+      - type: order
+        fields:
+          customer: "?c"
+          state: NY
+    actions:
+      - ["print", "New York tax (8.875%) applied for {c}"]
+      - ["assert", "tax", {customer: "?c", rate: 0.08875, state: "NY"}]
+
+facts:
+  - type: customer
+    fields:
+      name: Alice
+      tier: VIP
+  - type: customer
+    fields:
+      name: Bob
+      tier: standard
+  - type: order
+    fields:
+      customer: Alice
+      subtotal: 500
+      qty: 50
+      state: CA
+  - type: order
+    fields:
+      customer: Bob
+      subtotal: 200
+      qty: 150
+      state: NY

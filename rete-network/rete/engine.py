@@ -34,10 +34,11 @@ from __future__ import annotations
 
 import heapq
 import itertools
+import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Any, Callable, Iterable, Optional
+from typing import Any, Callable, Iterable, Optional, Protocol
 
 from .exceptions import (
     FactError,
@@ -47,9 +48,9 @@ from .exceptions import (
     RuleError,
 )
 
-# ---------------------------------------------------------------------------
+# --------------------------------------------------------------------------- #
 #  Pattern-matching primitives
-# ---------------------------------------------------------------------------
+# --------------------------------------------------------------------------- #
 
 
 class _Term:
@@ -107,9 +108,9 @@ def _make_term(x: Any) -> _Term:
     return Const(x)
 
 
-# ---------------------------------------------------------------------------
+# --------------------------------------------------------------------------- #
 #  Conditions & Facts
-# ---------------------------------------------------------------------------
+# --------------------------------------------------------------------------- #
 
 
 @dataclass(frozen=True)
@@ -123,6 +124,18 @@ class Condition:
     A ``predicate`` callable may be supplied for arbitrary intra-fact tests
     that can't be expressed as field equality — it receives the fact and the
     current (partial) bindings and must return a bool.
+
+    Parameters
+    ----------
+    fact_type : str
+        The type of fact this condition matches.
+    predicate : callable, optional
+        A function ``(fact, bindings) -> bool`` for arbitrary tests.
+    negated : bool
+        If ``True``, this condition matches only when *no* fact satisfies it.
+    **fields
+        Field-name → term mappings (Var, Const, or raw Python values which
+        are auto-wrapped in Const).
     """
 
     fact_type: str
@@ -137,7 +150,9 @@ class Condition:
         predicate: Optional[Callable[[dict, dict[str, Any]], bool]] = None,
         negated: bool = False,
         **fields: Any,
-    ):
+    ) -> None:
+        if not isinstance(fact_type, str) or not fact_type:
+            raise RuleError("condition fact_type must be a non-empty string")
         # Bypass frozen dataclass __init__ via object.__setattr__
         object.__setattr__(self, "fact_type", fact_type)
         object.__setattr__(
@@ -149,14 +164,22 @@ class Condition:
     # --- internal helpers -------------------------------------------------
     @property
     def key(self) -> tuple:
-        """A structural signature used for alpha-node sharing."""
-        return (
-            self.fact_type,
-            tuple(sorted((k, t) for k, t in self.fields.items())),
-            self.negated,
+        """A structural signature used for alpha-node sharing.
+
+        We serialize each term into a hashable, comparable representation
+        so that the key never triggers a ``TypeError`` when sorting mixed
+        ``Var`` / ``Const`` instances.
+        """
+        field_sig = tuple(
+            sorted(
+                (k, (True, t.name) if t.is_var else (False, repr(t)))
+                for k, t in self.fields.items()
+            )
         )
+        return (self.fact_type, field_sig, self.negated)
 
     def term_for(self, field_name: str) -> Optional[_Term]:
+        """Return the term for *field_name*, or ``None``."""
         return self.fields.get(field_name)
 
     def __repr__(self) -> str:  # pragma: no cover - cosmetic
@@ -172,13 +195,25 @@ class Fact:
     Two facts with the same (type, fields) are considered *structurally*
     equal, but each instance carries a unique numeric id so the engine can
     track distinct assertions.
+
+    Parameters
+    ----------
+    fact_type : str
+        Non-empty string identifying the fact's type.
+    **fields
+        Attribute/value pairs for this fact.
+
+    Raises
+    ------
+    FactError
+        If *fact_type* is not a non-empty string.
     """
 
     __slots__ = ("fact_type", "fields", "_id")
 
     _counter = itertools.count(1)
 
-    def __init__(self, fact_type: str, **fields: Any):
+    def __init__(self, fact_type: str, **fields: Any) -> None:
         if not isinstance(fact_type, str) or not fact_type:
             raise FactError("fact_type must be a non-empty string")
         self.fact_type = fact_type
@@ -205,10 +240,14 @@ class Fact:
     def get(self, key: str, default: Any = None) -> Any:
         return self.fields.get(key, default)
 
+    def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-serializable dict for this fact."""
+        return {"type": self.fact_type, "fields": dict(self.fields)}
 
-# ---------------------------------------------------------------------------
+
+# --------------------------------------------------------------------------- #
 #  Rule
-# ---------------------------------------------------------------------------
+# --------------------------------------------------------------------------- #
 
 
 @dataclass
@@ -248,9 +287,27 @@ class Rule:
                 )
 
 
-# ---------------------------------------------------------------------------
+# --------------------------------------------------------------------------- #
+#  Event listener protocol
+# --------------------------------------------------------------------------- #
+
+
+class EngineListener(Protocol):
+    """Protocol for engine event listeners (observers).
+
+    Implement this protocol to receive notifications when facts are
+    asserted, retracted, or rules are fired.  Any subset of methods may
+    be implemented; missing methods are silently skipped.
+    """
+
+    def on_assert(self, fact: Fact) -> None: ...
+    def on_retract(self, fact: Fact) -> None: ...
+    def on_fire(self, rule_name: str, bindings: dict[str, Any]) -> None: ...
+
+
+# --------------------------------------------------------------------------- #
 #  Rete network nodes
-# ---------------------------------------------------------------------------
+# --------------------------------------------------------------------------- #
 
 
 class AlphaNode:
@@ -262,7 +319,7 @@ class AlphaNode:
         self.condition = condition
         # items: list of (fact, bindings)  — bindings are this node's local vars
         self.items: list[tuple[Fact, dict[str, Any]]] = []
-        self.successors: list[JoinNode] = []
+        self.successors: list["JoinNode"] = []
 
     def activate(self, fact: Fact) -> dict[str, Any] | None:
         """Test *fact* against this node's condition; return bindings if match."""
@@ -277,9 +334,9 @@ class AlphaNode:
             # match the negated pattern.
             bindings: dict[str, Any] = {}
             for fname, term in c.fields.items():
-                val = fact.fields.get(fname)
-                if val is None and fname not in fact.fields:
+                if fname not in fact.fields:
                     return None
+                val = fact.fields.get(fname)
                 if term.is_var:
                     v: Var = term  # type: ignore[assignment]
                     bindings[v.name] = val
@@ -293,9 +350,9 @@ class AlphaNode:
             return None
         bindings = {}
         for fname, term in c.fields.items():
-            val = fact.fields.get(fname)
-            if val is None and fname not in fact.fields:
+            if fname not in fact.fields:
                 return None
+            val = fact.fields.get(fname)
             if term.is_var:
                 # bind — term is a Var here, so .name is safe
                 v: Var = term  # type: ignore[assignment]
@@ -310,12 +367,14 @@ class AlphaNode:
         return bindings
 
     def add(self, fact: Fact) -> dict[str, Any] | None:
+        """Activate and store *fact* if it matches. Return bindings or None."""
         b = self.activate(fact)
         if b is not None:
             self.items.append((fact, b))
         return b
 
     def remove(self, fact: Fact) -> None:
+        """Remove *fact* from this node's stored items."""
         self.items = [(f, b) for f, b in self.items if f != fact]
 
 
@@ -327,7 +386,7 @@ class BetaMemory:
     def __init__(self):
         # Each item: (tuple_of_facts, merged_bindings)
         self.items: list[tuple[tuple[Fact, ...], dict[str, Any]]] = []
-        self.successors: list[JoinNode] = []
+        self.successors: list["JoinNode"] = []
 
 
 class JoinNode:
@@ -352,6 +411,7 @@ class JoinNode:
     def _consistent(
         self, left_b: dict[str, Any], right_b: dict[str, Any]
     ) -> bool:
+        """Check if left and right bindings are consistent for join."""
         for lv, rv in self.join_tests:
             if lv in left_b and rv in right_b and left_b[lv] != right_b[rv]:
                 return False
@@ -409,15 +469,23 @@ class JoinNode:
             # Removing a negated fact may *unblock* some left tuples.
             for facts, bindings in self.left.items:
                 if self._consistent(bindings, rb):
-                    # Re-check whether *any* remaining right item blocks it
+                    # Re-check whether *any* remaining right item blocks it.
+                    # Also guard against duplicate instantiations.
                     blocked = any(
                         self._consistent(bindings, other_rb)
-                        for _, other_rb in self.right.items
-                        if _ is not fact
+                        for other_f, other_rb in self.right.items
+                        if other_f != fact
                     )
                     if not blocked:
-                        self.successor.items.append((facts, dict(bindings)))
-                        self._propagate(facts, dict(bindings))
+                        # Avoid creating duplicate instantiations
+                        existing = False
+                        for ef, eb in self.successor.items:
+                            if ef == facts:
+                                existing = True
+                                break
+                        if not existing:
+                            self.successor.items.append((facts, dict(bindings)))
+                            self._propagate(facts, dict(bindings))
             return
         for i in range(len(self.successor.items) - 1, -1, -1):
             facts, bindings = self.successor.items[i]
@@ -472,9 +540,9 @@ class ProductionNode:
         ]
 
 
-# ---------------------------------------------------------------------------
+# --------------------------------------------------------------------------- #
 #  Conflict resolution
-# ---------------------------------------------------------------------------
+# --------------------------------------------------------------------------- #
 
 
 class ConflictResolution(Enum):
@@ -485,15 +553,22 @@ class ConflictResolution(Enum):
     PRIORITY = auto()  # highest priority first, ties → FIFO
     RECENT = auto()  # most-recently-added fact first
     REFC = auto()  # refraction: never fire the same instantiation twice
+    PRIORITY_REFC = auto()  # priority + refraction (recommended for production)
 
 
 # Logging levels (stdlib-compatible numeric values)
-_LOG_LEVELS = {"DEBUG": 10, "INFO": 20, "WARNING": 30, "ERROR": 40, "CRITICAL": 50}
+_LOG_LEVELS = {
+    "DEBUG": logging.DEBUG,
+    "INFO": logging.INFO,
+    "WARNING": logging.WARNING,
+    "ERROR": logging.ERROR,
+    "CRITICAL": logging.CRITICAL,
+}
 
 
-# ---------------------------------------------------------------------------
+# --------------------------------------------------------------------------- #
 #  Engine
-# ---------------------------------------------------------------------------
+# --------------------------------------------------------------------------- #
 
 
 class Engine:
@@ -517,10 +592,21 @@ class Engine:
         strategy: ConflictResolution = ConflictResolution.REFC,
         max_steps: int = 100_000,
         log_level: str = "WARNING",
+        logger: Optional[logging.Logger] = None,
     ):
         self.strategy = strategy
         self.max_steps = max_steps
-        self._log_level = _LOG_LEVELS.get(log_level.upper(), 30)
+        self._log_level = _LOG_LEVELS.get(log_level.upper(), logging.WARNING)
+
+        # Use stdlib logging with a named logger
+        self.logger: logging.Logger = logger or logging.getLogger("rete")
+        if not self.logger.handlers:
+            handler = logging.StreamHandler()
+            handler.setFormatter(
+                logging.Formatter("[%(name)s:%(levelname)s] %(message)s")
+            )
+            self.logger.addHandler(handler)
+        self.logger.setLevel(self._log_level)
 
         # Working memory
         self.facts: set[Fact] = set()
@@ -554,9 +640,50 @@ class Engine:
             lambda: {"fires": 0, "activations": 0}
         )
 
+        # Event listeners (observers)
+        self._listeners: list[EngineListener] = []
+
+    # -- Listener (observer) management ------------------------------------
+    def add_listener(self, listener: EngineListener) -> None:
+        """Register an event listener.
+
+        The listener may implement any subset of ``on_assert``,
+        ``on_retract``, and ``on_fire``.
+        """
+        self._listeners.append(listener)
+
+    def remove_listener(self, listener: EngineListener) -> None:
+        """Remove a previously-registered listener."""
+        if listener in self._listeners:
+            self._listeners.remove(listener)
+
+    def _notify_assert(self, fact: Fact) -> None:
+        for l in self._listeners:
+            handler = getattr(l, "on_assert", None)
+            if handler:
+                handler(fact)
+
+    def _notify_retract(self, fact: Fact) -> None:
+        for l in self._listeners:
+            handler = getattr(l, "on_retract", None)
+            if handler:
+                handler(fact)
+
+    def _notify_fire(self, rule_name: str, bindings: dict[str, Any]) -> None:
+        for l in self._listeners:
+            handler = getattr(l, "on_fire", None)
+            if handler:
+                handler(rule_name, bindings)
+
     # -- Rule management ---------------------------------------------------
     def add_rule(self, rule: Rule) -> None:
-        """Compile *rule* into the Rete network."""
+        """Compile *rule* into the Rete network.
+
+        Raises
+        ------
+        RuleError
+            If a rule with the same name already exists.
+        """
         if rule.name in self._rules:
             raise RuleError(f"rule '{rule.name}' already exists")
         self._rules[rule.name] = rule
@@ -570,7 +697,7 @@ class Engine:
                 self._alpha_nodes[key] = an
                 # Feed existing facts into the new alpha node
                 for f in self._facts_by_type.get(cond.fact_type, ()):
-                    b = an.add(f)
+                    an.add(f)
                     # We do NOT propagate into joins yet — joins are wired below.
             an = self._alpha_nodes[key]
             alphas.append(an)
@@ -659,6 +786,11 @@ class Engine:
         Properly cleans up join nodes from alpha-node successor lists and
         beta-memory successor lists to avoid orphaned references that could
         cause errors or memory leaks.
+
+        Raises
+        ------
+        RuleError
+            If the rule name is not found.
         """
         if name not in self._rules:
             raise RuleError(f"rule '{name}' not found")
@@ -678,11 +810,18 @@ class Engine:
 
     @property
     def rules(self) -> list[str]:
+        """Return a list of rule names currently in the engine."""
         return list(self._rules)
 
     # -- Fact management ---------------------------------------------------
     def assert_fact(self, fact: Fact) -> bool:
-        """Add *fact* to working memory; return True if newly inserted."""
+        """Add *fact* to working memory; return True if newly inserted.
+
+        Raises
+        ------
+        FactError
+            If *fact* is not a ``Fact`` instance.
+        """
         if not isinstance(fact, Fact):
             raise FactError("assert_fact requires a Fact instance")
         if fact in self.facts:
@@ -690,7 +829,16 @@ class Engine:
         self.facts.add(fact)
         self._facts_by_type[fact.fact_type].add(fact)
         self._propagate_assert(fact)
+        self._notify_assert(fact)
         return True
+
+    def assert_batch(self, facts: Iterable[Fact]) -> int:
+        """Assert multiple facts at once. Returns the number newly inserted."""
+        count = 0
+        for f in facts:
+            if self.assert_fact(f):
+                count += 1
+        return count
 
     def retract_fact(self, fact: Fact) -> bool:
         """Remove *fact* from working memory; return True if it was present."""
@@ -699,7 +847,16 @@ class Engine:
         self.facts.discard(fact)
         self._facts_by_type[fact.fact_type].discard(fact)
         self._propagate_retract(fact)
+        self._notify_retract(fact)
         return True
+
+    def retract_batch(self, facts: Iterable[Fact]) -> int:
+        """Retract multiple facts at once. Returns the count removed."""
+        count = 0
+        for f in list(facts):
+            if self.retract_fact(f):
+                count += 1
+        return count
 
     def retract_type(self, fact_type: str) -> int:
         """Retract all facts of *fact_type*; return the count removed."""
@@ -721,6 +878,7 @@ class Engine:
         self.reset_agenda()
 
     def facts_of_type(self, fact_type: str) -> list[Fact]:
+        """Return a list of all facts with the given type."""
         return list(self._facts_by_type.get(fact_type, ()))
 
     # -- Internal propagation ---------------------------------------------
@@ -772,7 +930,11 @@ class Engine:
             rule = self._rules[rname]
             for facts, bindings in pn.instantiations:
                 sig = (rname, facts)
-                if self.strategy == ConflictResolution.REFC and sig in self._fired:
+                # REFC and PRIORITY_REFC both use refraction
+                if self.strategy in (
+                    ConflictResolution.REFC,
+                    ConflictResolution.PRIORITY_REFC,
+                ) and sig in self._fired:
                     continue
                 agenda.append((rule.priority, rname, facts, bindings))
         return agenda
@@ -783,18 +945,24 @@ class Engine:
             return None
         if self.strategy == ConflictResolution.PRIORITY:
             agenda.sort(key=lambda x: (-x[0], x[1]))
+        elif self.strategy == ConflictResolution.PRIORITY_REFC:
+            # Priority first, then FIFO for ties
+            agenda.sort(key=lambda x: (-x[0], x[1]))
         elif self.strategy == ConflictResolution.LIFO:
             agenda.reverse()
         elif self.strategy == ConflictResolution.RECENT:
             agenda.sort(key=lambda x: max(f._id for f in x[2]), reverse=True)
-        elif self.strategy == ConflictResolution.REFC:
-            # FIFO among unfired
-            pass
-        # FIFO / default
+        # FIFO / REFC / default → keep insertion order
         return agenda[0]
 
     def fire_one(self) -> bool:
-        """Fire a single rule instantiation; return False if agenda empty."""
+        """Fire a single rule instantiation; return False if agenda empty.
+
+        Raises
+        ------
+        InfiniteLoopError
+            If the step count exceeds ``max_steps``.
+        """
         agenda = self._collect_agenda()
         choice = self._select(agenda)
         if choice is None:
@@ -818,12 +986,19 @@ class Engine:
                 "facts": list(facts),
             })
         self.stats[rname]["fires"] += 1
+        self._notify_fire(rname, dict(bindings))
         for action in rule.actions:
             action(dict(bindings), self)
         return True
 
     def run(self, max_steps: Optional[int] = None) -> int:
-        """Fire rules until the agenda is exhausted; return the # of firings."""
+        """Fire rules until the agenda is exhausted; return the # of firings.
+
+        Parameters
+        ----------
+        max_steps : int, optional
+            Override the engine's default ``max_steps`` for this run only.
+        """
         if max_steps is None:
             max_steps = self.max_steps
         fired = 0
@@ -844,11 +1019,16 @@ class Engine:
 
         If the support instantiation is later retracted (because a condition
         fact is retracted), the derived fact is automatically retracted too.
+
+        If the fact is already in working memory (e.g., asserted by another
+        rule), the support is still tracked so that the fact is only
+        retracted when *all* supports are withdrawn.
         """
         inserted = self.assert_fact(fact)
-        if inserted:
-            self._tms_support[fact].add(support)
-            self._tms_derived[support].add(fact)
+        # Always track support, even for already-present facts, so that
+        # multiple rule firings can all support the same derived fact.
+        self._tms_support[fact].add(support)
+        self._tms_derived[support].add(fact)
         return inserted
 
     def _retract_support(self, sig: tuple) -> None:
@@ -865,8 +1045,8 @@ class Engine:
     def query(self, fact_type: str, **fields: Any) -> list[Fact]:
         """Find all facts of *fact_type* matching the given field values.
 
-        Fields can be plain values (exact match) or ``Var`` instances (wildcard
-        / bind).  Returns matching facts in insertion order.
+        Fields can be plain values (exact match) or ``Var`` instances
+        (wildcard / bind).  Returns matching facts in insertion order.
         """
         results = []
         for fact in self._facts_by_type.get(fact_type, ()):
@@ -896,14 +1076,15 @@ class Engine:
     # -- Logging & tracing -------------------------------------------------
     def log(self, message: str, level: str = "INFO") -> None:
         """Log a message if the engine's log level permits it."""
-        if _LOG_LEVELS.get(level.upper(), 20) >= self._log_level:
-            print(f"[rete:{level}] {message}")
+        lvl = _LOG_LEVELS.get(level.upper(), logging.INFO)
+        self.logger.log(lvl, message)
 
     def enable_tracing(self) -> None:
         """Enable recording of every firing in ``self.trace``."""
         self._tracing = True
 
     def disable_tracing(self) -> None:
+        """Disable firing trace recording."""
         self._tracing = False
 
     def get_trace(self) -> list[dict[str, Any]]:
@@ -930,10 +1111,100 @@ class Engine:
         for rname, pn in self._prod_nodes.items():
             for facts, bindings in pn.instantiations:
                 sig = (rname, facts)
-                if self.strategy == ConflictResolution.REFC and sig in self._fired:
+                if self.strategy in (
+                    ConflictResolution.REFC,
+                    ConflictResolution.PRIORITY_REFC,
+                ) and sig in self._fired:
                     continue
                 result.append((rname, dict(bindings)))
         return result
+
+    # -- Network visualization --------------------------------------------
+    def to_dot(self) -> str:
+        """Render the Rete network as a Graphviz DOT string.
+
+        This is useful for debugging and understanding how rules are
+        compiled into the network.  The output can be rendered with
+        ``dot -Tpng network.dot -o network.png``.
+        """
+        lines = ["digraph rete {", '  rankdir=LR;', '  node [fontname="monospace"];']
+
+        # Root
+        lines.append('  root [label="root", shape=ellipse];')
+
+        # Alpha nodes
+        for key, an in self._alpha_nodes.items():
+            label = repr(an.condition)
+            node_id = f"alpha_{abs(hash(key))}"
+            shape = "box" if not an.condition.negated else "diamond"
+            lines.append(f'  {node_id} [label="{label}", shape={shape}];')
+            lines.append(f'  root -> {node_id};')
+
+        # Join nodes and their connections
+        for rname, joins in self._rule_joins.items():
+            for i, jn in enumerate(joins):
+                jn_id = f"join_{rname}_{i}"
+                label = f"join\\n({rname}#{i})"
+                if jn.negated:
+                    label = "~" + label
+                lines.append(f'  {jn_id} [label="{label}", shape=hexagon];')
+
+                # left -> join
+                if isinstance(jn.left, DummyBeta):
+                    lines.append(f'  root -> {jn_id};')
+                else:
+                    left_id = None
+                    # find the join node or beta that feeds this left
+                    for other_rname, other_joins in self._rule_joins.items():
+                        for j, oj in enumerate(other_joins):
+                            if oj.successor is jn.left:
+                                left_id = f"join_{other_rname}_{j}"
+                                break
+                        if left_id:
+                            break
+                    if left_id:
+                        lines.append(f'  {left_id} -> {jn_id};')
+
+                # right alpha -> join
+                for key, an in self._alpha_nodes.items():
+                    if jn in an.successors:
+                        alpha_id = f"alpha_{abs(hash(key))}"
+                        lines.append(f'  {alpha_id} -> {jn_id};')
+
+            # Production node
+            pn_id = f"prod_{rname}"
+            lines.append(
+                f'  {pn_id} [label="{rname}", shape=doubleoctagon];'
+            )
+            if joins:
+                lines.append(f'  join_{rname}_{len(joins)-1} -> {pn_id};')
+
+        lines.append("}")
+        return "\n".join(lines)
+
+    def network_summary(self) -> dict[str, Any]:
+        """Return a summary dict describing the network structure."""
+        return {
+            "rules": len(self._rules),
+            "alpha_nodes": len(self._alpha_nodes),
+            "production_nodes": len(self._prod_nodes),
+            "facts": len(self.facts),
+            "strategy": self.strategy.name,
+            "max_steps": self.max_steps,
+            "step": self._step,
+            "rule_details": {
+                rname: {
+                    "conditions": len(rule.conditions),
+                    "actions": len(rule.actions),
+                    "priority": rule.priority,
+                    "join_nodes": len(self._rule_joins.get(rname, [])),
+                    "instantiations": len(
+                        self._prod_nodes.get(rname, ProductionNode(rule)).instantiations
+                    ),
+                }
+                for rname, rule in self._rules.items()
+            },
+        }
 
     def __repr__(self) -> str:  # pragma: no cover - cosmetic
         return (

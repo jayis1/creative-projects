@@ -1,4 +1,16 @@
-"""Custom exceptions for the Rete engine."""
+"""Custom exceptions for the Rete engine.
+
+Exception hierarchy
+-------------------
+    ReteError
+    ├── RuleError
+    ├── FactError
+    ├── MatchError
+    ├── InfiniteLoopError
+    └── SerializationError
+"""
+
+from __future__ import annotations
 
 
 class ReteError(Exception):
@@ -19,3 +31,7 @@ class MatchError(ReteError):
 
 class InfiniteLoopError(ReteError):
     """Raised when the engine detects a non-terminating rule set."""
+
+
+class SerializationError(ReteError):
+    """Raised when serialization or deserialization fails."""
