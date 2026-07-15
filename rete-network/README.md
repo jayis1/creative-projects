@@ -34,14 +34,25 @@ Fact ─▶ Alpha net (one-input) ─▶ Join / Beta net (two-input) ─▶ Prod
 - `Rule` definitions with ordered conditions + actions
 - `Var` / `Const` pattern terms for variable binding and constant tests
 - Arbitrary intra-fact predicates
-- Negated conditions (`negated=True`)
-- Alpha-node sharing across rules with overlapping patterns
-- Incremental assertion / retraction
-- Five conflict-resolution strategies: FIFO, LIFO, Priority, Recent, Refraction
-- Infinite-loop detection via `max_steps`
-- Agenda inspection API
+- **Negated conditions** (`negated=True`) with full NCC semantics
+- **Alpha-node sharing** across rules with overlapping patterns
+- **Incremental assertion / retraction** — no full re-scan needed
+- **5 conflict-resolution strategies**: FIFO, LIFO, Priority, Recent, Refraction
+- **Infinite-loop detection** via `max_steps`
+- **Truth maintenance (TMS)** — logically derived facts auto-retract when
+  their supporting instantiation disappears
+- **Query API** — `query()`, `query_one()`, `fact_count()` for direct
+  working-memory access
+- **Rule statistics** — per-rule fire counts and activation counts
+- **Firing trace** — record every firing for debugging
+- **JSON serialization** — load rules and facts from JSON files; save facts
+- **CLI** — `run`, `agenda`, `validate`, `repl` subcommands
+- **Logging** with configurable log levels
+- **Interactive REPL** for debugging rule sets
 
 ## Usage
+
+### Python API
 
 ```python
 from rete import Engine, Fact, Rule, Condition, Var, Const
@@ -97,12 +108,124 @@ Condition("person", age=Var("a"),
           predicate=lambda fact, b: b["a"] >= 18)
 ```
 
+### Truth maintenance
+
+```python
+# Logically assert a fact supported by a rule firing
+sig = ("my-rule", (some_fact,))
+eng.assert_logical(Fact("derived", value=42), support=sig)
+# If the supporting fact is retracted, the derived fact auto-retracts too
+```
+
+### Query API
+
+```python
+# Find all persons aged 30
+matches = eng.query("person", age=30)
+# Find first match
+first = eng.query_one("person", name="Alice")
+# Count facts
+total = eng.fact_count()
+persons = eng.fact_count("person")
+```
+
+### Tracing & statistics
+
+```python
+eng.enable_tracing()
+eng.run()
+for entry in eng.get_trace():
+    print(f"Step {entry['step']}: {entry['rule']} {entry['bindings']}")
+
+stats = eng.get_stats()
+# {"greet": {"fires": 2, "activations": 0}, ...}
+```
+
+### JSON rule files
+
+```json
+{
+  "rules": [
+    {
+      "name": "greet",
+      "priority": 0,
+      "conditions": [
+        {"type": "person", "fields": {"name": "?n"}}
+      ],
+      "actions": [
+        ["print", "Hello, {n}!"]
+      ]
+    }
+  ],
+  "facts": [
+    {"type": "person", "fields": {"name": "Alice"}}
+  ]
+}
+```
+
+Field values starting with `?` are variables; everything else is a constant.
+Supported action types in JSON: `print`, `assert`, `retract`, `log`.
+
+### CLI
+
+```bash
+# Run a JSON rule file
+python -m rete.cli run examples/social.json --trace
+
+# Show agenda without firing
+python -m rete.cli agenda examples/social.json
+
+# Validate a rule file
+python -m rete.cli validate examples/social.json
+
+# Interactive REPL
+python -m rete.cli repl examples/social.json
+
+# Run with a specific strategy
+python -m rete.cli run examples/social.json --strategy priority
+
+# Save final facts
+python -m rete.cli run examples/social.json --save-facts output.json
+```
+
+### Loading from Python
+
+```python
+from rete import load_engine
+
+eng = load_engine("examples/social.json", strategy="refc")
+eng.run()
+```
+
+## Examples
+
+- `examples/social.json` — social network with friends detection and banned-person negation
+- `examples/ancestry.json` — transitive ancestor computation via recursive rules
+
 ## Installation
 
 ```bash
 cd rete-network
 pip install -e .
 ```
+
+## Architecture
+
+The engine builds a Rete network from rule definitions:
+
+1. **Alpha net**: Each condition becomes an alpha node (shared if identical
+   patterns exist). Alpha nodes test fact type and field constraints.
+2. **Beta net**: Join nodes chain conditions left-to-right, checking
+   variable-binding consistency across conditions.
+3. **Production nodes**: Leaf nodes collect complete instantiations per rule.
+4. **Agenda**: The conflict set is resolved per the chosen strategy, and
+   actions fire one at a time, potentially asserting/retracting facts that
+   cause incremental network updates.
+
+Negated conditions (NCC) are handled by negated join nodes that check *absence*
+of matching facts rather than presence. When a fact matching a negated pattern
+is asserted, previously-eligible instantiations are blocked; when it's
+retracted, they may become eligible again.
 
 ## License
 

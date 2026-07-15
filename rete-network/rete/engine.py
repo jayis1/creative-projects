@@ -487,6 +487,10 @@ class ConflictResolution(Enum):
     REFC = auto()  # refraction: never fire the same instantiation twice
 
 
+# Logging levels (stdlib-compatible numeric values)
+_LOG_LEVELS = {"DEBUG": 10, "INFO": 20, "WARNING": 30, "ERROR": 40, "CRITICAL": 50}
+
+
 # ---------------------------------------------------------------------------
 #  Engine
 # ---------------------------------------------------------------------------
@@ -512,9 +516,11 @@ class Engine:
         self,
         strategy: ConflictResolution = ConflictResolution.REFC,
         max_steps: int = 100_000,
+        log_level: str = "WARNING",
     ):
         self.strategy = strategy
         self.max_steps = max_steps
+        self._log_level = _LOG_LEVELS.get(log_level.upper(), 30)
 
         # Working memory
         self.facts: set[Fact] = set()
@@ -531,6 +537,22 @@ class Engine:
         # Agenda
         self._fired: set[tuple] = set()  # for refraction
         self._step = 0
+
+        # Truth maintenance: track which facts were logically asserted by
+        # which rule firings, so they can be auto-retracted if the supporting
+        # instantiation disappears.
+        self._tms_support: dict[Fact, set[tuple]] = defaultdict(set)
+        # Reverse map: instantiation → facts it asserted
+        self._tms_derived: dict[tuple, set[Fact]] = defaultdict(set)
+
+        # Firing log / trace
+        self.trace: list[dict[str, Any]] = []
+        self._tracing: bool = False
+
+        # Rule statistics
+        self.stats: dict[str, dict[str, int]] = defaultdict(
+            lambda: {"fires": 0, "activations": 0}
+        )
 
     # -- Rule management ---------------------------------------------------
     def add_rule(self, rule: Rule) -> None:
@@ -768,6 +790,15 @@ class Engine:
                 f"engine exceeded max_steps={self.max_steps}; "
                 "possible non-terminating rule set"
             )
+        # Record trace
+        if self._tracing:
+            self.trace.append({
+                "step": self._step,
+                "rule": rname,
+                "bindings": dict(bindings),
+                "facts": list(facts),
+            })
+        self.stats[rname]["fires"] += 1
         for action in rule.actions:
             action(dict(bindings), self)
         return True
@@ -787,6 +818,91 @@ class Engine:
     def reset_agenda(self) -> None:
         """Clear refraction memory so rules can fire again on same facts."""
         self._fired.clear()
+
+    # -- Truth maintenance -------------------------------------------------
+    def assert_logical(self, fact: Fact, support: tuple) -> bool:
+        """Assert *fact* as logically derived from *support* (a firing sig).
+
+        If the support instantiation is later retracted (because a condition
+        fact is retracted), the derived fact is automatically retracted too.
+        """
+        inserted = self.assert_fact(fact)
+        if inserted:
+            self._tms_support[fact].add(support)
+            self._tms_derived[support].add(fact)
+        return inserted
+
+    def _retract_support(self, sig: tuple) -> None:
+        """Retract all facts logically derived from *sig*."""
+        for fact in list(self._tms_derived.get(sig, ())):
+            self._tms_support[fact].discard(sig)
+            if not self._tms_support[fact]:
+                # No remaining support → retract
+                self.retract_fact(fact)
+                self._tms_support.pop(fact, None)
+        self._tms_derived.pop(sig, None)
+
+    # -- Query API ---------------------------------------------------------
+    def query(self, fact_type: str, **fields: Any) -> list[Fact]:
+        """Find all facts of *fact_type* matching the given field values.
+
+        Fields can be plain values (exact match) or ``Var`` instances (wildcard
+        / bind).  Returns matching facts in insertion order.
+        """
+        results = []
+        for fact in self._facts_by_type.get(fact_type, ()):
+            match = True
+            for k, v in fields.items():
+                if isinstance(v, Var):
+                    continue  # wildcard
+                if fact.fields.get(k) != v:
+                    match = False
+                    break
+            if match:
+                results.append(fact)
+        return results
+
+    def query_one(self, fact_type: str, **fields: Any) -> Optional[Fact]:
+        """Return the first matching fact, or None."""
+        for fact in self.query(fact_type, **fields):
+            return fact
+        return None
+
+    def fact_count(self, fact_type: Optional[str] = None) -> int:
+        """Count facts, optionally filtered by type."""
+        if fact_type is None:
+            return len(self.facts)
+        return len(self._facts_by_type.get(fact_type, ()))
+
+    # -- Logging & tracing -------------------------------------------------
+    def log(self, message: str, level: str = "INFO") -> None:
+        """Log a message if the engine's log level permits it."""
+        if _LOG_LEVELS.get(level.upper(), 20) >= self._log_level:
+            print(f"[rete:{level}] {message}")
+
+    def enable_tracing(self) -> None:
+        """Enable recording of every firing in ``self.trace``."""
+        self._tracing = True
+
+    def disable_tracing(self) -> None:
+        self._tracing = False
+
+    def get_trace(self) -> list[dict[str, Any]]:
+        """Return the list of recorded firings (if tracing enabled)."""
+        return self.trace
+
+    def get_stats(self) -> dict[str, dict[str, int]]:
+        """Return per-rule statistics: fires and current activations."""
+        for rname in self._rules:
+            pn = self._prod_nodes.get(rname)
+            if pn:
+                self.stats[rname]["activations"] = len(pn.instantiations)
+        return dict(self.stats)
+
+    def reset_stats(self) -> None:
+        """Reset all rule statistics."""
+        self.stats.clear()
+        self.trace.clear()
 
     # -- Inspection --------------------------------------------------------
     def agenda(self) -> list[tuple[str, dict[str, Any]]]:

@@ -1,0 +1,32 @@
+{
+  "rules": [
+    {
+      "name": "ancestor-direct",
+      "priority": 0,
+      "conditions": [
+        {"type": "parent", "fields": {"parent": "?p", "child": "?c"}}
+      ],
+      "actions": [
+        ["assert", "ancestor", {"ancestor": "?p", "descendant": "?c"}],
+        ["print", "{p} is an ancestor of {c}"]
+      ]
+    },
+    {
+      "name": "ancestor-transitive",
+      "priority": 0,
+      "conditions": [
+        {"type": "ancestor", "fields": {"ancestor": "?p", "descendant": "?c2"}},
+        {"type": "parent", "fields": {"parent": "?c2", "child": "?c3"}}
+      ],
+      "actions": [
+        ["assert", "ancestor", {"ancestor": "?p", "descendant": "?c3"}],
+        ["print", "{p} is a distant ancestor of {c3}"]
+      ]
+    }
+  ],
+  "facts": [
+    {"type": "parent", "fields": {"parent": "A", "child": "B"}},
+    {"type": "parent", "fields": {"parent": "B", "child": "C"}},
+    {"type": "parent", "fields": {"parent": "C", "child": "D"}}
+  ]
+}

@@ -13,10 +13,12 @@ Public API
     Engine          – the Rete inference engine
     Condition       – a single pattern / test on a fact
     Var, Const      – helpers for building conditions
+    ConflictResolution – agenda strategy enum
 """
 
 from .engine import Engine, Fact, Rule, Condition, Var, Const, ConflictResolution
 from .exceptions import ReteError
+from .serialization import load_json, load_engine, save_facts, save_state
 
 __all__ = [
     "Engine",
@@ -27,6 +29,10 @@ __all__ = [
     "Const",
     "ConflictResolution",
     "ReteError",
+    "load_json",
+    "load_engine",
+    "save_facts",
+    "save_state",
 ]
 
-__version__ = "1.0.0"
+__version__ = "2.0.0"

@@ -1,0 +1,45 @@
+{
+  "rules": [
+    {
+      "name": "greet",
+      "priority": 0,
+      "conditions": [
+        {"type": "person", "fields": {"name": "?n"}}
+      ],
+      "actions": [
+        ["print", "Hello, {n}!"]
+      ]
+    },
+    {
+      "name": "find-friends",
+      "priority": 1,
+      "conditions": [
+        {"type": "likes", "fields": {"a": "?x", "b": "?y"}},
+        {"type": "likes", "fields": {"a": "?y", "b": "?x"}}
+      ],
+      "actions": [
+        ["print", "{x} and {y} are friends!"],
+        ["assert", "friends", {"a": "?x", "b": "?y"}]
+      ]
+    },
+    {
+      "name": "allow-entry",
+      "priority": 0,
+      "conditions": [
+        {"type": "person", "fields": {"name": "?n"}},
+        {"type": "banned", "fields": {"name": "?n"}, "negated": true}
+      ],
+      "actions": [
+        ["print", "{n} is allowed to enter."]
+      ]
+    }
+  ],
+  "facts": [
+    {"type": "person", "fields": {"name": "Alice"}},
+    {"type": "person", "fields": {"name": "Bob"}},
+    {"type": "person", "fields": {"name": "Carol"}},
+    {"type": "likes", "fields": {"a": "Alice", "b": "Bob"}},
+    {"type": "likes", "fields": {"a": "Bob", "b": "Alice"}},
+    {"type": "banned", "fields": {"name": "Carol"}}
+  ]
+}
