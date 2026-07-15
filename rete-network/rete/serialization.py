@@ -46,19 +46,33 @@ from .exceptions import ReteError
 
 
 def _action_print(template: str):
-    """Create an action that prints a formatted string using bindings."""
+    """Create an action that prints a formatted string using bindings.
+
+    Uses ``string.Template``-style safe substitution so missing keys don't
+    crash — they are simply left as-is in the output.
+    """
+    import string
+    tmpl = string.Template(template.replace("{", "${").replace("}", "}"))
     def action(bindings: dict, engine: Engine):
-        print(template.format(**bindings))
+        # Safe substitution: missing keys are left as-is, no KeyError
+        print(tmpl.safe_substitute(bindings))
     return action
 
 
 def _action_assert(fact_type: str, **field_templates: str):
-    """Create an action that asserts a new fact from bindings."""
+    """Create an action that asserts a new fact from bindings.
+
+    Field values starting with ``?`` are resolved from bindings; if a binding
+    is missing, the field is set to ``None`` rather than leaking the template
+    string.
+    """
     def action(bindings: dict, engine: Engine):
         fields = {}
         for k, v in field_templates.items():
             if isinstance(v, str) and v.startswith("?"):
-                fields[k] = bindings.get(v[1:], v)
+                # Bug fix: use .get() without a default that leaks the template
+                # string. Missing bindings resolve to None.
+                fields[k] = bindings.get(v[1:])
             else:
                 fields[k] = v
         engine.assert_fact(Fact(fact_type, **fields))
@@ -66,12 +80,16 @@ def _action_assert(fact_type: str, **field_templates: str):
 
 
 def _action_retract(fact_type: str, **field_templates: str):
-    """Create an action that retracts a fact matching bindings."""
+    """Create an action that retracts a fact matching bindings.
+
+    Field values starting with ``?`` are resolved from bindings; if a binding
+    is missing, the field matches against ``None``.
+    """
     def action(bindings: dict, engine: Engine):
         fields = {}
         for k, v in field_templates.items():
             if isinstance(v, str) and v.startswith("?"):
-                fields[k] = bindings.get(v[1:], v)
+                fields[k] = bindings.get(v[1:])
             else:
                 fields[k] = v
         # Find and retract matching facts
@@ -83,9 +101,11 @@ def _action_retract(fact_type: str, **field_templates: str):
 
 
 def _action_log(message: str):
-    """Create an action that logs a message."""
+    """Create an action that logs a message using safe substitution."""
+    import string
+    tmpl = string.Template(message.replace("{", "${").replace("}", "}"))
     def action(bindings: dict, engine: Engine):
-        engine.log(message.format(**bindings))
+        engine.log(tmpl.safe_substitute(bindings))
     return action
 
 

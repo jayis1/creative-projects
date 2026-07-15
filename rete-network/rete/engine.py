@@ -654,15 +654,27 @@ class Engine:
                 an.successors.append(jn)
 
     def remove_rule(self, name: str) -> None:
-        """Remove a rule and its network nodes."""
+        """Remove a rule and its network nodes.
+
+        Properly cleans up join nodes from alpha-node successor lists and
+        beta-memory successor lists to avoid orphaned references that could
+        cause errors or memory leaks.
+        """
         if name not in self._rules:
             raise RuleError(f"rule '{name}' not found")
+        join_chain = self._rule_joins.get(name, [])
+        # Remove join nodes from alpha-node successor lists
+        for jn in join_chain:
+            for an in self._alpha_nodes.values():
+                if jn in an.successors:
+                    an.successors.remove(jn)
+            # Remove join nodes from beta-memory / dummy-beta successor lists
+            left = jn.left
+            if hasattr(left, "successors") and jn in left.successors:
+                left.successors.remove(jn)
         del self._rules[name]
         del self._prod_nodes[name]
         del self._rule_joins[name]
-        # (Alpha nodes may be shared; we leave them in place.  A full teardown
-        #  would remove join nodes from successor lists, but for clarity we
-        #  simply drop the production node so the rule never fires.)
 
     @property
     def rules(self) -> list[str]:
@@ -697,9 +709,16 @@ class Engine:
         return len(to_remove)
 
     def clear(self) -> None:
-        """Remove all facts from working memory (rules remain)."""
+        """Remove all facts from working memory and reset agenda (rules remain).
+
+        Also resets refraction memory so that rules can fire again when the
+        same facts are re-asserted after a clear.
+        """
         for f in list(self.facts):
             self.retract_fact(f)
+        # Bug fix: clear() must also reset refraction memory, otherwise rules
+        # cannot re-fire after facts are re-asserted.
+        self.reset_agenda()
 
     def facts_of_type(self, fact_type: str) -> list[Fact]:
         return list(self._facts_by_type.get(fact_type, ()))

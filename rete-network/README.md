@@ -202,6 +202,36 @@ eng.run()
 - `examples/social.json` — social network with friends detection and banned-person negation
 - `examples/ancestry.json` — transitive ancestor computation via recursive rules
 
+## Known Issues (Resolved)
+
+The following bugs were found during the bug hunt phase and have been fixed:
+
+1. **`clear()` didn't reset refraction memory** — After calling `clear()`, rules
+   could not re-fire when the same facts were re-asserted, because the `_fired`
+   set retained old instantiation signatures. **Fix**: `clear()` now calls
+   `reset_agenda()` to clear the refraction set.
+
+2. **`_action_print` crashed on missing format keys** — The `str.format()` call
+   raised `KeyError` when a template referenced a binding key that wasn't
+   present (e.g., a partial match). **Fix**: Switched to
+   `string.Template.safe_substitute()`, which leaves missing keys as-is
+   instead of crashing.
+
+3. **`_action_assert` leaked template strings into fact values** — When a
+   variable binding was missing, `bindings.get(v[1:], v)` returned the default
+   value `v` (the literal string `"?x"`), so facts ended up with `"?x"` as a
+   field value. **Fix**: Changed to `bindings.get(v[1:])` which returns `None`
+   for missing bindings.
+
+4. **`remove_rule` left orphaned join nodes** — Removing a rule deleted the
+   production node and join-chain references, but the join nodes remained in
+   alpha-node and beta-memory successor lists, causing potential errors and
+   memory leaks. **Fix**: `remove_rule` now iterates the join chain and removes
+   each join node from all successor lists.
+
+5. **`_action_log` had the same `str.format()` crash** as `_action_print`.
+   **Fix**: Same `string.Template.safe_substitute()` approach.
+
 ## Installation
 
 ```bash
