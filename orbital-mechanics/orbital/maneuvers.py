@@ -79,8 +79,133 @@ def bielliptic_transfer(body: Body, r1: float, r2: float, rb: float) -> Transfer
 
 
 def compute_dv(v1: np.ndarray, v2: np.ndarray) -> float:
-    """Scalar Δv magnitude between two velocity vectors."""
-    return float(np.linalg.norm(np.asarray(v2) - np.asarray(v1)))
+    """Scalar Δv magnitude between two velocity vectors.
+
+    Parameters
+    ----------
+    v1, v2 : array-like
+        Velocity vectors [m/s].
+
+    Returns
+    -------
+    float
+        |v2 − v1| [m/s].
+    """
+    return float(np.linalg.norm(np.asarray(v2, dtype=float) - np.asarray(v1, dtype=float)))
+
+
+def plane_change_delta_v(v: float, theta: float) -> float:
+    """Δv for a simple plane change of angle θ at constant speed.
+
+    For a pure rotation of the velocity vector by angle θ at constant
+    speed v, the required Δv is:
+
+        Δv = 2 v sin(θ/2)
+
+    Parameters
+    ----------
+    v : float
+        Orbital speed at the maneuver point [m/s].
+    theta : float
+        Plane change angle [rad].
+
+    Returns
+    -------
+    float
+        Δv [m/s].
+    """
+    return 2.0 * v * abs(math.sin(theta / 2.0))
+
+
+def combined_plane_change_delta_v(v1: float, v2: float, theta: float) -> float:
+    """Δv for a combined inclination change and speed change.
+
+    When the speed changes from v1 to v2 while also rotating the velocity
+    vector by angle θ, the Δv is given by the law of cosines:
+
+        Δv = √(v1² + v2² − 2 v1 v2 cos θ)
+
+    Parameters
+    ----------
+    v1 : float
+        Initial speed [m/s].
+    v2 : float
+        Final speed [m/s].
+    theta : float
+        Plane change angle [rad].
+
+    Returns
+    -------
+    float
+        Δv [m/s].
+    """
+    return math.sqrt(v1 ** 2 + v2 ** 2 - 2.0 * v1 * v2 * math.cos(theta))
+
+
+def minimum_energy_tof(body: Body, r1: float, r2: float, dnu: float) -> float:
+    """Minimum-energy transfer time between two points (Lambert).
+
+    The minimum-energy orbit has semi-major axis a_min = (R1 + R2 + c) / 4
+    where c = |r2 - r1| (chord length).  The tof for the minimum-energy
+    elliptic transfer is half the period of this orbit.
+
+    Parameters
+    ----------
+    body : Body
+        Central body.
+    r1, r2 : float
+        Radii of the initial and final positions [m].
+    dnu : float
+        Transfer angle [rad].
+
+    Returns
+    -------
+    float
+        Minimum-energy time of flight [s].
+    """
+    # Chord length: c = sqrt(R1² + R2² - 2 R1 R2 cos(dnu))
+    c = math.sqrt(r1 ** 2 + r2 ** 2 - 2.0 * r1 * r2 * math.cos(dnu))
+    s = (r1 + r2 + c) / 2.0
+    a_min = s / 2.0
+    # Minimum-energy tof = π * sqrt(a_min³ / μ)  (half period of the min-energy ellipse)
+    return math.pi * math.sqrt(a_min ** 3 / body.mu)
+
+
+def porkchop_data(
+    body: Body,
+    r1: np.ndarray,
+    r2: np.ndarray,
+    tof_range: tuple[float, float],
+    n_tof: int = 20,
+) -> list[tuple[float, float, float]]:
+    """Generate porkchop-plot data: (tof, v1_magnitude, v2_magnitude) triples.
+
+    Parameters
+    ----------
+    body : Body
+        Central body.
+    r1, r2 : ndarray
+        Departure and arrival position vectors [m].
+    tof_range : (float, float)
+        (min_tof, max_tof) in seconds.
+    n_tof : int
+        Number of time-of-flight samples.
+
+    Returns
+    -------
+    list of (tof, |v1|, |v2|)
+        Time of flight [s], departure speed [m/s], arrival speed [m/s].
+    """
+    results = []
+    min_tof, max_tof = tof_range
+    for k in range(n_tof):
+        tof = min_tof + (max_tof - min_tof) * k / max(n_tof - 1, 1)
+        try:
+            v1, v2 = lambert_izzo(r1, r2, tof, body.mu, prograde=True)
+            results.append((tof, float(np.linalg.norm(v1)), float(np.linalg.norm(v2))))
+        except (ValueError, RuntimeError):
+            results.append((tof, float("inf"), float("inf")))
+    return results
 
 
 def _stumpff(z: float) -> Tuple[float, float, float]:
