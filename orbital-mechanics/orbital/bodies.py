@@ -21,6 +21,9 @@ class Body:
         oblateness model.
     omega : float
         Sidereal rotation rate [rad / s].  Zero for non-rotating bodies.
+    j3 : float
+        Third zonal harmonic (dimensionless).  Used by frozen-orbit
+        calculations.  Default 0.
     """
 
     name: str
@@ -28,6 +31,7 @@ class Body:
     radius: float
     j2: float = 0.0
     omega: float = 0.0
+    j3: float = 0.0
 
 
 EARTH = Body(
@@ -36,6 +40,7 @@ EARTH = Body(
     radius=6_378_136.3,
     j2=1.082626173e-3,
     omega=7.2921159e-5,
+    j3=-2.532153e-6,
 )
 MOON = Body(
     name="Moon",

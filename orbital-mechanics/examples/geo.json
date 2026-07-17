@@ -1,0 +1,19 @@
+{
+  "body": "earth",
+  "satellite": {
+    "a_km": 42164,
+    "e": 0.0,
+    "i_deg": 0.0,
+    "raan_deg": 0,
+    "argp_deg": 0,
+    "nu_deg": 0
+  },
+  "propagation": {
+    "method": "kepler",
+    "dt_s": 86400
+  },
+  "output": {
+    "states_csv": "geo_states.csv",
+    "verbose": false
+  }
+}

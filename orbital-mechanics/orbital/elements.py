@@ -166,6 +166,14 @@ class OrbitalElements:
     @property
     def perigee(self) -> float:
         """Periapsis radius [m]."""
+        if self.is_parabolic or math.isinf(self.a):
+            # For a parabola, p = 2*q so q = p/2, but p = a*(1-e²) is
+            # indeterminate.  We require the user to store the periapsis
+            # distance in `a` when e=1 (convention documented in
+            # elements_to_rv).  If a is inf, periapsis is undefined.
+            if math.isinf(self.a):
+                return float("nan")
+            return self.a  # finite a with e=1 → a is the periapsis distance
         return self.a * (1.0 - self.e)
 
     @property
@@ -307,12 +315,30 @@ def elements_to_rv(elements: OrbitalElements, body: Body | None = None) -> State
     e = elements.e
     nu = elements.nu
     a = elements.a
-    p = elements.p
+
+    # Semi-latus rectum.  For parabolic orbits a = inf and e = 1, so
+    # p = a*(1 - e²) is the indeterminate form inf·0 = NaN.  In that case
+    # we derive p from the periapsis distance q = a*(1-e) which for a
+    # parabola reduces to q = p/2, i.e. p = 2*q.  We obtain q from the
+    # elements' perigee property (which handles the parabolic case).
+    if math.isinf(a) or (elements.is_parabolic):
+        q = elements.perigee  # a*(1-e) = inf*(1-1) → handle explicitly
+        if math.isinf(q) or math.isnan(q):
+            # periapsis distance must be supplied via a finite proxy:
+            # we store it in `a` as the periapsis distance for parabolic
+            # orbits (convention: when a=inf, treat a as q if finite).
+            raise ValueError(
+                "Parabolic orbit requires a finite periapsis distance; "
+                "set a to the periapsis radius [m] and e=1."
+            )
+        p = 2.0 * q
+    else:
+        p = elements.p
 
     # Radius in the perifocal frame
     r_pfq = p / (1.0 + e * math.cos(nu))
     # Handle parabolic
-    if math.isinf(a):
+    if math.isinf(a) or elements.is_parabolic:
         vmag = math.sqrt(2.0 * mu / r_pfq)  # energy = 0
     else:
         vmag = math.sqrt(abs(2.0 * mu / r_pfq - mu / a))

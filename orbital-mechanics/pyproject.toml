@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "orbital-mechanics"
+version = "3.0.0"
+description = "A pure-Python library for two-body orbital mechanics: Keplerian elements, propagation, Lambert, maneuvers, perturbations, TLE parsing, visibility, and mission design."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "creative-projects" },
+]
+keywords = [
+    "orbital-mechanics", "astrodynamics", "kepler", "lambert",
+    "propagation", "two-body", "spaceflight", "astronomy",
+]
+dependencies = [
+    "numpy>=1.20",
+]
+
+[project.optional-dependencies]
+yaml = ["pyyaml>=6.0"]
+dev = ["pytest>=7.0", "pyyaml>=6.0"]
+
+[project.scripts]
+orbital = "orbital.cli:main"
+
+[tool.setuptools]
+packages = ["orbital"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]

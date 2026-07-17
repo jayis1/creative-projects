@@ -1,0 +1,29 @@
+# Example mission configuration for the orbital-mechanics CLI.
+# Usage: python3 cli.py config examples/mission.yaml
+# (Requires pyyaml: pip install pyyaml)
+
+body: earth
+
+satellite:
+  a_km: 7000
+  e: 0.01
+  i_deg: 51.6
+  raan_deg: 0
+  argp_deg: 30
+  nu_deg: 0
+
+propagation:
+  method: rkf45
+  dt_s: 86400
+  rtol: 1.0e-9
+  atol: 1.0e-12
+
+ground_station:
+  lat_deg: 40.0
+  lon_deg: 0.0
+  min_elevation_deg: 5.0
+
+output:
+  states_csv: orbit_states.csv
+  groundtrack_csv: groundtrack.csv
+  verbose: true
