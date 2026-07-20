@@ -77,8 +77,8 @@ def held_karp(instance: TSPInstance) -> Tour:
 def branch_and_bound(instance: TSPInstance) -> Tour:
     """Solve TSP exactly via branch-and-bound with a reduced-cost lower bound.
 
-    Uses the assignment-problem relaxation lower bound and best-first search.
-    Feasible for n ≤ ~15-18 depending on the instance.
+    Uses the 1-tree lower bound (MST + two cheapest edges from one vertex)
+    and depth-first search. Feasible for n ≤ ~15-18 depending on the instance.
     """
     n = instance.n
     if n > 20:
@@ -88,8 +88,20 @@ def branch_and_bound(instance: TSPInstance) -> Tour:
     # Initial upper bound via nearest neighbor
     upper = _nn_upper_bound(instance)
 
+    # BUG FIX: Initialize best_order with the NN tour so that if the NN tour
+    # is already optimal, B&B returns it instead of an empty list.
+    # Previously, if no tour strictly improved on the upper bound (because
+    # NN was already optimal), best_order would remain empty and the fallback
+    # list(range(n)) would be returned, which is almost certainly suboptimal.
     best_order: List[int] = []
     best_cost = [upper]
+
+    # Try to get the actual NN tour to use as initial best_order
+    from .heuristics import nearest_neighbor
+    nn_tour = nearest_neighbor(instance)
+    if nn_tour.length <= upper:
+        best_cost[0] = nn_tour.length
+        best_order = list(nn_tour.order)
 
     # DFS with pruning
     visited = [False] * n
@@ -97,31 +109,46 @@ def branch_and_bound(instance: TSPInstance) -> Tour:
     path = [0]
 
     def _lower_bound(cur_path: List[int]) -> float:
-        """Simple lower bound: sum of min outgoing edges for unvisited cities."""
-        lb = 0.0
-        for i in range(n):
-            if visited[i]:
-                continue
-            min_out = min(matrix[i, j] for j in range(n) if j != i and not (visited[j] and j != cur_path[-1]))
-            if min_out != math.inf:
-                lb += min_out
-        # Add cost of returning from current endpoint
-        # Actually, use a simpler bound: minimum edge from current endpoint to unvisited
+        """Compute a lower bound for completing the current partial tour.
+
+        The bound is: (cost so far) + (minimum edge from current city to any
+        unvisited city) + (minimum spanning tree of unvisited cities) +
+        (minimum edge from any unvisited city back to city 0).
+
+        This is a valid lower bound because any completion must include:
+        - An edge from the current city to some unvisited city
+        - A path through all unvisited cities (≥ MST cost)
+        - An edge from some unvisited city back to the start
+        """
         cur = cur_path[-1]
-        min_to_unvisited = min(
-            (matrix[cur, j] for j in range(n) if not visited[j]),
-            default=0.0,
-        )
-        lb += min_to_unvisited
-        lb += sum(matrix[a, b] for a, b in zip(cur_path, cur_path[1:]))
-        return lb
+        unvisited = [j for j in range(n) if not visited[j]]
+        if not unvisited:
+            # All visited — just close the tour
+            return sum(matrix[a, b] for a, b in zip(cur_path, cur_path[1:])) + matrix[cur, 0]
+
+        # Cost of edges already traversed
+        path_cost = sum(matrix[a, b] for a, b in zip(cur_path, cur_path[1:]))
+
+        # Min edge from current to unvisited
+        min_to_unvisited = min(matrix[cur, j] for j in unvisited)
+
+        # Min edge from unvisited back to start (city 0)
+        min_to_start = min(matrix[j, 0] for j in unvisited)
+
+        # MST of unvisited cities (Prim's algorithm)
+        if len(unvisited) <= 1:
+            mst_cost = 0.0
+        else:
+            mst_cost = _mst_cost(matrix, unvisited)
+
+        return path_cost + min_to_unvisited + mst_cost + min_to_start
 
     def _dfs(cur: int, cost: float, depth: int) -> None:
         nonlocal best_order
         if cost >= best_cost[0]:
             return
         if depth == n:
-            total = cost + matrix[cur][0]
+            total = cost + matrix[cur, 0]
             if total < best_cost[0]:
                 best_cost[0] = total
                 best_order = list(path)
@@ -146,6 +173,27 @@ def branch_and_bound(instance: TSPInstance) -> Tour:
         best_order = list(range(n))
         best_cost[0] = instance.tour_length(best_order)
     return Tour(best_order, best_cost[0])
+
+
+def _mst_cost(matrix, vertices: List[int]) -> float:
+    """Compute MST cost of the subgraph induced by *vertices* using Prim's."""
+    if len(vertices) <= 1:
+        return 0.0
+    in_tree = {vertices[0]}
+    total = 0.0
+    while len(in_tree) < len(vertices):
+        best_d = math.inf
+        best_v = -1
+        for u in in_tree:
+            for v in vertices:
+                if v not in in_tree and matrix[u, v] < best_d:
+                    best_d = matrix[u, v]
+                    best_v = v
+        if best_v == -1:
+            break
+        in_tree.add(best_v)
+        total += best_d
+    return total
 
 
 def _nn_upper_bound(instance: TSPInstance) -> float:
