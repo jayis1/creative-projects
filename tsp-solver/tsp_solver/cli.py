@@ -2,9 +2,10 @@
 """Command-line interface for the TSP solver.
 
 Usage:
-    python cli.py --algo christofides --refine two_opt --n 50 --seed 42
-    python cli.py --load instance.tsp --algo held_karp
-    python cli.py --compare --n 30 --seed 1
+    python -m tsp_solver.cli --algo christofides --refine two_opt --n 50 --seed 42
+    python -m tsp_solver.cli --load instance.tsp --algo held_karp
+    python -m tsp_solver.cli --compare --n 30 --seed 1
+    python -m tsp_solver.cli --algo nearest_neighbor --n 15 --seed 1 --plot
 """
 
 from __future__ import annotations
@@ -16,19 +17,25 @@ import time
 
 from .instance import generate_instance, load_tsplib
 from .solver import solve, list_algorithms
+from .viz import ascii_plot
 
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(description="Solve TSP instances with various algorithms.")
-    parser.add_argument("--algo", default="nearest_neighbor", help="Algorithm name")
+    parser = argparse.ArgumentParser(
+        description="Solve TSP instances with various algorithms.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("--algo", default="nearest_neighbor", help="Algorithm name (default: nearest_neighbor)")
     parser.add_argument("--refine", default=None, help="Local search refinement: two_opt|three_opt|or_opt")
-    parser.add_argument("--n", type=int, default=20, help="Number of cities (for random instance)")
+    parser.add_argument("-n", "--n", type=int, default=20, help="Number of cities (for random instance)")
     parser.add_argument("--seed", type=int, default=0, help="Random seed")
     parser.add_argument("--grid", type=int, default=1000, help="Coordinate grid size")
     parser.add_argument("--load", default=None, help="Load a TSPLIB-style .tsp file instead of random")
     parser.add_argument("--compare", action="store_true", help="Run all algorithms and compare")
     parser.add_argument("--list", action="store_true", help="List all available algorithms")
     parser.add_argument("--json", action="store_true", help="Output results as JSON")
+    parser.add_argument("--plot", action="store_true", help="Print ASCII visualization of the tour")
+    parser.add_argument("--benchmark", action="store_true", help="Run BenchmarkSuite with quality ratios")
     args = parser.parse_args(argv)
 
     if args.list:
@@ -40,6 +47,16 @@ def main(argv=None) -> int:
         instance = load_tsplib(args.load)
     else:
         instance = generate_instance(args.n, seed=args.seed, grid=args.grid)
+
+    if args.benchmark:
+        from .benchmark import BenchmarkSuite
+        suite = BenchmarkSuite()
+        suite.run(instance, seed=args.seed)
+        print(suite.summary())
+        best = suite.best()
+        if best:
+            print(f"\nBest: {best.algorithm} (length={best.length:.2f})")
+        return 0
 
     if args.compare:
         results = {}
@@ -54,13 +71,13 @@ def main(argv=None) -> int:
         if args.json:
             print(json.dumps(results, indent=2))
         else:
-            print(f"{'Algorithm':<25} {'Length':>12} {'Time(s)':>10}")
-            print("-" * 50)
+            print(f"{'Algorithm':<28} {'Length':>12} {'Time(s)':>10}")
+            print("-" * 54)
             for algo, data in results.items():
                 if "error" in data:
-                    print(f"{algo:<25} {'ERROR':>12} {data['error'][:30]}")
+                    print(f"{algo:<28} {'ERROR':>12} {data['error'][:30]}")
                 else:
-                    print(f"{algo:<25} {data['length']:>12.2f} {data['time_s']:>10.4f}")
+                    print(f"{algo:<28} {data['length']:>12.2f} {data['time_s']:>10.4f}")
         return 0
 
     t0 = time.perf_counter()
@@ -83,6 +100,9 @@ def main(argv=None) -> int:
         print(f"Length    : {tour.length:.4f}")
         print(f"Time(s)   : {elapsed:.4f}")
         print(f"Tour      : {list(tour.order)}")
+    if args.plot:
+        print()
+        print(ascii_plot(instance, tour))
     return 0
 
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from typing import List
+from typing import List, Optional
 
 from .instance import TSPInstance
 from .tour import Tour
@@ -32,6 +32,45 @@ def nearest_neighbor(instance: TSPInstance, start: int = 0) -> Tour:
         cur = best_j
     cost += instance.matrix[cur, start]
     return Tour(order, cost)
+
+
+def nearest_neighbor_multistart(
+    instance: TSPInstance,
+    *,
+    seed: Optional[int] = None,
+    starts: Optional[int] = None,
+) -> Tour:
+    """Multi-start nearest neighbor: try every city as starting point, keep best.
+
+    Parameters
+    ----------
+    instance : TSPInstance
+    seed : int, optional
+        If provided, randomly sample *starts* starting cities instead of
+        trying all n.
+    starts : int, optional
+        Number of starting cities to try. If None, tries all n (or 10 if
+        seed is given).
+    """
+    import random
+
+    n = instance.n
+    if starts is None:
+        starts = 10 if seed is not None else n
+    starts = min(starts, n)
+
+    if seed is not None:
+        rng = random.Random(seed)
+        start_cities = rng.sample(range(n), starts)
+    else:
+        start_cities = list(range(starts))
+
+    best_tour: Optional[Tour] = None
+    for s in start_cities:
+        t = nearest_neighbor(instance, start=s)
+        if best_tour is None or t.length < best_tour.length:
+            best_tour = t
+    return best_tour  # type: ignore[return-value]
 
 
 def nearest_insertion(instance: TSPInstance) -> Tour:

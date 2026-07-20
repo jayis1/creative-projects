@@ -7,7 +7,7 @@ from typing import Optional
 from .instance import TSPInstance
 from .tour import Tour
 from .exact import held_karp, branch_and_bound
-from .heuristics import nearest_neighbor, nearest_insertion, farthest_insertion, greedy
+from .heuristics import nearest_neighbor, nearest_neighbor_multistart, nearest_insertion, farthest_insertion, greedy
 from .local_search import two_opt, three_opt, or_opt
 from .metaheuristics import simulated_annealing, genetic_algorithm, ant_colony
 from .approximation import mst_approx, christofides
@@ -17,6 +17,7 @@ _ALGORITHMS = {
     "held_karp": held_karp,
     "branch_and_bound": branch_and_bound,
     "nearest_neighbor": nearest_neighbor,
+    "nearest_neighbor_multistart": nearest_neighbor_multistart,
     "nearest_insertion": nearest_insertion,
     "farthest_insertion": farthest_insertion,
     "greedy": greedy,
@@ -65,7 +66,7 @@ def solve(
         )
     func = _ALGORITHMS[algorithm]
     # Pass seed to stochastic algorithms
-    if algorithm in ("simulated_annealing", "genetic_algorithm", "ant_colony") and seed is not None:
+    if algorithm in ("simulated_annealing", "genetic_algorithm", "ant_colony", "nearest_neighbor_multistart") and seed is not None:
         kwargs.setdefault("seed", seed)
     tour = func(instance, **kwargs)
     if refine is not None:

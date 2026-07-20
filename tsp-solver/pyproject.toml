@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tsp-solver"
+version = "1.0.0"
+description = "Comprehensive TSP solver: 15 algorithms — exact, approximation, heuristic, local search, metaheuristic"
+requires-python = ">=3.9"
+dependencies = ["numpy>=1.20"]
+
+[project.scripts]
+tsp-solver = "tsp_solver.cli:main"
+
+[tool.setuptools]
+packages = ["tsp_solver"]
