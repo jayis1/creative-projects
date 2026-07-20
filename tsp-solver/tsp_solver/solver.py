@@ -11,6 +11,7 @@ from .heuristics import nearest_neighbor, nearest_neighbor_multistart, nearest_i
 from .local_search import two_opt, three_opt, or_opt
 from .metaheuristics import simulated_annealing, genetic_algorithm, ant_colony
 from .approximation import mst_approx, christofides
+from .advanced import savings, iterated_local_search, lin_kernighan
 
 
 _ALGORITHMS = {
@@ -21,6 +22,7 @@ _ALGORITHMS = {
     "nearest_insertion": nearest_insertion,
     "farthest_insertion": farthest_insertion,
     "greedy": greedy,
+    "savings": savings,
     "mst_approx": mst_approx,
     "christofides": christofides,
     "two_opt": two_opt,
@@ -29,12 +31,39 @@ _ALGORITHMS = {
     "simulated_annealing": simulated_annealing,
     "genetic_algorithm": genetic_algorithm,
     "ant_colony": ant_colony,
+    "iterated_local_search": iterated_local_search,
+    "lin_kernighan": lin_kernighan,
+}
+
+_ALGORITHM_CATEGORIES = {
+    "exact": ["held_karp", "branch_and_bound"],
+    "approximation": ["mst_approx", "christofides"],
+    "construction": ["nearest_neighbor", "nearest_neighbor_multistart", "nearest_insertion", "farthest_insertion", "greedy", "savings"],
+    "local_search": ["two_opt", "three_opt", "or_opt"],
+    "metaheuristic": ["simulated_annealing", "genetic_algorithm", "ant_colony", "iterated_local_search", "lin_kernighan"],
 }
 
 
 def list_algorithms() -> list[str]:
-    """Return the names of all available algorithms."""
+    """Return the names of all available algorithms, sorted."""
     return sorted(_ALGORITHMS.keys())
+
+
+def list_algorithms_by_category() -> dict[str, list[str]]:
+    """Return algorithms grouped by category."""
+    return dict(_ALGORITHM_CATEGORIES)
+
+
+def algorithm_category(name: str) -> Optional[str]:
+    """Return the category of an algorithm, or None if unknown."""
+    for cat, algos in _ALGORITHM_CATEGORIES.items():
+        if name in algos:
+            return cat
+    return None
+
+
+_STOCHASTIC = {"simulated_annealing", "genetic_algorithm", "ant_colony",
+               "nearest_neighbor_multistart", "iterated_local_search", "lin_kernighan"}
 
 
 def solve(
@@ -59,14 +88,18 @@ def solve(
         RNG seed for stochastic algorithms.
     **kwargs
         Algorithm-specific keyword arguments.
+
+    Raises
+    ------
+    ValueError
+        If *algorithm* or *refine* is not recognized.
     """
     if algorithm not in _ALGORITHMS:
         raise ValueError(
             f"Unknown algorithm {algorithm!r}. Available: {list_algorithms()}"
         )
     func = _ALGORITHMS[algorithm]
-    # Pass seed to stochastic algorithms
-    if algorithm in ("simulated_annealing", "genetic_algorithm", "ant_colony", "nearest_neighbor_multistart") and seed is not None:
+    if algorithm in _STOCHASTIC and seed is not None:
         kwargs.setdefault("seed", seed)
     tour = func(instance, **kwargs)
     if refine is not None:

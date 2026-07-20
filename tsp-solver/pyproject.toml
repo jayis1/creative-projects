@@ -4,13 +4,45 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tsp-solver"
-version = "1.0.0"
-description = "Comprehensive TSP solver: 15 algorithms — exact, approximation, heuristic, local search, metaheuristic"
+version = "2.0.0"
+description = "Comprehensive TSP solver: 18 algorithms — exact, approximation, heuristic, local search, and metaheuristic"
+readme = "README.md"
+license = {file = "LICENSE"}
 requires-python = ">=3.9"
-dependencies = ["numpy>=1.20"]
+authors = [{name = "creative-projects contributors"}]
+keywords = ["tsp", "traveling-salesman", "optimization", "metaheuristic", "combinatorial"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "numpy>=1.20",
+]
+
+[project.optional-dependencies]
+yaml = ["pyyaml>=5.0"]
+test = ["pytest>=7.0", "pyyaml>=5.0"]
+dev = ["pytest>=7.0", "pyyaml>=5.0", "flake8", "mypy"]
 
 [project.scripts]
 tsp-solver = "tsp_solver.cli:main"
 
+[project.urls]
+"Homepage" = "https://github.com/jayis1/creative-projects"
+"Bug Tracker" = "https://github.com/jayis1/creative-projects/issues"
+
 [tool.setuptools]
 packages = ["tsp_solver"]
+
+[tool.pytest.ini_options]
+testpaths = ["."]
+python_files = ["test_suite.py"]
