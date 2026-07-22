@@ -8,6 +8,8 @@ Subcommands:
   matching     — maximum bipartite matching
   assignment   — minimum-cost assignment (Hungarian algorithm)
   global-cut   — Stoer-Wagner global minimum cut
+  connectivity — edge/vertex connectivity, disjoint paths, Gomory-Hu tree
+  benchmark    — compare all max-flow solvers on random graphs
   info         — display network info
   demo         — run built-in demos
 
@@ -27,10 +29,12 @@ import sys
 from typing import Any
 
 from .graph import FlowNetwork
-from .maxflow import FordFulkerson, EdmondsKarp, Dinic, PushRelabel
+from .maxflow import FordFulkerson, EdmondsKarp, Dinic, PushRelabel, CapacityScaling
 from .mincost import MinCostMaxFlow, MinCostFlow
 from .matching import BipartiteMatcher, AssignmentSolver
 from .mincut import MinCut, StoerWagner
+from .connectivity import edge_disjoint_paths, vertex_disjoint_paths, edge_connectivity, GomoryHuTree
+from .benchmark import compare_solvers, print_comparison_table, random_network, grid_network, bipartite_network
 
 
 SOLVERS = {
@@ -38,6 +42,7 @@ SOLVERS = {
     "edmonds-karp": EdmondsKarp,
     "dinic": Dinic,
     "push-relabel": PushRelabel,
+    "capacity-scaling": CapacityScaling,
 }
 
 
@@ -221,6 +226,40 @@ def cmd_demo(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_connectivity(args: argparse.Namespace) -> int:
+    net = load_network(args.input)
+    if args.mode == "edge-disjoint":
+        paths = edge_disjoint_paths(net, args.source, args.sink)
+        print(f"Max edge-disjoint paths: {len(paths)}")
+        for i, p in enumerate(paths):
+            print(f"  Path {i}: {p}")
+    elif args.mode == "vertex-disjoint":
+        paths = vertex_disjoint_paths(net, args.source, args.sink)
+        print(f"Max vertex-disjoint paths: {len(paths)}")
+        for i, p in enumerate(paths):
+            print(f"  Path {i}: {p}")
+    elif args.mode == "edge-connectivity":
+        ec = edge_connectivity(net)
+        print(f"Global edge connectivity: {ec}")
+    elif args.mode == "gomory-hu":
+        tree = GomoryHuTree(net)
+        if args.pair:
+            u, v = args.pair
+            print(f"Min cut ({u}, {v}): {tree.min_cut(u, v)}")
+        else:
+            print("Gomory-Hu tree edges (node, parent, capacity):")
+            for i in range(1, tree.n):
+                print(f"  {i} -- {tree._parent[i]} (cap={tree._capacity[i]})")
+    return 0
+
+
+def cmd_benchmark(args: argparse.Namespace) -> int:
+    sizes = [int(s) for s in args.sizes.split(",")]
+    rows = compare_solvers(sizes, edge_prob=args.edge_prob, seed=args.seed)
+    print_comparison_table(rows)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="networkflow",
@@ -269,6 +308,20 @@ def build_parser() -> argparse.ArgumentParser:
     p_info = sub.add_parser("info", help="Display network info")
     p_info.add_argument("input", help="JSON network file")
     p_info.set_defaults(func=cmd_info)
+
+    p_conn = sub.add_parser("connectivity", help="Edge/vertex connectivity, disjoint paths, Gomory-Hu tree")
+    p_conn.add_argument("input", help="JSON network file")
+    p_conn.add_argument("mode", choices=["edge-disjoint", "vertex-disjoint", "edge-connectivity", "gomory-hu"])
+    p_conn.add_argument("--source", type=int, default=0)
+    p_conn.add_argument("--sink", type=int, default=-1)
+    p_conn.add_argument("--pair", type=int, nargs=2, help="Pair for Gomory-Hu min cut query")
+    p_conn.set_defaults(func=cmd_connectivity)
+
+    p_bench = sub.add_parser("benchmark", help="Compare max-flow solvers on random graphs")
+    p_bench.add_argument("sizes", help="Comma-separated node counts, e.g. 10,50,100")
+    p_bench.add_argument("--edge-prob", type=float, default=0.3)
+    p_bench.add_argument("--seed", type=int, default=42)
+    p_bench.set_defaults(func=cmd_benchmark)
 
     p_demo = sub.add_parser("demo", help="Run built-in demos")
     p_demo.set_defaults(func=cmd_demo)

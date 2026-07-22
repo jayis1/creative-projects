@@ -6,10 +6,12 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from networkflow.graph import FlowNetwork, FlowEdge
-from networkflow.maxflow import FordFulkerson, EdmondsKarp, Dinic, PushRelabel
+from networkflow.maxflow import FordFulkerson, EdmondsKarp, Dinic, PushRelabel, CapacityScaling
 from networkflow.mincost import MinCostMaxFlow, MinCostFlow
 from networkflow.matching import BipartiteMatcher, AssignmentSolver
 from networkflow.mincut import MinCut, StoerWagner
+from networkflow.connectivity import edge_disjoint_paths, vertex_disjoint_paths, edge_connectivity, GomoryHuTree
+from networkflow.benchmark import random_network, grid_network, bipartite_network
 
 
 def clrs_network() -> FlowNetwork:
@@ -265,6 +267,119 @@ class TestStoerWagner(unittest.TestCase):
         sw = StoerWagner()
         val = sw.solve(graph)
         self.assertEqual(val, 0.0)  # disconnected
+
+
+class TestCapacityScaling(unittest.TestCase):
+    def test_clrs(self):
+        net = clrs_network()
+        flow = CapacityScaling().solve(net, 0, 5)
+        self.assertEqual(flow, 23)
+
+    def test_simple_path(self):
+        net = FlowNetwork(3)
+        net.add_edge(0, 1, 5)
+        net.add_edge(1, 2, 3)
+        flow = CapacityScaling().solve(net, 0, 2)
+        self.assertEqual(flow, 3)
+
+    def test_no_path(self):
+        net = FlowNetwork(3)
+        net.add_edge(0, 1, 5)
+        flow = CapacityScaling().solve(net, 0, 2)
+        self.assertEqual(flow, 0)
+
+
+class TestConnectivity(unittest.TestCase):
+    def test_edge_disjoint_simple(self):
+        """Two parallel paths → 2 edge-disjoint paths."""
+        net = FlowNetwork(4)
+        net.add_edge(0, 1, 1)
+        net.add_edge(0, 2, 1)
+        net.add_edge(1, 3, 1)
+        net.add_edge(2, 3, 1)
+        paths = edge_disjoint_paths(net, 0, 3)
+        self.assertEqual(len(paths), 2)
+
+    def test_edge_disjoint_single(self):
+        """Single path → 1 edge-disjoint path."""
+        net = FlowNetwork(3)
+        net.add_edge(0, 1, 1)
+        net.add_edge(1, 2, 1)
+        paths = edge_disjoint_paths(net, 0, 2)
+        self.assertEqual(len(paths), 1)
+
+    def test_vertex_disjoint(self):
+        """Two vertex-disjoint paths through a diamond."""
+        net = FlowNetwork(4)
+        net.add_edge(0, 1, 1)
+        net.add_edge(0, 2, 1)
+        net.add_edge(1, 3, 1)
+        net.add_edge(2, 3, 1)
+        paths = vertex_disjoint_paths(net, 0, 3)
+        self.assertEqual(len(paths), 2)
+
+    def test_vertex_disjoint_bottleneck(self):
+        """Common intermediate vertex → 1 disjoint path."""
+        net = FlowNetwork(5)
+        net.add_edge(0, 1, 1)
+        net.add_edge(0, 2, 1)
+        net.add_edge(1, 3, 1)  # both merge through 3
+        net.add_edge(2, 3, 1)
+        net.add_edge(3, 4, 1)
+        paths = vertex_disjoint_paths(net, 0, 4)
+        self.assertEqual(len(paths), 1)
+
+    def test_edge_connectivity(self):
+        """Diamond graph: 2 edge-disjoint paths → connectivity 2.
+
+        For directed graphs, edge_connectivity fixes source and varies sink,
+        so the minimum is 1 (single edge 0->1).  Using bidirectional edges
+        makes it truly 2-connected.
+        """
+        net = FlowNetwork(4)
+        net.add_edge(0, 1, 1, bidirectional=True)
+        net.add_edge(0, 2, 1, bidirectional=True)
+        net.add_edge(1, 3, 1, bidirectional=True)
+        net.add_edge(2, 3, 1, bidirectional=True)
+        ec = edge_connectivity(net)
+        self.assertEqual(ec, 2)
+
+    def test_gomory_hu(self):
+        """Gomory-Hu tree on undirected graph should give correct min-cut values."""
+        net = FlowNetwork(4)
+        net.add_edge(0, 1, 3, bidirectional=True)
+        net.add_edge(0, 2, 2, bidirectional=True)
+        net.add_edge(1, 2, 5, bidirectional=True)
+        net.add_edge(1, 3, 4, bidirectional=True)
+        net.add_edge(2, 3, 3, bidirectional=True)
+        tree = GomoryHuTree(net)
+        # Min cut (0, 3): separating 0 from 3 requires cutting 0-1(3) and 0-2(2) = 5
+        mc = tree.min_cut(0, 3)
+        self.assertEqual(mc, 5)
+
+
+class TestBenchmark(unittest.TestCase):
+    def test_random_network(self):
+        net = random_network(5, seed=42)
+        self.assertEqual(net.node_count(), 5)
+        self.assertGreater(net.edge_count(), 0)
+
+    def test_grid_network(self):
+        net = grid_network(3, 4)
+        self.assertEqual(net.node_count(), 12)
+        # 3*4=12 nodes, horizontal: 3*(4-1)=9, vertical: (3-1)*4=8, total=17
+        self.assertEqual(net.edge_count(), 17)
+
+    def test_bipartite_network(self):
+        net = bipartite_network(3, 3, seed=42)
+        # n = 1 + 3 + 3 + 1 = 8
+        self.assertEqual(net.node_count(), 8)
+
+    def test_random_reproducible(self):
+        """Same seed → same network."""
+        n1 = random_network(10, seed=123)
+        n2 = random_network(10, seed=123)
+        self.assertEqual(n1.edge_count(), n2.edge_count())
 
 
 if __name__ == "__main__":

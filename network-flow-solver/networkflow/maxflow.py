@@ -286,3 +286,72 @@ class PushRelabel:
                         count[height[u]] += 1
 
         return excess[sink]
+
+
+class CapacityScaling:
+    """Capacity-scaling max-flow algorithm.
+
+    Augments only along paths with residual capacity ≥ Δ, halving Δ each
+    phase.  Guarantees O(E² log U) iterations where U is the max capacity.
+    Useful when capacities vary widely and standard Ford-Fulkerson would
+    take too many small augmentations.
+    """
+
+    def __init__(self, epsilon: float = 0.5):
+        self.iterations = 0
+        self.epsilon = epsilon
+
+    def solve(self, network: FlowNetwork, source: int, sink: int) -> float | int:
+        self.iterations = 0
+        n = network.n
+        # Find maximum capacity to set initial scaling factor
+        max_cap = 0.0
+        for u in range(n):
+            for e in network.graph[u]:
+                if e.cap > max_cap:
+                    max_cap = e.cap
+        if max_cap == 0:
+            return 0
+        total = 0.0
+        delta = 1.0
+        while delta * 2 <= max_cap:
+            delta *= 2
+        while delta >= self.epsilon:
+            # DFS for augmenting paths with residual ≥ delta
+            while True:
+                visited = [False] * n
+                parent_node = [-1] * n
+                parent_edge = [-1] * n
+                bottleneck = self._dfs(network, source, sink, visited,
+                                        parent_node, parent_edge, float("inf"), delta)
+                if bottleneck < delta:
+                    break
+                self.iterations += 1
+                cur = sink
+                while cur != source:
+                    u = parent_node[cur]
+                    ei = parent_edge[cur]
+                    e = network.graph[u][ei]
+                    e.flow += bottleneck
+                    network.graph[e.to][e.rev].flow -= bottleneck
+                    cur = u
+                total += bottleneck
+            delta /= 2
+        return total
+
+    def _dfs(self, net: FlowNetwork, u: int, target: int,
+             visited: list[bool], parent_node: list[int], parent_edge: list[int],
+             bottleneck: float, delta: float) -> float:
+        visited[u] = True
+        if u == target:
+            return bottleneck
+        for idx, e in enumerate(net.graph[u]):
+            if not visited[e.to] and e.residual() >= delta:
+                parent_node[e.to] = u
+                parent_edge[e.to] = idx
+                result = self._dfs(net, e.to, target, visited,
+                                   parent_node, parent_edge,
+                                   min(bottleneck, e.residual()), delta)
+                if result >= delta:
+                    return result
+        return 0.0
