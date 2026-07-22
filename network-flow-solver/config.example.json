@@ -1,0 +1,12 @@
+{
+  "algorithm": "dinic",
+  "source": 0,
+  "sink": 5,
+  "network_file": "network.json",
+  "output_file": "result.json",
+  "show_flows": true,
+  "logging": {
+    "level": "INFO",
+    "file": null
+  }
+}
