@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "networkflow"
+version = "1.0.0"
+description = "From-scratch network flow solver: max-flow, min-cut, min-cost flow, bipartite matching, assignment"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "AI-Generated"}]
+
+[project.scripts]
+networkflow = "networkflow.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["networkflow*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
