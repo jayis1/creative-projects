@@ -91,8 +91,13 @@ def vertex_disjoint_paths(network: FlowNetwork, source: int,
         path = _find_flow_path(net, 2 * source + 1, 2 * sink, visited)
         if path is None:
             break
-        # Convert back from split to original nodes
-        orig_path = [p // 2 for p in path]
+        # Convert back from split to original nodes, deduplicating consecutive
+        # pairs (2*i and 2*i+1 both map to i).
+        orig_path = []
+        for p in path:
+            orig = p // 2
+            if not orig_path or orig_path[-1] != orig:
+                orig_path.append(orig)
         paths.append(orig_path)
     return paths
 

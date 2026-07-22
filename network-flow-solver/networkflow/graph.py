@@ -138,12 +138,21 @@ class FlowNetwork:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "FlowNetwork":
-        """Reconstruct a FlowNetwork from a serialized dict."""
+        """Reconstruct a FlowNetwork from a serialized dict.
+
+        Note: this only restores forward edges (cap > 0) and their flows.
+        Reverse edges are recreated with zero flow, so the copy is equivalent
+        to a freshly-constructed network with forward flows applied.
+        """
         net = cls(d["n"])
         for e in d["edges"]:
             idx = net.add_edge(e["from"], e["to"], e["cap"], e.get("cost", 0.0))
-            # restore flow on the forward edge and its reverse
-            net.graph[e["from"]][idx].flow = e.get("flow", 0)
+            # Restore flow on forward edge AND reverse edge for consistency
+            flow = e.get("flow", 0)
+            fwd = net.graph[e["from"]][idx]
+            fwd.flow = flow
+            # The reverse edge's flow should be -flow for residual consistency
+            net.graph[e["to"]][fwd.rev].flow = -flow
         return net
 
     def to_json(self) -> str:

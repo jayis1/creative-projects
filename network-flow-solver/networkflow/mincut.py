@@ -77,8 +77,8 @@ class StoerWagner:
     ...     1: [(0, 2), (2, 4)],
     ...     2: [(0, 3), (1, 4)],
     ... }
-    >>> sw.solve(graph)  # min cut weight
-    2.0
+    >>> sw.solve(graph)  # min cut weight: {0}|{1,2} = 2+3 = 5
+    5.0
     """
 
     def __init__(self):

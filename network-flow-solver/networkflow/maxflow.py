@@ -215,7 +215,8 @@ class PushRelabel:
         height = [0] * n
         excess = [0.0] * n
         # count of nodes at each height (for gap heuristic)
-        count = [0] * (2 * n + 1)
+        # Max valid height is 2*n (n + relabel steps), so size 2*n+2 to be safe
+        count = [0] * (2 * n + 2)
         height[source] = n
         count[0] = n - 1
         count[n] = 1
@@ -274,8 +275,8 @@ class PushRelabel:
                     else:
                         height[u] = int(new_h) + 1
                     self.relabels += 1
-                    # Gap heuristic
-                    if old_h < 2 * n + 1:
+                    # Gap heuristic — guard against index overflow
+                    if old_h < len(count):
                         count[old_h] -= 1
                         if count[old_h] == 0 and old_h < n:
                             for v in range(n):
@@ -283,7 +284,8 @@ class PushRelabel:
                                     count[height[v]] -= 1
                                     height[v] = n + 1
                                     count[n + 1] += 1
-                        count[height[u]] += 1
+                        if height[u] < len(count):
+                            count[height[u]] += 1
 
         return excess[sink]
 

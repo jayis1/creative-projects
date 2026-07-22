@@ -263,6 +263,41 @@ network-flow-solver/
 | SPFA (min-cost) | Min-cost flow | O(F·V·E) |
 | Node-splitting | Vertex-disjoint paths | = max flow on split graph |
 
+## Known Issues (Resolved)
+
+All bugs were found during Phase 3 bug hunt and have been fixed with regression tests.
+
+1. **FlowNetwork.copy()/from_dict() didn't restore reverse edge flows**
+   - *Symptom*: Copying a network after running max-flow produced a network where
+     reverse edges had zero flow instead of the correct negative flow, making the
+     residual graph inconsistent.
+   - *Fix*: `from_dict()` now explicitly sets the reverse edge's flow to `-flow`
+     after restoring the forward edge's flow.
+   - *Test*: `TestBugCopyWithFlows.test_copy_preserves_flows`
+
+2. **vertex_disjoint_paths produced paths with duplicate consecutive nodes**
+   - *Symptom*: When converting from split-node representation back to original
+     nodes, both `2*i` (in) and `2*i+1` (out) mapped to `i` via integer division,
+     producing paths like `[0, 1, 1, 3]` instead of `[0, 1, 3]`.
+   - *Fix*: Added deduplication when converting split nodes back — only append
+     the original node if it differs from the last one.
+   - *Test*: `TestBugVertexDisjointDuplicateNodes.test_no_duplicate_nodes`
+
+3. **PushRelabel count array could be indexed out of bounds**
+   - *Symptom*: The `count` array had size `2*n+1` (valid indices 0..2*n), but
+     the relabel step could set height to `2*n+1`, causing a potential
+     `IndexError` when accessing `count[height[u]]`.
+   - *Fix*: Increased array size to `2*n+2` and added bounds checks before
+     indexing `count`.
+   - *Tests*: `TestBugPushRelabelHeightOOB` (2 tests)
+
+4. **StoerWagner docstring had incorrect example output**
+   - *Symptom*: The class docstring claimed `sw.solve(graph)` returns `2.0`
+     for a triangle graph with edge weights 2, 3, 4, but the correct min cut
+     is `5.0` (cutting vertex 0 from {1,2} costs 2+3=5).
+   - *Fix*: Updated docstring to show correct result `5.0` with explanation.
+   - *Test*: `TestBugStoerWagnerDocstring.test_docstring_example`
+
 ## License
 
 MIT

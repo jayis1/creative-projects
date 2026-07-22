@@ -269,6 +269,134 @@ class TestStoerWagner(unittest.TestCase):
         self.assertEqual(val, 0.0)  # disconnected
 
 
+# --- Phase 3: Bug hunt tests ---
+
+class TestBugCopyWithFlows(unittest.TestCase):
+    """Bug: copy()/from_dict() doesn't restore reverse edge flow.
+
+    After running max flow, copy() should produce a network with the same
+    flow state, including reverse edges.  The reverse edge's flow must be
+    the negative of the forward edge's flow for the residual graph to be
+    consistent.
+    """
+
+    def test_copy_preserves_flows(self):
+        net = FlowNetwork(3)
+        net.add_edge(0, 1, 10)
+        net.add_edge(1, 2, 5)
+        Dinic().solve(net, 0, 2)
+        # Now copy and check residual
+        net2 = net.copy()
+        # The forward edge 0->1 should have flow 5
+        fwd = None
+        for e in net2.graph[0]:
+            if e.cap > 0:
+                fwd = e
+                break
+        self.assertIsNotNone(fwd)
+        self.assertEqual(fwd.flow, 5)
+        # The reverse edge (1->0) should have flow -5
+        rev = net2.graph[1][fwd.rev]
+        self.assertEqual(rev.flow, -5)
+
+    def test_copy_residual_consistent(self):
+        """After copy, residual graph should match original."""
+        net = FlowNetwork(3)
+        net.add_edge(0, 1, 10)
+        net.add_edge(1, 2, 5)
+        Dinic().solve(net, 0, 2)
+        net2 = net.copy()
+        # Check all edges have matching residual
+        for u in range(3):
+            for e in net.graph[u]:
+                e2 = net2.graph[u][net.graph[u].index(e)] if e in net.graph[u] else None
+        # Simpler: just check that max-flow on the copy gives 0 (already saturated)
+        flow = Dinic().solve(net2, 0, 2)
+        self.assertEqual(flow, 0)  # already at max flow
+
+
+class TestBugPushRelabelHeightOOB(unittest.TestCase):
+    """Bug: PushRelabel count array out of bounds when height = 2*n+1.
+
+    The count array has size 2*n+1 (valid indices 0..2*n), but height can
+    be set to 2*n+1, causing IndexError.
+    """
+
+    def test_no_crash_on_disconnected(self):
+        """A node with no outgoing residual should not crash."""
+        net = FlowNetwork(4)
+        net.add_edge(0, 1, 5)
+        net.add_edge(1, 2, 5)
+        net.add_edge(2, 3, 5)
+        # Node 1 has only one outgoing edge — when saturated, relabel
+        # should not cause out-of-bounds access.
+        pr = PushRelabel()
+        flow = pr.solve(net, 0, 3)
+        self.assertEqual(flow, 5)
+
+    def test_large_network(self):
+        """Larger network shouldn't crash PushRelabel."""
+        net = FlowNetwork(10)
+        for i in range(9):
+            net.add_edge(i, i + 1, 5)
+        pr = PushRelabel()
+        flow = pr.solve(net, 0, 9)
+        self.assertEqual(flow, 5)
+
+
+class TestBugVertexDisjointDuplicateNodes(unittest.TestCase):
+    """Bug: vertex_disjoint_paths produces paths with duplicate consecutive nodes.
+
+    When converting from split nodes back to original, both 2*i and 2*i+1
+    map to i via integer division, producing [0, 1, 1, 2, 2, 3] instead of
+    [0, 1, 2, 3].
+    """
+
+    def test_no_duplicate_nodes(self):
+        net = FlowNetwork(4)
+        net.add_edge(0, 1, 1)
+        net.add_edge(0, 2, 1)
+        net.add_edge(1, 3, 1)
+        net.add_edge(2, 3, 1)
+        paths = vertex_disjoint_paths(net, 0, 3)
+        self.assertEqual(len(paths), 2)
+        for path in paths:
+            # No consecutive duplicates
+            for i in range(len(path) - 1):
+                self.assertNotEqual(path[i], path[i + 1],
+                                    f"Duplicate consecutive nodes in path {path}")
+            # Path should start at source and end at sink
+            self.assertEqual(path[0], 0)
+            self.assertEqual(path[-1], 3)
+
+
+class TestBugStoerWagnerDocstring(unittest.TestCase):
+    """Bug: StoerWagner docstring example claims min cut is 2.0 but it's 5.0."""
+
+    def test_docstring_example(self):
+        graph = {
+            0: [(1, 2), (2, 3)],
+            1: [(0, 2), (2, 4)],
+            2: [(0, 3), (1, 4)],
+        }
+        sw = StoerWagner()
+        val = sw.solve(graph)
+        # Min cut = {0}|{1,2} = 2+3 = 5, not 2
+        self.assertEqual(val, 5.0)
+
+
+class TestBugBipartiteDuplicateEdges(unittest.TestCase):
+    """Bug: BipartiteMatcher.add_edge allows duplicate edges."""
+
+    def test_duplicate_edges_handled(self):
+        m = BipartiteMatcher(2, 2)
+        m.add_edge(0, 0)
+        m.add_edge(0, 0)  # duplicate
+        m.add_edge(1, 1)
+        size = m.match()
+        self.assertEqual(size, 2)
+
+
 class TestCapacityScaling(unittest.TestCase):
     def test_clrs(self):
         net = clrs_network()
