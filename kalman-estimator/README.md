@@ -210,10 +210,49 @@ RMS errors:
 pytest tests/ -v
 ```
 
-19 tests covering: filter convergence, covariance symmetry, EKF/UKF linear
+28 tests covering: filter convergence, covariance symmetry, EKF/UKF linear
 equivalence, RTS smoothing, diagnostics (NIS/NEES/log-lik/AIC/BIC), batch
 filtering, Monte Carlo error, serialization round-trip, nonlinear tracking,
-and input validation (NaN rejection, dimension checks).
+input validation (NaN rejection, dimension checks), singular covariance
+handling, UKF control-input forwarding, and BIC edge cases.
+
+## Known Issues (Resolved)
+
+The following bugs were identified during the Phase 3 bug hunt and have been
+fixed with targeted patches + regression tests:
+
+1. **UKF `predict(u)` silently ignored control input** — `predict()` accepted
+   a `u` parameter but never forwarded it to the transition function `fx`.
+   Fixed: `predict()` now inspects `fx`'s signature and passes `u` when
+   supported. *(test: `test_ukf_predict_ignores_control_input`)*
+
+2. **KF/EKF/UKF crashed with raw `LinAlgError` on singular innovation
+   covariance** — `np.linalg.inv(S)` raised an unhelpful numpy exception when
+   S was singular (e.g. zero process + measurement noise). Fixed: all three
+   filters now catch `LinAlgError` and raise a descriptive `ValueError` with
+   guidance. *(test: `test_kf_singular_innovation_cov`)*
+
+3. **RTS smoother crashed on singular predicted covariance** — same
+   `np.linalg.inv` issue in the backward recursion. Fixed with try/except and
+   descriptive `ValueError`. *(covered by smoother robustness)*
+
+4. **Diagnostics NIS/NEES/log-likelihood crashed on singular covariance** —
+   `np.linalg.inv(P)` and `np.linalg.inv(S)` raised `LinAlgError` when
+   matrices were singular. Fixed: switched to `np.linalg.pinv` for robust
+   pseudo-inverse computation. *(test: `test_diagnostics_nees_singular_cov`)*
+
+5. **UKF covariance could lose symmetry** — the update formula
+   `P = P - K·S·Kᵀ` can accumulate floating-point asymmetry. Fixed: P is
+   symmetrized after each update via `P = (P + Pᵀ) / 2`.
+   *(test: `test_ukf_covariance_symmetry`)*
+
+6. **BIC computation produced `RuntimeWarning: log(0)` with zero data** —
+   `bic()` called `np.log(n)` with `n=0`. Fixed: returns `NaN` gracefully when
+   no data has been recorded. *(test: `test_diagnostics_bic_zero_steps`)*
+
+7. **Log-likelihood could crash on singular S** — `slogdet` returns
+   `sign=0` for singular matrices. Fixed: detects `sign==0` and uses a
+   large negative logdet fallback. *(covered by diagnostics robustness)*
 
 ## File layout
 

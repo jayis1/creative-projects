@@ -67,7 +67,12 @@ class ExtendedKalmanFilter:
         H = np.atleast_2d(self.H_jac(self.x)).astype(float)
         y = z - np.asarray(self.h(self.x), dtype=float).ravel()  # innovation
         S = H @ self.P @ H.T + self.R
-        K = self.P @ H.T @ np.linalg.inv(S)
+        try:
+            K = self.P @ H.T @ np.linalg.inv(S)
+        except np.linalg.LinAlgError:
+            raise ValueError(
+                "Innovation covariance S is singular in EKF update."
+            )
         self.x = self.x + K @ y
         KH = K @ H
         self.P = (self.I - KH) @ self.P @ (self.I - KH).T + K @ self.R @ K.T

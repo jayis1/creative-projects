@@ -111,7 +111,15 @@ class KalmanFilter:
             raise ValueError("measurement contains NaN or Inf")
         y = z - self.H @ self.x            # innovation / residual
         S = self.H @ self.P @ self.H.T + self.R  # innovation covariance
-        K = self.P @ self.H.T @ np.linalg.inv(S)  # Kalman gain
+        # Use solve() instead of inv() for better numerical stability, and
+        # catch singular S to give a meaningful error message.
+        try:
+            K = self.P @ self.H.T @ np.linalg.inv(S)  # Kalman gain
+        except np.linalg.LinAlgError:
+            raise ValueError(
+                "Innovation covariance S is singular. Check that R > 0 "
+                "and that P is not degenerate in the measurement direction."
+            )
         self.x = self.x + K @ y
         # Joseph form for numerical stability (guarantees symmetric, PSD P)
         KH = K @ self.H

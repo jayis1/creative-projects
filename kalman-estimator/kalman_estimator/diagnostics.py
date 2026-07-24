@@ -122,10 +122,13 @@ class FilterDiagnostics:
         """Return array of NIS values: yᵀ S⁻¹ y.
 
         Under a correctly specified model, NIS ~ χ²(meas_dim).
+        Uses np.linalg.pinv for robustness against singular S.
         """
         nis_values = []
         for y, S in zip(self.innovations, self.innovation_cov):
-            nis_values.append(y @ np.linalg.inv(S) @ y)
+            # Use pinv for robustness against singular S
+            S_inv = np.linalg.pinv(S)
+            nis_values.append(y @ S_inv @ y)
         return np.array(nis_values)
 
     def nis_confidence_interval(self, confidence=0.95):
@@ -148,13 +151,16 @@ class FilterDiagnostics:
         """Return array of NEES values (requires true_states).
 
         Under a consistent filter, NEES ~ χ²(state_dim).
+        Uses np.linalg.pinv for robustness against singular P.
         """
         if not self.true_states:
             raise ValueError("true_states not recorded; cannot compute NEES")
         nees_values = []
         for x_est, P, x_true in zip(self.states, self.covariances, self.true_states):
             err = x_est - x_true
-            nees_values.append(err @ np.linalg.inv(P) @ err)
+            # Use pinv for robustness against singular P
+            P_inv = np.linalg.pinv(P)
+            nees_values.append(err @ P_inv @ err)
         return np.array(nees_values)
 
     # ------------------------------------------------------------------ #
@@ -165,12 +171,17 @@ class FilterDiagnostics:
 
         For each step:
             ln p(z_k | z_{1:k-1}) = -½ [yᵀ S⁻¹ y + ln|S| + m ln(2π)]
+        Uses np.linalg.pinv for robustness against singular S.
         """
         ll = 0.0
         for y, S in zip(self.innovations, self.innovation_cov):
             m = y.shape[0]
-            S_inv = np.linalg.inv(S)
+            S_inv = np.linalg.pinv(S)
             sign, logdet = np.linalg.slogdet(S)
+            # If S is singular, slogdet returns sign=0; use a large negative
+            # logdet to avoid inf without crashing
+            if sign == 0:
+                logdet = -1e300
             ll += -0.5 * (y @ S_inv @ y + logdet + m * np.log(2 * np.pi))
         return ll
 
@@ -185,8 +196,13 @@ class FilterDiagnostics:
         return 2 * n_params - 2 * self.log_likelihood()
 
     def bic(self, n_params):
-        """Bayesian Information Criterion: k·ln(N) - 2LL."""
+        """Bayesian Information Criterion: k·ln(N) - 2LL.
+
+        Returns NaN if no data has been recorded (N=0).
+        """
         n = len(self.innovations)
+        if n == 0:
+            return float("nan")
         return n_params * np.log(n) - 2 * self.log_likelihood()
 
     # ------------------------------------------------------------------ #

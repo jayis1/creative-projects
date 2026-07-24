@@ -105,10 +105,18 @@ class RTSSmoother:
             F_next = self.history.F_list[k + 1]
             x_prior_next = self.history.x_prior[k + 1]
 
+            # Catch singular P_prior_next to give a meaningful error
+            try:
+                P_prior_next_inv = np.linalg.inv(P_prior_next)
+            except np.linalg.LinAlgError:
+                raise ValueError(
+                    "Predicted covariance P_prior is singular in RTS smoother. "
+                    "Check that Q > 0 to avoid degenerate predictions."
+                )
             C = (
                 self.history.P_post[k]
                 @ F_next.T
-                @ np.linalg.inv(P_prior_next)
+                @ P_prior_next_inv
             )
             x_smooth[k] = (
                 self.history.x_post[k]

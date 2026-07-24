@@ -118,13 +118,24 @@ class UnscentedKalmanFilter:
         return x_mean, P_cov
 
     def predict(self, u=None):
-        """UKF prediction step."""
+        """UKF prediction step.
+
+        Parameters
+        ----------
+        u : optional control input, passed to fx if fx accepts it.
+        """
         sigmas, Wm, Wc = _sigma_points(
             self.x, self.P, self.alpha, self.beta, self.kappa
         )
         # propagate sigma points through transition function
+        # Try passing u to fx; if fx doesn't accept u, fall back gracefully
+        import inspect
+        sig_fx = inspect.signature(self.fx)
         for i in range(sigmas.shape[0]):
-            sigmas[i] = np.asarray(self.fx(sigmas[i], self.dt), dtype=float).ravel()
+            if "u" in sig_fx.parameters or len(sig_fx.parameters) > 2:
+                sigmas[i] = np.asarray(self.fx(sigmas[i], self.dt, u), dtype=float).ravel()
+            else:
+                sigmas[i] = np.asarray(self.fx(sigmas[i], self.dt), dtype=float).ravel()
         x_pred, P_pred = self._ut(sigmas, Wm, Wc, self.Q)
         self.x = x_pred
         self.P = P_pred
@@ -164,10 +175,17 @@ class UnscentedKalmanFilter:
             dz = (z_sigmas[i] - z_mean).reshape(-1, 1)
             Pxz += Wc[i] * (dx @ dz.T)
 
-        K = Pxz @ np.linalg.inv(S)
+        try:
+            K = Pxz @ np.linalg.inv(S)
+        except np.linalg.LinAlgError:
+            raise ValueError(
+                "Innovation covariance S is singular in UKF update."
+            )
         y = z - z_mean
         self.x = self.x + (K @ y).ravel()
         self.P = self.P - K @ S @ K.T
+        # Symmetrize to prevent numerical drift away from symmetry
+        self.P = (self.P + self.P.T) / 2.0
 
     @property
     def state(self):
