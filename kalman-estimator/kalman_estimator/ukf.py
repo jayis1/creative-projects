@@ -130,8 +130,16 @@ class UnscentedKalmanFilter:
         self.P = P_pred
 
     def update(self, z):
-        """UKF update step."""
+        """UKF update step.
+
+        Raises
+        ------
+        ValueError
+            If *z* contains NaN or Inf.
+        """
         z = np.atleast_1d(z).astype(float)
+        if not np.all(np.isfinite(z)):
+            raise ValueError("measurement contains NaN or Inf")
         sigmas, Wm, Wc = _sigma_points(
             self.x, self.P, self.alpha, self.beta, self.kappa
         )

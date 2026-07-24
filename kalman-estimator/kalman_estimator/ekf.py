@@ -54,8 +54,16 @@ class ExtendedKalmanFilter:
         self.P = F @ self.P @ F.T + self.Q
 
     def update(self, z):
-        """EKF update step (uses Jacobian of h at predicted state)."""
+        """EKF update step (uses Jacobian of h at predicted state).
+
+        Raises
+        ------
+        ValueError
+            If *z* contains NaN or Inf.
+        """
         z = np.atleast_1d(z).astype(float)
+        if not np.all(np.isfinite(z)):
+            raise ValueError("measurement contains NaN or Inf")
         H = np.atleast_2d(self.H_jac(self.x)).astype(float)
         y = z - np.asarray(self.h(self.x), dtype=float).ravel()  # innovation
         S = H @ self.P @ H.T + self.R

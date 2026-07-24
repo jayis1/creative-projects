@@ -98,8 +98,17 @@ class KalmanFilter:
         ----------
         z : (m,) array_like
             Measurement vector.
+
+        Raises
+        ------
+        ValueError
+            If *z* contains NaN or Inf, or has the wrong length.
         """
         z = np.atleast_1d(z).astype(float)
+        if z.shape != (self.m,):
+            raise ValueError(f"measurement must have shape ({self.m},), got {z.shape}")
+        if not np.all(np.isfinite(z)):
+            raise ValueError("measurement contains NaN or Inf")
         y = z - self.H @ self.x            # innovation / residual
         S = self.H @ self.P @ self.H.T + self.R  # innovation covariance
         K = self.P @ self.H.T @ np.linalg.inv(S)  # Kalman gain

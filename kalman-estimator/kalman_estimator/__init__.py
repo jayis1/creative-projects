@@ -9,7 +9,13 @@ A from-scratch state-estimation library implementing four core estimators:
 * **UnscentedKalmanFilter** — Unscented Kalman Filter (UKF) using the scaled unscented transform
 * **RTSSmoother**          — Rauch-Tung-Striebel fixed-interval backward smoother
 
-The library is written in pure Python with NumPy as the only dependency.
+Plus supporting utilities:
+
+* **FilterDiagnostics** — NIS, NEES, log-likelihood, AIC/BIC
+* **batch_filter / monte_carlo_error** — multi-run utilities
+* **save_filter / load_filter** — JSON serialization
+
+The library is written in pure Python with NumPy as the only hard dependency.
 No external filtering / estimation packages are used — every algorithm is
 implemented from first principles so the code is readable and auditable.
 
@@ -40,6 +46,9 @@ from .kf import KalmanFilter
 from .ekf import ExtendedKalmanFilter
 from .ukf import UnscentedKalmanFilter
 from .smoother import RTSSmoother, smooth
+from .diagnostics import FilterDiagnostics
+from .batch import batch_filter, monte_carlo_error
+from .serialization import save_filter, load_filter
 
 __all__ = [
     "KalmanFilter",
@@ -47,6 +56,11 @@ __all__ = [
     "UnscentedKalmanFilter",
     "RTSSmoother",
     "smooth",
+    "FilterDiagnostics",
+    "batch_filter",
+    "monte_carlo_error",
+    "save_filter",
+    "load_filter",
 ]
 
-__version__ = "1.0.0"
+__version__ = "2.0.0"
