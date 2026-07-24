@@ -10,10 +10,14 @@ the EKF linearises f and h around the current estimate using Jacobians.
 
 from __future__ import annotations
 
+from typing import Callable, Optional
+
 import numpy as np
 
+from .base import BaseEstimator
 
-class ExtendedKalmanFilter:
+
+class ExtendedKalmanFilter(BaseEstimator):
     """Extended Kalman Filter.
 
     Parameters
@@ -47,13 +51,13 @@ class ExtendedKalmanFilter:
             raise ValueError("x0 shape mismatch with Q")
         self.I = np.eye(self.n)
 
-    def predict(self, u=None):
+    def predict(self, u: Optional[np.ndarray] = None) -> None:
         """EKF prediction step (uses Jacobian of f at current state)."""
         F = np.atleast_2d(self.F_jac(self.x, u)).astype(float)
         self.x = np.asarray(self.f(self.x, u), dtype=float).ravel()
         self.P = F @ self.P @ F.T + self.Q
 
-    def update(self, z):
+    def update(self, z: np.ndarray) -> None:
         """EKF update step (uses Jacobian of h at predicted state).
 
         Raises
@@ -85,7 +89,7 @@ class ExtendedKalmanFilter:
     def covariance(self):
         return self.P.copy()
 
-    def step(self, z, u=None):
+    def step(self, z: np.ndarray, u: Optional[np.ndarray] = None) -> np.ndarray:
         self.predict(u)
         self.update(z)
         return self.state

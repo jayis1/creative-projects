@@ -7,7 +7,11 @@ no Jacobians required.
 
 from __future__ import annotations
 
+from typing import Callable, Optional
+
 import numpy as np
+
+from .base import BaseEstimator
 
 
 def _sigma_points(x, P, alpha=1e-3, beta=2.0, kappa=0.0):
@@ -53,7 +57,7 @@ def _sigma_points(x, P, alpha=1e-3, beta=2.0, kappa=0.0):
     return sigmas, Wm, Wc
 
 
-class UnscentedKalmanFilter:
+class UnscentedKalmanFilter(BaseEstimator):
     """Unscented Kalman Filter.
 
     Parameters
@@ -102,22 +106,20 @@ class UnscentedKalmanFilter:
             raise ValueError("x0 shape mismatch with Q")
 
     def _ut(self, sigmas, Wm, Wc, noise_cov=None):
-        """Unscented transform: propagate sigma points, return mean & cov."""
-        n_pts = sigmas.shape[0]
-        dim_out = sigmas.shape[1]
-        points = np.zeros((n_pts, dim_out))
-        for i in range(n_pts):
-            points[i] = sigmas[i]  # already propagated by caller
-        x_mean = np.dot(Wm, points)
-        P_cov = np.zeros((dim_out, dim_out))
-        for i in range(n_pts):
-            d = (points[i] - x_mean).reshape(-1, 1)
-            P_cov += Wc[i] * (d @ d.T)
+        """Unscented transform: propagate sigma points, return mean & cov.
+
+        Vectorised over sigma points for performance.
+        """
+        # sigmas are already propagated by caller
+        x_mean = Wm @ sigmas  # (n,)
+        d = sigmas - x_mean  # (n_pts, n)
+        # Weighted outer product: P = sum_i Wc[i] * d_i d_i^T
+        P_cov = (d * Wc[:, None]).T @ d  # (n, n)
         if noise_cov is not None:
-            P_cov += noise_cov
+            P_cov = P_cov + noise_cov
         return x_mean, P_cov
 
-    def predict(self, u=None):
+    def predict(self, u: Optional[np.ndarray] = None) -> None:
         """UKF prediction step.
 
         Parameters
@@ -140,7 +142,7 @@ class UnscentedKalmanFilter:
         self.x = x_pred
         self.P = P_pred
 
-    def update(self, z):
+    def update(self, z: np.ndarray) -> None:
         """UKF update step.
 
         Raises
@@ -159,21 +161,15 @@ class UnscentedKalmanFilter:
         z_sigmas = np.zeros((sigmas.shape[0], m))
         for i in range(sigmas.shape[0]):
             z_sigmas[i] = np.asarray(self.hx(sigmas[i]), dtype=float).ravel()
-        z_mean = np.dot(Wm, z_sigmas)
+        z_mean = Wm @ z_sigmas
 
-        # innovation covariance S
-        S = np.zeros((m, m))
-        for i in range(sigmas.shape[0]):
-            d = (z_sigmas[i] - z_mean).reshape(-1, 1)
-            S += Wc[i] * (d @ d.T)
-        S += self.R
+        # innovation covariance S (vectorised)
+        dz = z_sigmas - z_mean  # (n_pts, m)
+        S = (dz * Wc[:, None]).T @ dz + self.R  # (m, m)
 
-        # cross-covariance Pxz
-        Pxz = np.zeros((self.n, m))
-        for i in range(sigmas.shape[0]):
-            dx = (sigmas[i] - self.x).reshape(-1, 1)
-            dz = (z_sigmas[i] - z_mean).reshape(-1, 1)
-            Pxz += Wc[i] * (dx @ dz.T)
+        # cross-covariance Pxz (vectorised)
+        dx = sigmas - self.x  # (n_pts, n)
+        Pxz = (dx * Wc[:, None]).T @ dz  # (n, m)
 
         try:
             K = Pxz @ np.linalg.inv(S)
@@ -195,7 +191,7 @@ class UnscentedKalmanFilter:
     def covariance(self):
         return self.P.copy()
 
-    def step(self, z, u=None):
+    def step(self, z: np.ndarray, u: Optional[np.ndarray] = None) -> np.ndarray:
         self.predict(u)
         self.update(z)
         return self.state

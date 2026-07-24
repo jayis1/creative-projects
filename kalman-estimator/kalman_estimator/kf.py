@@ -10,10 +10,14 @@ where w ~ N(0, Q) and v ~ N(0, R).
 
 from __future__ import annotations
 
+from typing import Optional
+
 import numpy as np
 
+from .base import BaseEstimator
 
-class KalmanFilter:
+
+class KalmanFilter(BaseEstimator):
     """Linear Kalman filter.
 
     Parameters
@@ -77,7 +81,7 @@ class KalmanFilter:
     # ------------------------------------------------------------------ #
     # public API
     # ------------------------------------------------------------------ #
-    def predict(self, u=None):
+    def predict(self, u: Optional[np.ndarray] = None) -> None:
         """Time-update / prediction step.
 
         Parameters
@@ -91,7 +95,7 @@ class KalmanFilter:
             self.x = self.F @ self.x
         self.P = self.F @ self.P @ self.F.T + self.Q
 
-    def update(self, z):
+    def update(self, z: np.ndarray) -> None:
         """Measurement-update / correction step.
 
         Parameters
@@ -135,7 +139,7 @@ class KalmanFilter:
         """Current posterior state covariance."""
         return self.P.copy()
 
-    def step(self, z, u=None):
+    def step(self, z: np.ndarray, u: Optional[np.ndarray] = None) -> np.ndarray:
         """Convenience: run predict() then update(z)."""
         self.predict(u)
         self.update(z)

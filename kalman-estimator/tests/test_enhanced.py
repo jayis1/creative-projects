@@ -232,6 +232,8 @@ def test_save_load_with_history():
 
 def test_ekf_nonlinear_tracking():
     """EKF should track a nonlinear falling object better than raw measurements."""
+    import sys, os
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
     from demo_nonlinear import generate_falling_data, run_ekf_falling
     true_states, meas = generate_falling_data(seed=123, steps=80)
     ekf_states = run_ekf_falling(meas)
@@ -243,6 +245,8 @@ def test_ekf_nonlinear_tracking():
 
 def test_ukf_nonlinear_tracking():
     """UKF should track the falling object better than raw measurements."""
+    import sys, os
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
     from demo_nonlinear import generate_falling_data, run_ukf_falling
     true_states, meas = generate_falling_data(seed=123, steps=80)
     ukf_states = run_ukf_falling(meas)
