@@ -33,7 +33,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 import random
 import sys
 import time
@@ -215,19 +214,19 @@ class Cage:
             elif k > 2:
                 for perm in permutations(combo):
                     r = perm[0]
-                    ok = True
                     for v in perm[1:]:
                         r = r - v
                     if r > 0:
                         results.add(("-", r))
+                    # Division check
                     r2 = perm[0]
-                    ok2 = True
+                    div_ok = True
                     for v in perm[1:]:
                         if v == 0 or r2 % v != 0:
-                            ok2 = False
+                            div_ok = False
                             break
                         r2 = r2 // v
-                    if ok2 and r2 > 0:
+                    if div_ok and r2 > 0:
                         results.add(("/", r2))
         if k == 1:
             for v in range(1, n + 1):
@@ -499,14 +498,11 @@ class KenKenSolver:
             p = 1
             for v in assigned:
                 p *= v
-            if p == 0:
-                return False
-            min_v = p
-            max_v = p
-            for _ in range(unassigned):
-                min_v *= 1
-                max_v *= self.n
-            if min_v > t:
+            # Values are 1..n, so product can never be 0.
+            # min product = p * 1^unassigned = p
+            # max product = p * n^unassigned
+            max_v = p * (self.n ** unassigned)
+            if p > t:
                 return False
             if max_v < t:
                 return False
@@ -658,13 +654,23 @@ class KenKenSolver:
 
     def get_hint(self, partial: Dict[Cell, int], num: int = 1) -> List[Tuple[Cell, int]]:
         """Return up to *num* cell-value hints consistent with the partial
-        assignment.  Solves the puzzle with the partial assignment fixed and
-        returns cells from the solution that aren't yet filled in.
+        assignment.
+
+        Solves the puzzle and checks that the partial assignment is
+        consistent with the solution.  If the partial assignment conflicts
+        with the cage constraints or the unique solution, no hints are
+        returned.
+
+        Raises ValueError if the partial assignment has row/column conflicts
+        or out-of-range values.
         """
         # Verify the partial assignment is consistent
         for cell, val in partial.items():
             if val < 1 or val > self.n:
                 raise ValueError(f"Value {val} out of range for cell {cell}")
+            # Check that the cell exists in the puzzle
+            if cell not in self.puzzle._cell_cage:
+                raise ValueError(f"Cell {cell} is not in the puzzle")
         # Check row/col conflicts in partial
         for (r, c), v in partial.items():
             for (r2, c2), v2 in partial.items():
@@ -673,11 +679,43 @@ class KenKenSolver:
                         raise ValueError(f"Row conflict: {(r, c)} and {(r2, c2)} both {v}")
                     if c == c2 and v == v2:
                         raise ValueError(f"Col conflict: {(r, c)} and {(r2, c2)} both {v}")
-        # Solve with partial fixed
+        # Check cage constraint violations in the partial assignment
+        for cage in self.puzzle.cages:
+            cage_vals = {c: partial[c] for c in cage.cells if c in partial}
+            if cage_vals:
+                # For single-cell cages, the value must match the target
+                if cage.op == "=" and len(cage.cells) == 1:
+                    if cage.cells[0] in cage_vals:
+                        if cage_vals[cage.cells[0]] != cage.target:
+                            return []  # Cage constraint violated
+                # For multi-cell cages with all cells assigned, check full constraint
+                if len(cage_vals) == len(cage.cells):
+                    if not cage._evaluate(list(cage_vals.values())):
+                        return []
+                # For + cages, check if partial sum already exceeds target
+                if cage.op == "+" and len(cage_vals) < len(cage.cells):
+                    partial_sum = sum(cage_vals.values())
+                    remaining = len(cage.cells) - len(cage_vals)
+                    if partial_sum + remaining > cage.target:
+                        return []  # Even minimum additions exceed target
+                # For * cages, check if partial product already exceeds target
+                if cage.op == "*" and len(cage_vals) < len(cage.cells):
+                    partial_prod = 1
+                    for v in cage_vals.values():
+                        partial_prod *= v
+                    remaining = len(cage.cells) - len(cage_vals)
+                    if partial_prod > cage.target and cage.target > 0:
+                        return []  # Product already exceeds target
+        # Solve the puzzle
         solutions = self.solve()
         if not solutions:
             return []
         sol = solutions[0]
+        # Verify the partial assignment is consistent with the solution
+        for cell, val in partial.items():
+            if sol.get(cell) != val:
+                # The partial assignment doesn't match the unique solution
+                return []
         hints: List[Tuple[Cell, int]] = []
         for cell, val in sol.items():
             if cell not in partial:
@@ -1018,8 +1056,13 @@ def render_cage_map(puzzle: KenKenPuzzle) -> str:
     return "\n".join(lines)
 
 
-def render_solved_puzzle(puzzle: KenKenPuzzle, grid: List[List[int]]) -> str:
-    """Render the puzzle with both cage labels (top) and solution values (bottom)."""
+def render_solved_puzzle(puzzle: KenKenPuzzle, grid: Optional[List[List[int]]]) -> str:
+    """Render the puzzle with both cage labels (top) and solution values (bottom).
+
+    If *grid* is None (no solution), renders the puzzle without values.
+    """
+    if grid is None:
+        return render_puzzle(puzzle)
     n = puzzle.size
     cell_cage = puzzle._cell_cage
     cage_topleft: Dict[int, Cell] = {}

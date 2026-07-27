@@ -198,6 +198,26 @@ kenken-solver/
 └── README.md
 ```
 
+## Known Issues (Resolved)
+
+The following bugs were identified during the Phase 3 bug hunt and fixed:
+
+1. **Hint system ignored partial assignments** — `get_hint()` called `solve()` without constraining the search to the partial assignment, so hints could be inconsistent with the user's pre-filled cells. **Fix**: Added cage constraint validation for partial assignments, solution consistency checking, and early return of empty hints when the partial assignment conflicts with the unique solution.
+
+2. **Domain restoration bug in backtracking solver** — The solver only saved/restored domains for cells directly modified by the row/column update, but propagation modifies domains across the entire grid. This caused stale domain state after backtracking, leading to missing solutions. **Fix**: Save and restore a complete snapshot of ALL domains before each branching step.
+
+3. **Naked-single propagation ordering bug** — Multiple naked singles were assigned in the same propagation phase before their row/column constraints were propagated, causing incorrect domain reductions (e.g., a cell could be assigned a value that was already used in its row/column by another naked single in the same phase). **Fix**: Assign only ONE naked single per propagation iteration, then re-loop to propagate its constraints before assigning the next.
+
+4. **`render_solved_puzzle` crashed on None grid** — Passing `None` (unsolvable puzzle) to `render_solved_puzzle` caused a `TypeError`. **Fix**: Added a None check that falls back to `render_puzzle()`.
+
+5. **Unused variables in `possible_targets`** — The `ok` and `ok2` variables in the subtraction/division branch were set but never checked. **Fix**: Removed unused variables and renamed `ok2` to `div_ok` for clarity.
+
+6. **Unused `math` import** — The `math` module was imported but never used. **Fix**: Removed the import.
+
+7. **Subtraction operator produced negative targets** — The generator's `_choose_operator` could produce negative subtraction targets for 3+ cell cages. **Fix**: Only keep permutation results that are positive (`r > 0`).
+
+8. **`_cage_feasible` had dead code for `*` operator** — The `p == 0` check was unreachable (values are always 1..n) and the `min_v` computation was a no-op (`min_v *= 1`). **Fix**: Simplified the product bounds computation using exponentiation.
+
 ## License
 
 MIT
