@@ -1,14 +1,14 @@
 """Bug hunt tests for the KenKen engine.
 
-Each test verifies a specific bug before the fix is applied.
-Run with: python3 tests/test_bug_hunt.py
+Each test verifies a specific bug that was identified during the Phase 3
+bug hunt and confirms the fix is still in effect.
 """
 
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from kenken import (
+from kenken_solver import (
     Cage, KenKenPuzzle, KenKenSolver, KenKenGenerator,
     PuzzleAnalyzer, render_puzzle, render_solution,
     render_cage_map, render_solved_puzzle,
@@ -20,30 +20,17 @@ from kenken import (
 # ---------------------------------------------------------------------------
 
 def test_bug_hint_uses_partial_assignment():
-    """get_hint() should return hints consistent with the partial assignment,
-    not just the unrestricted solution.
-
-    Before fix: get_hint() called self.solve() which ignores the partial
-    assignment, so hints could be inconsistent with the given cells.
-    After fix: get_hint() should solve with the partial assignment fixed.
-    """
+    """get_hint() should return hints consistent with the partial assignment."""
     gen = KenKenGenerator(size=4, seed=8)
     puzzle = gen.generate()
     solver = KenKenSolver(puzzle)
     sol = solver.solve_grid()
 
-    # Find a cell whose value differs from what we'll force
-    # Force cell (0,0) to a WRONG value (different from solution)
-    wrong_val = 2 if sol[0][0] == 1 else 1
-    # But this might make the puzzle unsolvable — let's instead force
-    # a correct value and check that hints are consistent with it.
-
     # Force a correct value
     partial = {(0, 0): sol[0][0]}
     hints = solver.get_hint(partial, num=3)
 
-    # All hints must be consistent with the partial assignment:
-    # the full solution (partial + hints) must be a valid solution
+    # All hints must be consistent with the partial assignment
     full = dict(partial)
     for cell, val in hints:
         full[cell] = val
@@ -68,14 +55,12 @@ def test_bug_hint_uses_partial_assignment():
 
 
 def test_bug_hint_with_conflicting_partial():
-    """get_hint() with a partial assignment that conflicts with the unique
-    solution should return no hints (or raise), not return wrong hints."""
+    """get_hint() with a partial assignment that conflicts should return no hints."""
     gen = KenKenGenerator(size=4, seed=8)
     puzzle = gen.generate()
     solver = KenKenSolver(puzzle)
     sol = solver.solve_grid()
 
-    # Force a wrong value that creates a cage violation
     # Find a single-cell cage and force a different value
     for cage in puzzle.cages:
         if cage.size == 1 and cage.op == "=":
@@ -83,16 +68,13 @@ def test_bug_hint_with_conflicting_partial():
             wrong = cage.target + 1 if cage.target < puzzle.size else cage.target - 1
             if wrong < 1 or wrong > puzzle.size:
                 continue
-            # This partial assignment violates the cage constraint
             try:
                 hints = solver.get_hint({cell: wrong}, num=1)
-                # If no exception, hints should be empty (no valid solution)
                 assert hints == [], \
                     f"Should return no hints for cage-violating partial, got {hints}"
             except ValueError:
-                pass  # Acceptable to raise
+                pass
             return
-    # If no suitable single-cell cage found, skip
     assert True
 
 
@@ -101,14 +83,9 @@ def test_bug_hint_with_conflicting_partial():
 # ---------------------------------------------------------------------------
 
 def test_bug_render_solved_puzzle_none():
-    """render_solved_puzzle should handle None grid gracefully.
-
-    Before fix: passing None as grid would crash with TypeError.
-    After fix: should return a message or raise a clear error.
-    """
+    """render_solved_puzzle should handle None grid gracefully."""
     gen = KenKenGenerator(size=4, seed=1)
     puzzle = gen.generate()
-    # Create an unsolvable puzzle
     cages = [
         Cage([(0, 0), (0, 1)], "+", 100),
         Cage([(1, 0)], "=", 1),
@@ -118,12 +95,10 @@ def test_bug_render_solved_puzzle_none():
     solver = KenKenSolver(bad_puzzle)
     grid = solver.solve_grid()
     assert grid is None
-    # Should not crash
     try:
         result = render_solved_puzzle(bad_puzzle, grid)  # type: ignore
-        # If it returns something, that's fine; if it raises, that's also fine
     except (TypeError, ValueError):
-        pass  # Acceptable to raise with a clear error
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -131,15 +106,7 @@ def test_bug_render_solved_puzzle_none():
 # ---------------------------------------------------------------------------
 
 def test_bug_subtraction_zero_target():
-    """Subtraction with target=0 is valid (two cells with the same value).
-
-    Before fix: Cage.__init__ allowed target<=0 for '-' but the generator
-    never produces target=0 for 2-cell subtraction because it uses abs().
-    However, a user-created puzzle could have target=0, which should work.
-    """
-    # 2x2: cells (0,0) and (0,1) in different columns, same row
-    # can't have same value in same row, so this is actually impossible
-    # in a valid Latin square. But the cage evaluation should still work.
+    """Subtraction with target=0 is valid (two cells with the same value)."""
     cage = Cage([(0, 0), (1, 0)], "-", 0)
     assert cage.satisfied({(0, 0): 3, (1, 0): 3})
 
@@ -149,13 +116,11 @@ def test_bug_subtraction_zero_target():
 # ---------------------------------------------------------------------------
 
 def test_bug_possible_targets():
-    """possible_targets should return valid (op, target) pairs without error."""
+    """possible_targets should return valid (op, target) pairs."""
     cage = Cage([(0, 0), (0, 1)], "+", 5)
     targets = cage.possible_targets(3)
-    # Should include various (+, sum), (*, product), (-, diff), (/, quotient)
-    assert ("+", 5) in targets  # 2+3 or 3+2
-    assert ("+", 3) in targets  # 1+2 or 2+1
-    # Subtraction targets should be non-negative for 2-cell
+    assert ("+", 5) in targets
+    assert ("+", 3) in targets
     for op, t in targets:
         if op == "-":
             assert t >= 0, f"Negative subtraction target: {t}"
@@ -166,13 +131,8 @@ def test_bug_possible_targets():
 # ---------------------------------------------------------------------------
 
 def test_bug_duplicate_candidates_in_choose_operator():
-    """_choose_operator builds a candidates list that may contain duplicates
-    (e.g., multiple permutations yielding the same target). The weighted
-    selection should still work, but duplicates bias the selection.
-
-    This test verifies the function returns a valid (op, target) pair."""
+    """_choose_operator should return a valid (op, target) pair."""
     gen = KenKenGenerator(size=5, seed=42)
-    # Test with values that produce duplicate targets
     op, target = gen._choose_operator([1, 1, 2])
     assert op in ("+", "-", "*", "/")
     assert target > 0
@@ -222,18 +182,12 @@ def test_bug_generator_max_cage_size_1():
 
 
 # ---------------------------------------------------------------------------
-# Bug 9: Negative target for subtraction should be rejected for 2-cell
+# Bug 9: Negative target for subtraction
 # ---------------------------------------------------------------------------
 
 def test_bug_negative_subtraction_target():
-    """A 2-cell subtraction cage should never have a negative target since
-    we use absolute difference. The Cage constructor should reject negative
-    targets for 2-cell subtraction since abs() always produces non-negative."""
-    # Actually, the constructor allows negative for '-' to support 3+ cell
-    # subtraction. But for 2-cell, negative targets are meaningless.
-    # This test documents the behavior.
+    """A 2-cell subtraction cage with a negative target should not satisfy."""
     cage = Cage([(0, 0), (0, 1)], "-", -3)
-    # This should not satisfy any assignment (abs diff is always >= 0)
     assert not cage.satisfied({(0, 0): 1, (0, 1): 2})
     assert not cage.satisfied({(0, 0): 5, (0, 1): 3})
 
@@ -271,9 +225,7 @@ def test_bug_large_grid_generation():
 # ---------------------------------------------------------------------------
 
 def test_bug_count_matches_solve():
-    """count_solutions() and solve() with max_solutions=999999 should
-    return the same count."""
-    # 3x3 with minimal constraints — multiple solutions possible
+    """count_solutions() and solve() should return the same count."""
     cages = [
         Cage([(0, 0), (0, 1), (0, 2)], "+", 6),
         Cage([(1, 0), (1, 1), (1, 2)], "+", 6),

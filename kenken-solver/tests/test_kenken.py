@@ -1,10 +1,13 @@
-"""Comprehensive tests for the KenKen engine."""
+"""Comprehensive tests for the KenKen engine.
+
+These tests exercise the full public API of the kenken_solver package.
+"""
 
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from kenken import (
+from kenken_solver import (
     Cage, KenKenPuzzle, KenKenSolver, KenKenGenerator,
     PuzzleAnalyzer, render_puzzle, render_solution,
     render_cage_map, render_solved_puzzle,
@@ -380,6 +383,183 @@ def test_cage_pretty_repr():
     c = Cage([(0, 0)], "=", 3)
     r = repr(c)
     assert "Cage" in r and "=" in r
+
+
+# ---------------------------------------------------------------------------
+# New tests for v3.0 features
+# ---------------------------------------------------------------------------
+
+def test_backward_compat_shim():
+    """The legacy kenken.py shim should re-export the same API."""
+    import kenken
+    assert hasattr(kenken, 'Cage')
+    assert hasattr(kenken, 'KenKenPuzzle')
+    assert hasattr(kenken, 'KenKenSolver')
+    assert hasattr(kenken, 'KenKenGenerator')
+    assert hasattr(kenken, 'PuzzleAnalyzer')
+    assert hasattr(kenken, 'render_puzzle')
+    assert hasattr(kenken, 'main')
+    assert hasattr(kenken, 'GenerationConfig')
+
+
+def test_package_version():
+    import kenken_solver
+    assert kenken_solver.__version__ == "3.0.0"
+
+
+def test_puzzle_eq():
+    """Two puzzles with the same size and cages should be equal."""
+    gen = KenKenGenerator(size=4, seed=5)
+    p1 = gen.generate()
+    p2 = KenKenPuzzle.from_json(p1.to_json())
+    assert p1 == p2
+
+
+def test_puzzle_hash():
+    """Puzzle should be hashable."""
+    gen = KenKenGenerator(size=3, seed=1)
+    puzzle = gen.generate()
+    h = hash(puzzle)
+    assert isinstance(h, int)
+
+
+def test_config_defaults():
+    from kenken_solver.config import GenerationConfig
+    cfg = GenerationConfig()
+    assert cfg.size == 5
+    assert cfg.difficulty == "medium"
+    assert cfg.max_cage_size == 4
+    assert cfg.allow_singletons is True
+
+
+def test_config_from_dict():
+    from kenken_solver.config import GenerationConfig
+    cfg = GenerationConfig.from_dict({"size": 6, "difficulty": "hard"})
+    assert cfg.size == 6
+    assert cfg.difficulty == "hard"
+    # Defaults filled in
+    assert cfg.max_cage_size == 4
+
+
+def test_config_to_dict():
+    from kenken_solver.config import GenerationConfig
+    cfg = GenerationConfig(size=7, difficulty="easy", seed=99)
+    d = cfg.to_dict()
+    assert d["size"] == 7
+    assert d["difficulty"] == "easy"
+    assert d["seed"] == 99
+
+
+def test_config_from_json_file():
+    import json
+    import tempfile
+    from kenken_solver.config import GenerationConfig
+    config_data = {"size": 4, "difficulty": "easy", "seed": 42}
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+        f.write(json.dumps(config_data))
+        fname = f.name
+    cfg = GenerationConfig.from_file(fname)
+    assert cfg.size == 4
+    assert cfg.difficulty == "easy"
+    assert cfg.seed == 42
+    os.unlink(fname)
+
+
+def test_cli_generate():
+    """Test the CLI generate command."""
+    from kenken_solver.cli import main
+    ret = main(["generate", "--size", "3", "--seed", "42", "--format", "json"])
+    assert ret == 0
+
+
+def test_cli_generate_with_solve():
+    from kenken_solver.cli import main
+    ret = main(["generate", "--size", "3", "--seed", "42", "--solve"])
+    assert ret == 0
+
+
+def test_cli_verify():
+    from kenken_solver.cli import main
+    import tempfile, json
+    gen = KenKenGenerator(size=3, seed=1)
+    puzzle = gen.generate()
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+        f.write(puzzle.to_json())
+        fname = f.name
+    ret = main(["verify", "--input", fname])
+    assert ret == 0
+
+
+def test_cli_analyze():
+    from kenken_solver.cli import main
+    import tempfile
+    gen = KenKenGenerator(size=3, seed=1)
+    puzzle = gen.generate()
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+        f.write(puzzle.to_json())
+        fname = f.name
+    ret = main(["analyze", "--input", fname])
+    assert ret == 0
+
+
+def test_cli_hint():
+    from kenken_solver.cli import main
+    import tempfile
+    gen = KenKenGenerator(size=3, seed=1)
+    puzzle = gen.generate()
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+        f.write(puzzle.to_json())
+        fname = f.name
+    ret = main(["hint", "--input", fname, "--num", "1"])
+    assert ret == 0
+
+
+def test_cli_generate_text_format():
+    from kenken_solver.cli import main
+    ret = main(["generate", "--size", "3", "--seed", "1", "--format", "text"])
+    assert ret == 0
+
+
+def test_cli_solve():
+    from kenken_solver.cli import main
+    import tempfile
+    gen = KenKenGenerator(size=3, seed=1)
+    puzzle = gen.generate()
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+        f.write(puzzle.to_json())
+        fname = f.name
+    ret = main(["solve", "--input", fname, "--stats"])
+    assert ret == 0
+
+
+def test_types_neighbors():
+    from kenken_solver.types import neighbors
+    # Corner cell in 3x3
+    nbs = neighbors((0, 0), 3)
+    assert (0, 1) in nbs
+    assert (1, 0) in nbs
+    assert (0, 0) not in nbs  # self not included
+    assert len(nbs) == 2  # corner
+
+    # Center cell in 3x3
+    nbs = neighbors((1, 1), 3)
+    assert len(nbs) == 4
+
+    # Edge cell
+    nbs = neighbors((0, 1), 3)
+    assert len(nbs) == 3
+
+
+def test_types_is_contiguous():
+    from kenken_solver.types import is_contiguous
+    # Contiguous cells
+    assert is_contiguous([(0, 0), (0, 1), (0, 2)], 3)
+    # Non-contiguous cells
+    assert not is_contiguous([(0, 0), (2, 2)], 3)
+    # Empty
+    assert is_contiguous([], 3)
+    # Single cell
+    assert is_contiguous([(1, 1)], 3)
 
 
 if __name__ == "__main__":

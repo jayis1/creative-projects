@@ -1,0 +1,11 @@
+# YAML configuration example for KenKen generation.
+# Usage: kenken generate --config examples/config.yaml
+
+size: 5
+difficulty: medium
+seed: 123
+max_cage_size: 4
+allow_singletons: true
+max_attempts: 100
+format: text
+output: null

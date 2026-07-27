@@ -1,0 +1,80 @@
+[build-system]
+requires = ["setuptools>=64.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "kenken-solver"
+version = "3.0.0"
+description = "A from-scratch KenKen (Calcudoku / Mathdoku) puzzle engine: generator, solver, verifier, analyzer, and hint system in pure Python."
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.9"
+authors = [
+    {name = "Creative Coder Pipeline"},
+]
+keywords = [
+    "kenken",
+    "calcudoku",
+    "mathdoku",
+    "puzzle",
+    "solver",
+    "generator",
+    "constraint-satisfaction",
+    "backtracking",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Games/Entertainment :: Puzzle Games",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = []
+
+[project.optional-dependencies]
+yaml = ["pyyaml>=6.0"]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+kenken = "kenken_solver.cli:main"
+
+[project.urls]
+"Homepage" = "https://github.com/jayis1/creative-projects/tree/main/kenken-solver"
+"Repository" = "https://github.com/jayis1/creative-projects"
+"Issue Tracker" = "https://github.com/jayis1/creative-projects/issues"
+
+[tool.setuptools]
+packages = ["kenken_solver"]
+
+[tool.setuptools.package-data]
+kenken_solver = ["py.typed"]
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = [
+    "-v",
+    "--tb=short",
+]
+
+[tool.coverage.run]
+source = ["kenken_solver"]
+omit = ["*/tests/*"]
+
+[tool.coverage.report]
+show_missing = true
+precision = 2
