@@ -1,6 +1,6 @@
 # KenKen Solver & Generator
 
-A from-scratch KenKen (Calcudoku / Mathdoku) puzzle engine: generator, solver, and verifier in pure Python with no external dependencies.
+A from-scratch KenKen (Calcudoku / Mathdoku) puzzle engine: generator, solver, verifier, analyzer, and hint system in pure Python with no external dependencies.
 
 ## What is KenKen?
 
@@ -14,14 +14,26 @@ For subtraction and division cages with more than two cells, any left-to-right o
 
 ## Features
 
-- **Solver**: Backtracking search with constraint propagation, the Minimum-Remaining-Values (MRV) heuristic, and forward-checking via cage feasibility bounds.
+### Core
+- **Solver**: Backtracking search with constraint propagation, the Minimum-Remaining-Values (MRV) heuristic, forward-checking via cage feasibility bounds, and naked-single propagation.
+- **Solution counter**: `count_solutions()` counts all solutions without storing them, with an optional limit.
 - **Generator**: Produces solvable puzzles with **guaranteed unique solutions** by generating a random Latin square, partitioning into contiguous cages via random-region growth, and verifying uniqueness with the solver.
 - **Difficulty levels**: `easy` (favors `+` and `=`, avoids `*`/`/`), `medium` (balanced), `hard` (favors `*` and `/`).
 - **Operator support**: `+`, `-`, `*`, `/`, `=` (single-cell freebies).
-- **JSON serialization**: Save and load puzzles in JSON format.
-- **ASCII rendering**: Human-readable grid display showing cage targets and operators.
-- **CLI**: Three subcommands — `generate`, `solve`, `verify`.
-- **Pure standard library**: No NumPy, no external packages required.
+
+### Enhanced (v2.0)
+- **Puzzle analyzer**: Analyzes puzzle properties including cage statistics, operator distribution, difficulty scoring, solver complexity metrics (nodes/backtracks), and difficulty categorization (easy/medium/hard).
+- **Hint system**: Provides cell-value hints for partially solved puzzles, with conflict detection for invalid partial assignments.
+- **Batch generation**: Generate multiple puzzles in one command with timing statistics and progress reporting.
+- **Cage contiguity validation**: Validates that all cages form connected regions (4-connectivity).
+- **No-singletons mode**: Generate puzzles without single-cell cages (orphan singletons are merged into adjacent cages).
+- **Compact text format**: Human-readable puzzle format for easy editing and sharing (with comment support).
+- **Enhanced rendering**: Cage map rendering, solved puzzle overlay (cage labels + solution values), and improved grid display.
+- **Input validation**: Operator validation, target positivity checks, `=` operator requires single cell, cell bounds checking, overlapping cage detection.
+
+### Serialization
+- **JSON**: Full round-trip serialization for programmatic use.
+- **Text format**: Compact human-readable format with comment support (`#` lines).
 
 ## How It Works
 
@@ -29,22 +41,32 @@ For subtraction and division cages with more than two cells, any left-to-right o
 
 The solver (`KenKenSolver`) uses backtracking with:
 
-1. **Candidate computation**: For each unassigned cell, candidates are `{1..n} − {values already in the same row or column}`.
-2. **MRV heuristic**: At each step, the unassigned cell with the fewest candidates is selected first. This dramatically reduces the search space.
-3. **Cage feasibility pruning**: After assigning a value, the cage containing that cell is checked for feasibility:
+1. **Domain tracking**: Each cell maintains a set of candidate values `{1..n}`, reduced by row and column constraints.
+2. **MRV heuristic**: At each step, the unassigned cell with the fewest candidates is selected first, dramatically reducing the search space.
+3. **Naked-single propagation**: After each assignment, cells reduced to a single candidate are automatically assigned. Row/column reductions are processed in a separate phase before naked-single assignment to ensure correct constraint ordering.
+4. **Cage feasibility pruning**: After assigning a value, the cage containing that cell is checked for feasibility:
    - For `+` cages: the partial sum plus the minimum/maximum possible contribution from unassigned cells must bracket the target.
    - For `*` cages: similarly using product bounds.
-   - For `-` and `/` cages: defers to the full check once all cells are assigned (permutation search).
-4. **Solution count control**: The solver stops early once the requested number of solutions is found (1 by default; 2 for uniqueness verification).
+   - For `-` and `/` cages: defers to the full permutation check once all cells are assigned.
+5. **Full domain snapshot/restore**: Before each branch, a complete snapshot of all domains is saved. This ensures correct restoration after propagation modifies domains across the entire grid (not just the row/column of the assigned cell).
 
 ### Generator
 
 The generator (`KenKenGenerator`) works as follows:
 
 1. **Random Latin square**: A base cyclic Latin square is constructed, then randomized via independent row, column, and symbol permutations.
-2. **Cage partitioning**: Starting from random seed cells, cages grow by absorbing unassigned orthogonal neighbors until reaching a random size (1 to `max_cage_size`).
+2. **Cage partitioning**: Starting from random seed cells, cages grow by absorbing unassigned orthogonal neighbors until reaching a random size (1 to `max_cage_size`). If `allow_singletons=False`, orphan singletons are merged into adjacent cages.
 3. **Operator selection**: For each cage, all valid `(operator, target)` pairs are computed from the solution values. A weighted random choice is made based on the difficulty level.
 4. **Uniqueness verification**: The solver is invoked with `max_solutions=2`. If exactly one solution exists, the puzzle is accepted; otherwise, the process repeats (up to `max_attempts` times).
+
+### Analyzer
+
+The `PuzzleAnalyzer` computes:
+- **Cage statistics**: number of cages, average/max cage size, singleton count.
+- **Operator distribution**: count of each operator type.
+- **Difficulty score**: weighted combination of grid size, average cage size, operator mix, and singleton count.
+- **Difficulty category**: easy (≤15), medium (≤30), hard (>30).
+- **Solver complexity**: node count and backtrack count for finding the first solution.
 
 ## Usage
 
@@ -57,16 +79,23 @@ python3 kenken.py generate --size 5
 # 6×6 hard puzzle with a seed, also show the solution
 python3 kenken.py generate --size 6 --difficulty hard --seed 42 --solve
 
+# 4×4 puzzle without single-cell cages
+python3 kenken.py generate --size 4 --no-singletons --solve
+
 # Save puzzle to JSON file
 python3 kenken.py generate --size 4 --output puzzle.json --format json
+
+# Export in compact text format
+python3 kenken.py generate --size 5 --format text
 ```
 
 ### Solve a puzzle
 
 ```bash
 python3 kenken.py solve --input puzzle.json
-python3 kenken.py solve --input puzzle.json --all    # find all solutions
-python3 kenken.py solve --input puzzle.json --stats  # show solver statistics
+python3 kenken.py solve --input puzzle.json --all       # find all solutions
+python3 kenken.py solve --input puzzle.json --stats     # show solver statistics
+python3 kenken.py solve --input puzzle.txt              # text format also supported
 ```
 
 ### Verify uniqueness
@@ -75,10 +104,45 @@ python3 kenken.py solve --input puzzle.json --stats  # show solver statistics
 python3 kenken.py verify --input puzzle.json
 ```
 
+### Analyze difficulty
+
+```bash
+python3 kenken.py analyze --input puzzle.json
+```
+
+Output (JSON):
+```json
+{
+  "size": 5,
+  "num_cages": 10,
+  "avg_cage_size": 2.5,
+  "max_cage_size": 4,
+  "num_singletons": 2,
+  "operator_distribution": {"+": 3, "-": 2, "*": 3, "/": 1, "=": 1},
+  "difficulty_score": 24,
+  "difficulty_category": "medium",
+  "solver_nodes": 45,
+  "solver_backtracks": 12
+}
+```
+
+### Batch generate
+
+```bash
+python3 kenken.py batch --size 5 --count 10 --difficulty medium --output-dir puzzles/
+```
+
+### Get hints
+
+```bash
+# Get 3 hints given some pre-filled cells
+python3 kenken.py hint --input puzzle.json --cells "0,0=3" "1,2=5" --num 3
+```
+
 ### Python API
 
 ```python
-from kenken import KenKenGenerator, KenKenSolver, KenKenPuzzle
+from kenken import KenKenGenerator, KenKenSolver, KenKenPuzzle, PuzzleAnalyzer
 
 # Generate
 gen = KenKenGenerator(size=5, seed=42, difficulty="medium")
@@ -90,18 +154,47 @@ solver = KenKenSolver(puzzle)
 grid = solver.solve_grid()
 print(grid)
 
+# Count solutions
+count = solver.count_solutions()
+print(f"Number of solutions: {count}")
+
+# Analyze
+analyzer = PuzzleAnalyzer(puzzle)
+analysis = analyzer.analyze()
+print(analysis)
+
+# Get hints
+hints = solver.get_hint({(0, 0): 3, (1, 2): 5}, num=3)
+
 # Serialize
 json_str = puzzle.to_json()
 puzzle2 = KenKenPuzzle.from_json(json_str)
+text = puzzle.to_text()
+puzzle3 = KenKenPuzzle.from_text(text)
 ```
+
+## Text Format
+
+The compact text format is human-readable and editable:
+
+```
+size: 5
+# Comments start with #
+0,0 0,1 + 7
+0,2 = 3
+1,0 1,1 * 12
+...
+```
+
+Each cage line: space-separated `row,col` cell coordinates, then the operator, then the target.
 
 ## Project Structure
 
 ```
 kenken-solver/
-├── kenken.py       # Main implementation: Cage, KenKenPuzzle, KenKenSolver, KenKenGenerator, CLI
+├── kenken.py       # Main implementation
 ├── tests/
-│   └── test_kenken.py
+│   └── test_kenken.py   # 36 tests
 └── README.md
 ```
 
