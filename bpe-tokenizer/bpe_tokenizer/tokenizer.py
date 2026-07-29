@@ -16,7 +16,8 @@ import json
 import logging
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Iterator, Mapping, Sequence
+from pathlib import Path
+from typing import Any, Callable, Iterable, Iterator, Mapping, Sequence
 
 from .vocab import (
     DEFAULT_SPECIALS,
@@ -34,6 +35,8 @@ from .pretokenize import (
     WhitespacePretokenizer,
 )
 from .cache import EncodeCache
+from .exceptions import TrainingError, EncodingError, SerializationError
+from .progress import ProgressCallback, ProgressInfo
 
 __all__ = [
     "BPETokenizer",
@@ -200,6 +203,7 @@ class BPETokenizer:
         self,
         corpus: str | Sequence[str],
         config: TrainingConfig | None = None,
+        progress_callback: ProgressCallback | None = None,
     ) -> None:
         """Train the BPE tokenizer on *corpus*.
 
@@ -209,6 +213,9 @@ class BPETokenizer:
             A single string or a sequence of strings (documents).
         config:
             Training configuration.  If None, uses defaults.
+        progress_callback:
+            Optional callback invoked after each merge.  Receives a
+            :class:`~bpe_tokenizer.progress.ProgressInfo` instance.
         """
         cfg = config or TrainingConfig()
         self.vocab = Vocab(byte_mode=cfg.byte_mode)
@@ -271,17 +278,17 @@ class BPETokenizer:
                 len(word_freqs), n_base, n_specials, cfg.vocab_size, max_merges,
             )
 
+        # ---- Initial pair counts (computed once) ----
+        pair_counts: Counter[tuple[str, str]] = Counter()
+        for word, syms in word_symbols.items():
+            freq = word_freqs[word]
+            for i in range(len(syms) - 1):
+                pair_counts[(syms[i], syms[i + 1])] += freq
+
         # Iteratively merge the most frequent pair.
         merge_rank = 1
         merges_done = 0
         while merges_done < max_merges:
-            # Count pairs across all words.
-            pair_counts: Counter[tuple[str, str]] = Counter()
-            for word, syms in word_symbols.items():
-                freq = word_freqs[word]
-                for i in range(len(syms) - 1):
-                    pair_counts[(syms[i], syms[i + 1])] += freq
-
             if not pair_counts:
                 break  # nothing left to merge
 
@@ -307,12 +314,24 @@ class BPETokenizer:
             )
             merge_rank += 1
 
-            # Apply the merge to all words.
-            self._apply_merge(word_symbols, best_pair, merged)
+            # Apply the merge to all words, updating pair_counts incrementally.
+            self._apply_merge_incremental(
+                word_symbols, word_freqs, best_pair, merged, pair_counts,
+            )
 
             merges_done += 1
             if cfg.verbose and merges_done % 50 == 0:
                 logger.info("  merge #%d: %r (count=%d)", merges_done, merged, best_count)
+
+            if progress_callback is not None:
+                progress_callback(ProgressInfo(
+                    iteration=merges_done,
+                    max_merges=max_merges,
+                    merged_pair=best_pair,
+                    merged_token=merged,
+                    merge_count=best_count,
+                    current_vocab_size=self.vocab.size(),
+                ))
 
         self._rebuild_merge_ranks()
         if self._cache is not None:
@@ -320,6 +339,34 @@ class BPETokenizer:
         if cfg.verbose:
             logger.info("Training complete: %d merges, vocab size %d",
                         merges_done, self.vocab.size())
+
+    def train_from_file(
+        self,
+        path: str | Path,
+        config: TrainingConfig | None = None,
+        progress_callback: ProgressCallback | None = None,
+        encoding: str = "utf-8",
+    ) -> None:
+        """Train on a corpus read from a file.
+
+        The file is read as a single string and passed to :meth:`train`.
+
+        Parameters
+        ----------
+        path:
+            Path to the corpus file.
+        config:
+            Training configuration.
+        progress_callback:
+            Optional progress callback.
+        encoding:
+            File encoding (default: utf-8).
+        """
+        p = Path(path)
+        if not p.exists():
+            raise TrainingError(f"Corpus file not found: {p}")
+        text = p.read_text(encoding=encoding)
+        self.train(text, config, progress_callback)
 
     def _chunk_to_units(self, chunk: str, byte_mode: bool) -> list[str]:
         """Convert a pre-token chunk to a list of base units."""
@@ -330,7 +377,13 @@ class BPETokenizer:
 
     @staticmethod
     def _apply_merge(word_symbols: dict[str, list[str]], pair: tuple[str, str], merged: str) -> None:
-        """Apply a merge *pair* → *merged* across all words in-place."""
+        """Apply a merge *pair* → *merged* across all words in-place.
+
+        .. deprecated::
+            Kept for backward compatibility.  New code should use
+            :meth:`_apply_merge_incremental` which also updates pair
+            counts incrementally for better performance.
+        """
         for word, syms in word_symbols.items():
             if len(syms) < 2:
                 continue
@@ -344,6 +397,78 @@ class BPETokenizer:
                     new_syms.append(syms[i])
                     i += 1
             word_symbols[word] = new_syms
+
+    @staticmethod
+    def _apply_merge_incremental(
+        word_symbols: dict[str, list[str]],
+        word_freqs: Counter[str],
+        pair: tuple[str, str],
+        merged: str,
+        pair_counts: Counter[tuple[str, str]],
+    ) -> None:
+        """Apply a merge and update *pair_counts* incrementally.
+
+        Instead of recomputing all pair counts from scratch each
+        iteration (O(total_symbols) per merge), this method only
+        adjusts counts for words that contained the merged pair,
+        giving a significant speedup for large vocabularies.
+        """
+        left, right = pair
+        merged_sym = merged
+
+        for word, syms in word_symbols.items():
+            if len(syms) < 2:
+                continue
+            # Quick check: does this word contain the pair at all?
+            # Only process words that have at least one occurrence.
+            has_pair = False
+            for i in range(len(syms) - 1):
+                if syms[i] == left and syms[i + 1] == right:
+                    has_pair = True
+                    break
+            if not has_pair:
+                continue
+
+            freq = word_freqs[word]
+            # Build the new symbol list while tracking pair changes.
+            new_syms: list[str] = []
+            i = 0
+            while i < len(syms):
+                if i < len(syms) - 1 and syms[i] == left and syms[i + 1] == right:
+                    # We're merging syms[i] and syms[i+1] into merged_sym.
+                    # Decrement the pair count for (left, right).
+                    pair_counts[(left, right)] -= freq
+
+                    # The old pair (syms[i-1], left) is gone — decrement it.
+                    # But only if there was a preceding symbol in new_syms.
+                    if new_syms:
+                        old_left_pair = (new_syms[-1], left)
+                        pair_counts[old_left_pair] -= freq
+                        # The new pair (new_syms[-1], merged_sym) is created.
+                        new_left_pair = (new_syms[-1], merged_sym)
+                        pair_counts[new_left_pair] += freq
+
+                    # The old pair (right, syms[i+2]) is gone — decrement.
+                    if i + 2 < len(syms):
+                        old_right_pair = (right, syms[i + 2])
+                        pair_counts[old_right_pair] -= freq
+                        # The new pair (merged_sym, syms[i+2]) is created.
+                        new_right_pair = (merged_sym, syms[i + 2])
+                        pair_counts[new_right_pair] += freq
+
+                    new_syms.append(merged_sym)
+                    i += 2
+                else:
+                    new_syms.append(syms[i])
+                    i += 1
+            word_symbols[word] = new_syms
+
+        # Remove zero/negative counts to keep the Counter clean.
+        # (pair_counts may have entries with 0 or negative counts after
+        # decrements; we remove them to avoid selecting them as "best".)
+        to_remove = [p for p, c in pair_counts.items() if c <= 0]
+        for p in to_remove:
+            del pair_counts[p]
 
     def _rebuild_merge_ranks(self) -> None:
         """Rebuild the merge-rank lookup from the vocab.

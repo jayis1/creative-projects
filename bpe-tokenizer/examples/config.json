@@ -1,0 +1,17 @@
+{
+  "training": {
+    "vocab_size": 32000,
+    "byte_mode": false,
+    "pretokenizer": "gpt4",
+    "min_frequency": 2,
+    "normalizer": ["lowercase", "nfc"]
+  },
+  "encoding": {
+    "add_bos": true,
+    "add_eos": true,
+    "max_length": 512,
+    "truncation": "right",
+    "return_attention_mask": true,
+    "pad_id": 0
+  }
+}

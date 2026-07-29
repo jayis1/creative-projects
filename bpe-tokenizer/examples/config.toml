@@ -1,0 +1,17 @@
+# BPE Tokenizer training and encoding config (TOML format)
+# Requires Python 3.11+ for tomllib
+
+[training]
+vocab_size = 8000
+byte_mode = true
+pretokenizer = "gpt2"
+min_frequency = 2
+normalizer = ["lowercase"]
+
+[encoding]
+add_bos = true
+add_eos = true
+max_length = 256
+truncation = "right"
+return_attention_mask = true
+pad_id = 0

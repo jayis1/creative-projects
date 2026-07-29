@@ -2,6 +2,7 @@
 
 from .tokenizer import BPETokenizer, TrainingConfig, TokenizationResult, TokenizerStats
 from .encoder import BPESentencePiece, UnigramScore, bpe_dropout, viterbi_segment
+from .wordpiece import WordPieceEncoder, wordpiece_encode
 from .vocab import Vocab, Token, SpecialToken
 from .pretokenize import (
     RegexPattern,
@@ -16,8 +17,20 @@ from .cache import EncodeCache
 from .normalizer import Normalization, Normalizer
 from .postprocess import TruncationStrategy, truncate, make_attention_mask, strip_specials
 from .analyzer import TokenizerAnalyzer, AnalysisResult
+from .comparison import TokenizerComparison, ComparisonResult
+from .config import TokenizerConfig, load_config, save_config
+from .progress import ProgressInfo, ProgressCallback, create_print_callback
+from .exceptions import (
+    BPETokenizerError,
+    TrainingError,
+    EncodingError,
+    DecodingError,
+    SerializationError,
+    ConfigError,
+    VocabError,
+)
 
-__version__ = "2.0.0"
+__version__ = "3.0.0"
 
 __all__ = [
     # Core
@@ -30,6 +43,9 @@ __all__ = [
     "UnigramScore",
     "bpe_dropout",
     "viterbi_segment",
+    # WordPiece
+    "WordPieceEncoder",
+    "wordpiece_encode",
     # Vocab
     "Vocab",
     "Token",
@@ -55,4 +71,23 @@ __all__ = [
     # Analysis
     "TokenizerAnalyzer",
     "AnalysisResult",
+    # Comparison
+    "TokenizerComparison",
+    "ComparisonResult",
+    # Config
+    "TokenizerConfig",
+    "load_config",
+    "save_config",
+    # Progress
+    "ProgressInfo",
+    "ProgressCallback",
+    "create_print_callback",
+    # Exceptions
+    "BPETokenizerError",
+    "TrainingError",
+    "EncodingError",
+    "DecodingError",
+    "SerializationError",
+    "ConfigError",
+    "VocabError",
 ]
