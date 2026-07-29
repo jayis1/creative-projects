@@ -218,8 +218,22 @@ bpe-tokenizer/
 ## Testing
 
 ```bash
-pytest tests/ -v  # 34 tests
+pytest tests/ -v  # 46 tests
 ```
+
+## Known Issues (Resolved)
+
+1. **Tie-breaking in merge selection was inverted** — `max()` with key `(count, pair)` selected the lexicographically *largest* pair on ties, contradicting the documented "smallest first" behavior. Fixed by using `min()` with key `(-count, pair)`.
+
+2. **Dead code in `_rebuild_merge_ranks`** — A first loop iterated over all tokens and did nothing (`pass`), wasting CPU and confusing readers. Removed the dead loop.
+
+3. **`encode_advanced` didn't pad when `pad_id` was None** — When `return_attention_mask=True` and `max_length` was set but `pad_id` wasn't provided, no padding was applied, resulting in inconsistent sequence lengths and attention masks. Fixed to always pad when `max_length` + `return_attention_mask` are set.
+
+4. **`encode_batch` truncation ignored special tokens** — `r[:max_length]` could cut off BOS/EOS tokens at the end of sequences. Fixed to use the `truncate()` function with `keep_specials=True`.
+
+5. **`BPESentencePiece.encode` skipped normalization** — Viterbi encoding bypassed the normalizer, producing inconsistent results with regular encoding when a normalizer was configured. Fixed by applying the normalizer before pre-tokenization.
+
+6. **`Vocab.add_token` silently overwrote duplicate pieces** — Adding a token with an existing piece string would overwrite the old entry and create an id collision in `id_to_token`. Fixed to raise `ValueError` on duplicates.
 
 ## License
 

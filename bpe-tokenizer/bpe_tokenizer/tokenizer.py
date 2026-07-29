@@ -288,7 +288,10 @@ class BPETokenizer:
             # Select the best pair.
             # Tie-breaking: highest count, then lexicographically smallest
             # pair (for deterministic training across runs).
-            best_pair = max(pair_counts, key=lambda p: (pair_counts[p], lexicographic_key(p)))
+            # We use min() with key (-count, pair) so that:
+            #   - higher count → lower -count → preferred
+            #   - on ties, lexicographically smaller pair → preferred
+            best_pair = min(pair_counts, key=lambda p: (-pair_counts[p], p))
             best_count = pair_counts[best_pair]
 
             if best_count < cfg.min_frequency:
@@ -347,26 +350,14 @@ class BPETokenizer:
 
         The merge rank for a pair (A, B) is the rank of the token "AB".
         Tokens with rank 0 are base tokens (no merge).
+
+        For each merged token (rank > 0), we reconstruct which (left,
+        right) pair produced it by finding a split point where both
+        halves exist in the vocab with lower rank.  This is needed
+        because we don't store the split point explicitly during
+        training.
         """
         self._merge_ranks = {}
-        for piece, tok in self.vocab.tokens.items():
-            if tok.rank > 0 and len(piece) >= 2:
-                # The token represents a merge of its two halves.
-                # We need to know the split point.  We try all possible
-                # splits and pick the one where both halves exist in vocab.
-                # But for deterministic encoding, we store the canonical
-                # split: the one that matches the training merge.
-                # Since we don't store the split explicitly, we try all
-                # and pick the one with the highest merge rank sum.
-                # Actually, for encoding we just need to know that "AB"
-                # is a token; the encoding algorithm uses a different
-                # approach (see _encode_units).
-                pass
-        # Actually, _merge_ranks maps (a, b) → rank of merged token.
-        # We need to reconstruct which (a, b) produced each merged token.
-        # We do this by finding all tokens with rank > 0 and splitting them.
-        # The split is ambiguous for some tokens, so we try all splits and
-        # pick the one where both halves are valid tokens with lower rank.
         for piece, tok in self.vocab.tokens.items():
             if tok.rank == 0 or len(piece) < 2:
                 continue
@@ -506,15 +497,20 @@ class BPETokenizer:
             strat = TruncationStrategy(truncation)
             ids = truncate(ids, max_length, strat, keep_specials=True,
                            special_ids=special_ids)
-            # Pad if needed.
-            if pad_id is not None and len(ids) < max_length:
-                pad = pad_id if pad_id is not None else self._special_id(BPE_PAD, 0)
-                ids = ids + [pad] * (max_length - len(ids))
+
+        # Determine the effective pad id.
+        eff_pad = pad_id if pad_id is not None else self._special_id(BPE_PAD, 0)
+
+        # Pad if needed: when max_length is set and return_attention_mask
+        # is True, always pad to max_length.  Also pad when pad_id is
+        # explicitly provided.
+        should_pad = (pad_id is not None) or (return_attention_mask and max_length is not None)
+        if should_pad and max_length is not None and len(ids) < max_length:
+            ids = ids + [eff_pad] * (max_length - len(ids))
 
         result: dict[str, list[int]] = {"input_ids": ids}
         if return_attention_mask:
-            pad = pad_id if pad_id is not None else self._special_id(BPE_PAD, 0)
-            result["attention_mask"] = make_attention_mask(ids, pad)
+            result["attention_mask"] = make_attention_mask(ids, eff_pad)
         return result
 
     def _special_id(self, piece: str, default: int) -> int:
@@ -539,15 +535,19 @@ class BPETokenizer:
         """
         results = [self.encode(t, add_bos=add_bos, add_eos=add_eos) for t in texts]
         if padding:
+            from .postprocess import TruncationStrategy, truncate as _truncate
+            special_ids = {s.id for s in self.vocab.specials.values()}
             if max_length is None:
                 max_length = max(len(r) for r in results) if results else 0
             if pad_id is None:
                 pad_id = self._special_id(BPE_PAD, 0)
             for i, r in enumerate(results):
-                if len(r) < max_length:
-                    results[i] = r + [pad_id] * (max_length - len(r))
-                elif len(r) > max_length:
-                    results[i] = r[:max_length]
+                if len(r) > max_length:
+                    # Truncate preserving special tokens at start/end.
+                    results[i] = _truncate(r, max_length, TruncationStrategy.RIGHT,
+                                           keep_specials=True, special_ids=special_ids)
+                if len(results[i]) < max_length:
+                    results[i] = results[i] + [pad_id] * (max_length - len(results[i]))
         return results
 
     def encode_annotated(self, text: str) -> TokenizationResult:

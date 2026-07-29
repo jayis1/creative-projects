@@ -226,6 +226,10 @@ class BPESentencePiece:
     def encode(self, text: str, add_bos: bool = False, add_eos: bool = False) -> list[int]:
         from .vocab import BPE_BOS, BPE_EOS
 
+        # Apply normalizer if configured (same as regular encode).
+        if self.tokenizer.normalizer is not None and text:
+            text = self.tokenizer.normalizer(text)
+
         ids: list[int] = []
         if add_bos:
             ids.append(self.tokenizer._special_id(BPE_BOS, 0))

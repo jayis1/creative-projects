@@ -136,7 +136,15 @@ class Vocab:
 
     def add_token(self, piece: str, bytes_piece: bytes, rank: int,
                   freq: int = 0) -> Token:
-        """Add a new regular token and return it.  Id is auto-assigned."""
+        """Add a new regular token and return it.  Id is auto-assigned.
+
+        Raises ValueError if *piece* already exists in the vocab.
+        """
+        if piece in self.tokens:
+            raise ValueError(
+                f"Token piece {piece!r} already exists in the vocab "
+                f"(id={self.tokens[piece].id})"
+            )
         # Id = number of existing tokens (regulars) + number of specials.
         # This keeps regular-token ids contiguous starting after specials.
         next_id = self._next_regular_id()
