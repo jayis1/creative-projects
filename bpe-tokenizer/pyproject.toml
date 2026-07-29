@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bpe-tokenizer"
+version = "1.0.0"
+description = "From-scratch Byte Pair Encoding tokenizer with Unigram/Viterbi segmentation and BPE-dropout"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [{name = "creative-projects"}]
+keywords = ["bpe", "tokenizer", "nlp", "byte-pair-encoding", "sentencepiece"]
+
+[project.optional-dependencies]
+regex = ["regex>=2024.0.0"]
+dev = ["pytest>=7.0"]
+
+[project.scripts]
+bpe-tokenizer = "bpe_tokenizer.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["bpe_tokenizer*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
