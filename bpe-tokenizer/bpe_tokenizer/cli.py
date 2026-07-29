@@ -29,6 +29,9 @@ def _build_parser() -> argparse.ArgumentParser:
     pt.add_argument("--min-frequency", type=int, default=2)
     pt.add_argument("--verbose", action="store_true")
     pt.add_argument("--no-specials", action="store_true", help="Don't reserve special tokens.")
+    pt.add_argument("--lowercase", action="store_true", help="Lowercase all text during training.")
+    pt.add_argument("--strip-accents", action="store_true", help="Strip accents (NFD + remove diacritics).")
+    pt.add_argument("--nfc", action="store_true", help="Apply NFC Unicode normalization.")
 
     # encode
     pe = sub.add_parser("encode", help="Encode text to token ids.")
@@ -77,6 +80,11 @@ def _build_parser() -> argparse.ArgumentParser:
     pr.add_argument("text", help="Text to test.")
     pr.add_argument("-m", "--model", required=True, help="Tokenizer JSON path.")
 
+    # analyze
+    pa = sub.add_parser("analyze", help="Analyze tokenizer quality on a corpus.")
+    pa.add_argument("input", help="Corpus text file for analysis.")
+    pa.add_argument("-m", "--model", required=True, help="Tokenizer JSON path.")
+
     return p
 
 
@@ -86,8 +94,17 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "train":
         from .vocab import DEFAULT_SPECIALS
+        from .normalizer import Normalization
         text = Path(args.input).read_text(encoding="utf-8")
         specials = () if args.no_specials else DEFAULT_SPECIALS
+        # Build normalizer flags.
+        norm = Normalization.NONE
+        if args.lowercase:
+            norm |= Normalization.LOWERCASE
+        if args.strip_accents:
+            norm |= Normalization.NFD | Normalization.STRIP_ACCENTS
+        if args.nfc:
+            norm |= Normalization.NFC
         cfg = TrainingConfig(
             vocab_size=args.vocab_size,
             byte_mode=args.byte_mode,
@@ -95,6 +112,7 @@ def main(argv: list[str] | None = None) -> int:
             specials=specials,
             min_frequency=args.min_frequency,
             verbose=args.verbose,
+            normalizer_flags=int(norm.value),
         )
         tok = BPETokenizer()
         tok.train(text, cfg)
@@ -184,6 +202,15 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Ids:      {ids}")
         print(f"Decoded:  {decoded!r}")
         print(f"Match:    {args.text == decoded}")
+        return 0
+
+    elif args.command == "analyze":
+        from .analyzer import TokenizerAnalyzer
+        tok = BPETokenizer.load(args.model)
+        text = Path(args.input).read_text(encoding="utf-8")
+        texts = text.splitlines()
+        analyzer = TokenizerAnalyzer(tok)
+        print(analyzer.summary(texts))
         return 0
 
     parser.print_help()

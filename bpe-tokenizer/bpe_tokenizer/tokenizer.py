@@ -77,6 +77,7 @@ class TrainingConfig:
     specials: tuple[str, ...] = DEFAULT_SPECIALS
     min_frequency: int = 2
     verbose: bool = False
+    normalizer_flags: int = 0  # Normalization flag bitmask (0 = no normalization)
 
     def __post_init__(self) -> None:
         if self.vocab_size < len(self.specials) + 1:
@@ -141,6 +142,7 @@ class BPETokenizer:
         vocab: Vocab | None = None,
         pretokenizer: Pretokenizer | None = None,
         cache_capacity: int = 8192,
+        normalizer: "Normalizer | None" = None,
     ):
         self.vocab: Vocab = vocab or Vocab()
         self.pretokenizer: Pretokenizer = pretokenizer or WordPretokenizer(GPT4_REGEX)
@@ -148,6 +150,8 @@ class BPETokenizer:
         self._cache = EncodeCache(cache_capacity) if cache_capacity > 0 else None
         # Merge ranks for encoding: maps (a, b) → rank.
         self._merge_ranks: dict[tuple[str, str], int] = {}
+        # Optional text normalizer applied before pre-tokenization.
+        self.normalizer = normalizer
         if vocab is not None and vocab.tokens:
             self._rebuild_merge_ranks()
 
@@ -210,6 +214,12 @@ class BPETokenizer:
         self.vocab = Vocab(byte_mode=cfg.byte_mode)
         self.pretokenizer = self._make_pretokenizer(cfg.pretokenizer)
         self.pretokenizer_name = cfg.pretokenizer
+        # Set up normalizer if flags are provided.
+        if cfg.normalizer_flags:
+            from .normalizer import Normalization, Normalizer
+            self.normalizer = Normalizer(Normalization(cfg.normalizer_flags))
+        else:
+            self.normalizer = None
         if cfg.byte_mode:
             # In byte mode, the pre-tokenizer should produce byte-encoded text.
             self.pretokenizer = BytePretokenizer()
@@ -231,6 +241,9 @@ class BPETokenizer:
         word_symbols: dict[str, list[str]] = {}
 
         for doc in docs:
+            # Apply normalization before pre-tokenization during training too.
+            if self.normalizer is not None:
+                doc = self.normalizer(doc)
             chunks = self.pretokenizer(doc)
             for chunk in chunks:
                 if not chunk:
@@ -420,7 +433,15 @@ class BPETokenizer:
         add_bos: bool = False,
         add_eos: bool = False,
     ) -> list[int]:
-        """Encode *text* into a list of token ids."""
+        """Encode *text* into a list of token ids.
+
+        If a normalizer is configured, it is applied to *text* before
+        pre-tokenization.
+        """
+        # Normalize before anything else.
+        if self.normalizer is not None and text:
+            text = self.normalizer(text)
+
         if not text:
             ids: list[int] = []
             if add_bos:
@@ -429,7 +450,7 @@ class BPETokenizer:
                 ids.append(self._special_id(BPE_EOS, 2))
             return ids
 
-        # Check cache.
+        # Check cache (cache key includes normalization result).
         cache_key = f"{add_bos}:{add_eos}:{text}"
         if self._cache is not None:
             cached = self._cache.get(cache_key)
@@ -447,6 +468,54 @@ class BPETokenizer:
         if self._cache is not None:
             self._cache.put(cache_key, ids)
         return ids
+
+    def encode_advanced(
+        self,
+        text: str,
+        add_bos: bool = False,
+        add_eos: bool = False,
+        max_length: int | None = None,
+        truncation: str = "right",
+        return_attention_mask: bool = False,
+        pad_id: int | None = None,
+    ) -> dict[str, list[int]]:
+        """Encode with advanced post-processing options.
+
+        Returns a dict with keys ``"input_ids"`` and optionally
+        ``"attention_mask"``.
+
+        Parameters
+        ----------
+        max_length:
+            Maximum sequence length (after BOS/EOS).  Excess tokens are
+            truncated according to *truncation*.
+        truncation:
+            One of ``"right"``, ``"left"``, ``"middle"``.
+        return_attention_mask:
+            If True, also return a binary attention mask.
+        pad_id:
+            Padding token id (only used if *return_attention_mask* is
+            True and the sequence is shorter than *max_length*).
+        """
+        from .postprocess import TruncationStrategy, truncate, make_attention_mask
+
+        ids = self.encode(text, add_bos=add_bos, add_eos=add_eos)
+
+        if max_length is not None:
+            special_ids = {s.id for s in self.vocab.specials.values()}
+            strat = TruncationStrategy(truncation)
+            ids = truncate(ids, max_length, strat, keep_specials=True,
+                           special_ids=special_ids)
+            # Pad if needed.
+            if pad_id is not None and len(ids) < max_length:
+                pad = pad_id if pad_id is not None else self._special_id(BPE_PAD, 0)
+                ids = ids + [pad] * (max_length - len(ids))
+
+        result: dict[str, list[int]] = {"input_ids": ids}
+        if return_attention_mask:
+            pad = pad_id if pad_id is not None else self._special_id(BPE_PAD, 0)
+            result["attention_mask"] = make_attention_mask(ids, pad)
+        return result
 
     def _special_id(self, piece: str, default: int) -> int:
         """Get the id of a special token, or *default* if absent."""
@@ -534,9 +603,14 @@ class BPETokenizer:
     # ------------------------------------------------------------------
 
     def to_dict(self) -> dict[str, Any]:
+        # Serialize normalizer flags if a normalizer is configured.
+        norm_flags = 0
+        if self.normalizer is not None:
+            norm_flags = int(self.normalizer.flags.value)
         return {
             "vocab": self.vocab.to_dict(),
             "pretokenizer": self.pretokenizer_name,
+            "normalizer_flags": norm_flags,
             "merge_ranks": [
                 {"left": a, "right": b, "rank": r}
                 for (a, b), r in sorted(self._merge_ranks.items(), key=lambda x: x[1])
@@ -549,7 +623,12 @@ class BPETokenizer:
     @classmethod
     def from_dict(cls, d: Mapping[str, Any]) -> "BPETokenizer":
         vocab = Vocab.from_dict(d["vocab"])
-        tok = cls(vocab=vocab, cache_capacity=0)
+        norm_flags = d.get("normalizer_flags", 0)
+        normalizer = None
+        if norm_flags:
+            from .normalizer import Normalization, Normalizer
+            normalizer = Normalizer(Normalization(norm_flags))
+        tok = cls(vocab=vocab, cache_capacity=0, normalizer=normalizer)
         tok.pretokenizer_name = d.get("pretokenizer", "gpt4")
         tok.pretokenizer = tok._make_pretokenizer(tok.pretokenizer_name)
         tok._rebuild_merge_ranks()
