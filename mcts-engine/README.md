@@ -237,6 +237,28 @@ mcts-engine/
 | `list` | List available games |
 | `version` | Show version info |
 
+## Known Issues (Resolved)
+
+### Bug 1: Gomoku `_win_length` not copied in `apply()` (fixed)
+**Symptom**: `AttributeError: 'Gomoku' object has no attribute '_win_length'` when calling `apply()` on a Gomoku state.  
+**Root cause**: `GridGame.apply()` uses `__class__.__new__()` to create the new state, bypassing `__init__()`. Subclass-specific attributes like `Gomoku._win_length` were never set on the copied state.  
+**Fix**: Added `_copy_extra_attrs()` hook to `GridGame` that subclasses can override. `Gomoku` overrides it to copy `_win_length`. Called during `apply()` after `__new__`.
+
+### Bug 2: `ucb_value()` crashes on `parent_visits=0` (fixed)
+**Symptom**: `ValueError: math domain error` when calling `ucb_value()` or `rave_value()` with `parent_visits=0`.  
+**Root cause**: `math.log(0)` raises a `ValueError` in Python. This can happen for children of the root node when the root has 0 visits (before the first backpropagation completes).  
+**Fix**: Added a guard: if `parent_visits <= 0`, return just the exploitation term (average reward) without the exploration bonus.
+
+### Bug 3: Reversi `legal_moves()` returns empty list when player must pass (fixed)
+**Symptom**: When the current player in Reversi/Othello has no legal moves but the opponent does, `legal_moves()` returned `[]`, causing the MCTS engine to treat the position as a draw instead of a pass.  
+**Root cause**: The pass logic (switching to the opponent when the current player can't move) was only in `_apply_move()`, not in `legal_moves()`. The engine checks `legal_moves()` first and never reaches `_apply_move()` if the list is empty.  
+**Fix**: `legal_moves()` now checks if the current player has no moves. If so, it returns the opponent's legal moves (the pass case). Additionally, `_apply_move()` now handles the pass case by switching to the opponent before applying the move if the current player truly has no legal moves.
+
+### Bug 4: Connect4 diagonal test was incorrectly constructed (test fix)
+**Symptom**: `test_win_diagonal` failed with `ValueError: Illegal move at (2,2)`.  
+**Root cause**: The test tried to place a piece at (2,2) without first filling the cells below it (violating Connect4's gravity rule). This was a test bug, not a code bug.  
+**Fix**: Rewrote the test to directly construct a board with a diagonal and test `_check_winner()` directly, which correctly detects diagonal wins.
+
 ## License
 
 MIT

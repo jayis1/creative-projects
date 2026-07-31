@@ -194,6 +194,12 @@ class MCTSNode:
         if self.visits == 0:
             return float("inf")
         exploit = self.average_reward()
+        # BUG FIX: Guard against parent_visits=0 which causes math.log(0) -> ValueError.
+        # When the parent has 0 visits, there's no exploration data, so we
+        # return just the exploitation term. This can happen for the root node's
+        # children when the root hasn't been visited yet via backprop.
+        if parent_visits <= 0:
+            return exploit
         explore = exploration * math.sqrt(math.log(parent_visits) / self.visits)
         return exploit + explore
 
@@ -263,6 +269,9 @@ class MCTSNode:
         amaf_avg = self._amaf_reward / self._amaf_visits if self._amaf_visits > 0 else 0.0
         mc_avg = self.average_reward()
         blended = (1.0 - beta) * mc_avg + beta * amaf_avg
+        # BUG FIX: Guard against parent_visits<=0 to avoid math.log(0) ValueError.
+        if parent_visits <= 0:
+            return blended
         explore = exploration * math.sqrt(math.log(parent_visits) / self.visits)
         return blended + explore
 

@@ -14,7 +14,12 @@ from .core import GameMove, GameState, Player
 
 
 class GridGame(GameState, ABC):
-    """Base class for grid-based games (simplifies common operations)."""
+    """Base class for grid-based games (simplifies common operations).
+
+    Subclasses that add extra attributes (e.g. Gomoku._win_length) must
+    override _copy_extra_attrs() to ensure those attributes survive the
+    __new__-based copy in apply().
+    """
 
     def __init__(self, rows: int, cols: int, board: Optional[List[List[Player]]] = None) -> None:
         self.rows = rows
@@ -101,6 +106,14 @@ class GridGame(GameState, ABC):
         """Check if placing at (row, col) is legal (cell is playable)."""
         ...
 
+    def _copy_extra_attrs(self, source: "GridGame") -> None:
+        """Copy subclass-specific attributes that aren't set in GridGame.__init__.
+
+        Override in subclasses that add custom attributes beyond the base set.
+        Called during apply() to ensure subclass attrs survive __new__.
+        """
+        pass
+
     def apply(self, move: GameMove) -> "GridGame":
         new_board = [row[:] for row in self.board]
         new_state = self.__class__.__new__(self.__class__)
@@ -111,6 +124,8 @@ class GridGame(GameState, ABC):
         new_state._winner = Player.NONE
         new_state._terminal = False
         new_state._move_count = self._move_count
+        # Copy subclass-specific attributes (e.g. Gomoku._win_length)
+        new_state._copy_extra_attrs(self)
         new_state._apply_move(move.row, move.col)
         return new_state
 
@@ -220,6 +235,12 @@ class Gomoku(GridGame):
         super().__init__(size, size, board)
         self._win_length = 5
 
+    def _copy_extra_attrs(self, source: "GridGame") -> None:
+        # BUG FIX: Copy _win_length so it survives the __new__-based copy in apply().
+        # Without this, apply() creates a new state without _win_length, causing
+        # AttributeError when _check_winner tries to access self._win_length.
+        self._win_length = getattr(source, "_win_length", 5)
+
     def _is_legal(self, row: int, col: int) -> bool:
         return self.board[row][col] == Player.NONE
 
@@ -292,24 +313,39 @@ class Reversi(GridGame):
             for c in range(self.cols):
                 if self._is_legal(r, c):
                     moves.append(GameMove(r, c))
-        # If current player has no moves, switch to opponent
+        # BUG FIX: If the current player has no legal moves, check if the
+        # opponent can move. If so, the current player must pass and it
+        # becomes the opponent's turn. legal_moves() should return the
+        # opponent's moves in this case, so the MCTS engine can continue
+        # searching rather than treating it as a draw.
+        # If neither player can move, the game is terminal (handled in _apply_move).
         if not moves:
-            # Check if opponent has moves
-            opp_moves = []
             opp = self._current.opponent
             for r in range(self.rows):
                 for c in range(self.cols):
                     if len(self._get_flips(r, c, opp)) > 0:
-                        opp_moves.append(GameMove(r, c))
-            if not opp_moves:
-                # Game over — neither player can move
-                pass  # terminal handled in apply
+                        moves.append(GameMove(r, c))
         return moves
 
     def _apply_move(self, row: int, col: int) -> None:
         self._check_in_bounds(row, col)
         player = self._current
         flips = self._get_flips(row, col, player)
+        # BUG FIX: If the current player has no legal moves (pass case),
+        # but legal_moves() returned the opponent's moves, we need to
+        # switch to the opponent before applying the move.
+        if not flips:
+            # Check if current player truly has no moves (must pass)
+            curr_has_moves = any(
+                len(self._get_flips(r, c, self._current)) > 0
+                for r in range(self.rows)
+                for c in range(self.cols)
+            )
+            if not curr_has_moves:
+                # Pass: switch to opponent and try again
+                self._current = self._current.opponent
+                player = self._current
+                flips = self._get_flips(row, col, player)
         if not flips:
             raise ValueError(f"Illegal move at ({row},{col}): no flips")
         self.board[row][col] = player
@@ -372,12 +408,12 @@ class Hex(GridGame):
         # Use BFS/DFS to check if player has connected their sides
         if player == Player.ONE:
             # Connect top row to bottom row
-            return self._check_connection(player, range(self.rows), lambda r, c: r == 0, lambda r, c: r == self.rows - 1)
+            return self._check_connection(player, lambda r, c: r == 0, lambda r, c: r == self.rows - 1)
         else:
             # Connect left col to right col
-            return self._check_connection(player, range(self.cols), lambda r, c: c == 0, lambda r, c: c == self.cols - 1)
+            return self._check_connection(player, lambda r, c: c == 0, lambda r, c: c == self.cols - 1)
 
-    def _check_connection(self, player: Player, rng, is_start, is_end) -> Player:
+    def _check_connection(self, player: Player, is_start, is_end) -> Player:
         """Check if player has connected their two sides via BFS."""
         from collections import deque
         visited = set()
@@ -410,6 +446,6 @@ class Hex(GridGame):
             indent = "  " * r
             row_str = f"{indent}{r:2d} " + " ".join(f" {str(self.board[r][c])}" for c in range(self.cols))
             lines.append(row_str)
-        lines.append(f"  Player ONE (X): connect top↔bottom")
-        lines.append(f"  Player TWO (O): connect left↔right")
+        lines.append(f"  Player ONE (X): connect top<->bottom")
+        lines.append(f"  Player TWO (O): connect left<->right")
         return "\n".join(lines)
