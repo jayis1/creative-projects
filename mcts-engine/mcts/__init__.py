@@ -2,7 +2,8 @@
 MCTS Engine — Monte Carlo Tree Search for game AI.
 
 A from-scratch implementation of MCTS supporting multiple games
-with UCT, RAVE/AMAF, transposition tables, and parallel search.
+with UCT, RAVE/AMAF, transposition tables, progressive bias,
+heuristic-guided rollouts, tree reuse, and parallel search.
 """
 
 from mcts.core import (
@@ -12,7 +13,12 @@ from mcts.core import (
     MCTSNode,
     MCTSResult,
 )
-from mcts.engine import MCTSEngine
+from mcts.engine import (
+    MCTSEngine,
+    TranspositionTable,
+    SearchStats,
+    RolloutPolicy,
+)
 from mcts.games import (
     TicTacToe,
     Connect4,
@@ -20,23 +26,52 @@ from mcts.games import (
     Gomoku,
     Reversi,
 )
-from mcts.uct import UCTPolicy
+from mcts.uct import UCTPolicy, SelectionPolicy
 from mcts.rave import RAVEPolicy
+from mcts.heuristics import (
+    tictactoe_heuristic,
+    connect4_heuristic,
+    reversi_heuristic,
+    hex_heuristic,
+    gomoku_heuristic,
+    get_heuristic,
+    make_rollout_policy,
+)
+from mcts.record import GameRecord, play_recorded_game
 
-__version__ = "1.0.0"
+__version__ = "2.0.0"
 
 __all__ = [
+    # Core
     "GameState",
     "GameMove",
     "Player",
     "MCTSNode",
     "MCTSResult",
+    # Engine
     "MCTSEngine",
+    "TranspositionTable",
+    "SearchStats",
+    "RolloutPolicy",
+    # Games
     "TicTacToe",
     "Connect4",
     "Hex",
     "Gomoku",
     "Reversi",
+    # Policies
     "UCTPolicy",
+    "SelectionPolicy",
     "RAVEPolicy",
+    # Heuristics
+    "tictactoe_heuristic",
+    "connect4_heuristic",
+    "reversi_heuristic",
+    "hex_heuristic",
+    "gomoku_heuristic",
+    "get_heuristic",
+    "make_rollout_policy",
+    # Records
+    "GameRecord",
+    "play_recorded_game",
 ]
