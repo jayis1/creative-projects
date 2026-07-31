@@ -4,15 +4,39 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mcts-engine"
-version = "1.0.0"
-description = "Monte Carlo Tree Search engine for game AI"
+version = "3.0.0"
+description = "Monte Carlo Tree Search engine for game AI with UCT, RAVE, minimax, tournaments, and opening books"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [{name = "Creative Projects"}]
+keywords = ["mcts", "monte-carlo-tree-search", "game-ai", "uct", "rave", "minimax"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Games/Entertainment",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+[project.optional-dependencies]
+yaml = ["pyyaml>=6.0"]
+dev = ["pytest>=7.0", "pytest-cov>=4.0"]
 
 [project.scripts]
 mcts = "mcts.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["mcts*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = ["-v", "--tb=short"]

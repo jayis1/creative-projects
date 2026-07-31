@@ -9,12 +9,16 @@ Usage:
     python -m mcts benchmark --game tictactoe --sims 5000 --rounds 10 --rave
     python -m mcts analyze --game tictactoe --sims 5000
     python -m mcts replay game.json
+    python -m mcts tournament --game tictactoe --sims 2000 --rounds 4
+    python -m mcts config --show config.yaml
+    python -m mcts minimax --game tictactoe
     python -m mcts list
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 import time
 from typing import Dict, List, Optional, Tuple
@@ -25,6 +29,9 @@ from .games import Connect4, Gomoku, Hex, Reversi, TicTacToe
 from .heuristics import get_heuristic, make_rollout_policy
 from .record import GameRecord, play_recorded_game
 from .uct import RAVEPolicy, UCTPolicy
+from .config import MCTSConfig, EngineConfig, GameConfig
+from .minimax import MinimaxEngine
+from .tournament import Tournament, PlayerSpec
 
 GAMES = {
     "tictactoe": TicTacToe,
@@ -77,7 +84,7 @@ def build_engine(args: argparse.Namespace) -> MCTSEngine:
         time_limit=getattr(args, "time_limit", 0.0),
         rave=rave,
         verbose=getattr(args, "verbose", False),
-        seed=42,
+        seed=getattr(args, "seed", 42),
         rollout_policy=rollout_policy,
         progressive_bias=progressive_bias,
         heuristic_fn=heuristic_fn,
@@ -296,6 +303,76 @@ def replay_game(path: str) -> None:
         print(f"\nResult: {w} wins!")
 
 
+def run_tournament(
+    game_name: str,
+    sims: int,
+    rounds: int,
+    size: int = 0,
+) -> None:
+    """Run a round-robin tournament between different engine configs."""
+    print(f"\nTournament: {game_name} ({rounds} rounds, {sims} sims/move)")
+    print("=" * 50)
+
+    factory = lambda: make_game(game_name, size)
+
+    players = [
+        PlayerSpec("UCT-c1.41", MCTSEngine(
+            UCTPolicy(1.4142), simulation_limit=sims, seed=42)),
+        PlayerSpec("UCT-c0.5", MCTSEngine(
+            UCTPolicy(0.5), simulation_limit=sims, seed=99)),
+        PlayerSpec("RAVE", MCTSEngine(
+            RAVEPolicy(1.4142, 300), simulation_limit=sims, rave=True, seed=77)),
+    ]
+
+    # Add heuristic player if available
+    h = get_heuristic(game_name)
+    if h is not None:
+        players.append(PlayerSpec("UCT+Heur", MCTSEngine(
+            UCTPolicy(1.4142), simulation_limit=sims, seed=55,
+            progressive_bias=1.0, heuristic_fn=h)))
+
+    tourney = Tournament(players, factory, rounds=rounds)
+    result = tourney.run()
+    print()
+    print(result.summary())
+
+
+def run_minimax(game_name: str, size: int = 0, max_depth: int = 0) -> None:
+    """Run minimax search on a game position."""
+    game = make_game(game_name, size)
+    print(f"\nMinimax analysis: {game_name}")
+    print(game.display())
+    print(f"\nCurrent player: {game.current_player()}")
+    print(f"Legal moves: {len(game.legal_moves())}")
+
+    depth = max_depth if max_depth > 0 else 9
+    engine = MinimaxEngine(max_depth=depth, verbose=True)
+    result = engine.search(game)
+
+    print(f"\nResult:")
+    print(f"  Best move: {result.best_move}")
+    print(f"  Score: {result.score:+.1f} ({'Win' if result.score > 0 else 'Draw' if result.score == 0 else 'Loss'})")
+    print(f"  Depth: {result.depth}")
+    print(f"  Nodes: {result.nodes_searched}")
+    print(f"  Time: {result.time_elapsed:.3f}s")
+    if result.principal_variation:
+        print(f"  PV: {' → '.join(str(m) for m in result.principal_variation[:8])}")
+
+
+def show_config(path: Optional[str]) -> None:
+    """Show or generate a configuration file."""
+    if path:
+        config = MCTSConfig.from_file(path)
+        print("Configuration loaded from", path)
+        print(json.dumps(config.to_dict(), indent=2))
+    else:
+        # Print a default config
+        config = MCTSConfig()
+        print("Default configuration:")
+        print(json.dumps(config.to_dict(), indent=2))
+        print("\nSave to file with: mcts config --save config.json")
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(
         prog="mcts",
@@ -315,6 +392,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         p.add_argument("--epsilon-rollout", type=float, default=0.0,
                        help="Epsilon for heuristic rollout policy (0=disabled)")
         p.add_argument("--tree-reuse", action="store_true", help="Reuse tree between moves")
+        p.add_argument("--seed", type=int, default=42, help="Random seed")
+        p.add_argument("--config", type=str, default=None,
+                       help="Path to YAML/JSON config file (overrides CLI flags)")
 
     # Play
     p_play = sub.add_parser("play", help="Play a game (human vs AI)")
@@ -342,6 +422,24 @@ def main(argv: Optional[List[str]] = None) -> int:
     # Replay
     p_replay = sub.add_parser("replay", help="Replay a saved game")
     p_replay.add_argument("path", help="Path to saved game JSON file")
+
+    # Tournament
+    p_tourney = sub.add_parser("tournament", help="Round-robin tournament between engine configs")
+    p_tourney.add_argument("--game", choices=list(GAMES.keys()), default="tictactoe")
+    p_tourney.add_argument("--sims", type=int, default=2000, help="Simulations per move")
+    p_tourney.add_argument("--rounds", type=int, default=2, help="Rounds (each pair plays twice per round)")
+    p_tourney.add_argument("--size", type=int, default=0, help="Board size")
+
+    # Minimax
+    p_minimax = sub.add_parser("minimax", help="Minimax analysis (exact search for small games)")
+    p_minimax.add_argument("--game", choices=list(GAMES.keys()), default="tictactoe")
+    p_minimax.add_argument("--size", type=int, default=0, help="Board size")
+    p_minimax.add_argument("--depth", type=int, default=0, help="Max search depth (0=auto)")
+
+    # Config
+    p_config = sub.add_parser("config", help="Show or generate configuration")
+    p_config.add_argument("path", nargs="?", default=None, help="Config file to load")
+    p_config.add_argument("--save", type=str, default=None, help="Save default config to file")
 
     # List games
     sub.add_parser("list", help="List available games")
@@ -378,6 +476,36 @@ def main(argv: Optional[List[str]] = None) -> int:
         engine = build_engine(args)
         game = make_game(args.game, getattr(args, "size", 0))
         analyze(game, engine)
+        return 0
+
+    if args.command == "tournament":
+        run_tournament(args.game, args.sims, args.rounds, getattr(args, "size", 0))
+        return 0
+
+    if args.command == "minimax":
+        run_minimax(args.game, getattr(args, "size", 0), getattr(args, "depth", 0))
+        return 0
+
+    if args.command == "config":
+        if args.save:
+            config = MCTSConfig()
+            config.to_json(args.save)
+            print(f"Default configuration saved to {args.save}")
+        else:
+            show_config(args.path)
+        return 0
+
+    # Play and selfplay — support config file override
+    if getattr(args, "config", None):
+        config = MCTSConfig.from_file(args.config)
+        game = config.game.create()
+        engine = config.engine.create(config.game.name)
+        if args.command == "play":
+            human = Player.ONE if args.human == "X" else Player.TWO
+            play_game(game, engine, human_player=human)
+        elif args.command == "selfplay":
+            self_play(game, engine, save_path=getattr(args, "save", None),
+                      game_type=config.game.name)
         return 0
 
     # Play and selfplay

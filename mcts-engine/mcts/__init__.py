@@ -3,7 +3,8 @@ MCTS Engine — Monte Carlo Tree Search for game AI.
 
 A from-scratch implementation of MCTS supporting multiple games
 with UCT, RAVE/AMAF, transposition tables, progressive bias,
-heuristic-guided rollouts, tree reuse, and parallel search.
+heuristic-guided rollouts, tree reuse, parallel search, minimax,
+opening books, tournament mode, and configuration file support.
 """
 
 from mcts.core import (
@@ -38,8 +39,12 @@ from mcts.heuristics import (
     make_rollout_policy,
 )
 from mcts.record import GameRecord, play_recorded_game
+from mcts.config import MCTSConfig, GameConfig, EngineConfig
+from mcts.minimax import MinimaxEngine, MinimaxResult
+from mcts.opening_book import OpeningBook
+from mcts.tournament import Tournament, PlayerSpec, TournamentResult
 
-__version__ = "2.0.0"
+__version__ = "3.0.0"
 
 __all__ = [
     # Core
@@ -74,4 +79,17 @@ __all__ = [
     # Records
     "GameRecord",
     "play_recorded_game",
+    # Config
+    "MCTSConfig",
+    "GameConfig",
+    "EngineConfig",
+    # Minimax
+    "MinimaxEngine",
+    "MinimaxResult",
+    # Opening Book
+    "OpeningBook",
+    # Tournament
+    "Tournament",
+    "PlayerSpec",
+    "TournamentResult",
 ]
