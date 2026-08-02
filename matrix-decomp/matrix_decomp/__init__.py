@@ -26,10 +26,18 @@ from .matrix import (
     identity,
     transpose,
     matmul,
+    matvec,
     copy_matrix,
     is_square,
     trace,
     frobenius_norm,
+    add,
+    scale,
+    diag,
+    diagonal,
+    matrix_power,
+    hilbert,
+    vandermonde,
 )
 from .lu import (
     lu_decompose,
@@ -48,6 +56,7 @@ from .cholesky import (
 from .qr import (
     qr_householder,
     qr_solve,
+    qr_givens,
     classical_gram_schmidt,
     modified_gram_schmidt,
 )
@@ -57,20 +66,24 @@ from .svd import (
     pseudo_inverse,
     rank,
     condition_number,
+    truncated_svd,
 )
 from .eigen import (
     qr_algorithm,
     eigen_decomposition,
     jacobi_eigen,
     power_iteration,
+    tridiagonalize,
 )
 from .least_squares import (
     least_squares,
     least_norm,
     linear_fit,
+    polynomial_fit,
+    residual_norm,
 )
 
-__version__ = "1.0.0"
+__version__ = "2.0.0"
 
 __all__ = [
     # matrix
@@ -79,10 +92,18 @@ __all__ = [
     "identity",
     "transpose",
     "matmul",
+    "matvec",
     "copy_matrix",
     "is_square",
     "trace",
     "frobenius_norm",
+    "add",
+    "scale",
+    "diag",
+    "diagonal",
+    "matrix_power",
+    "hilbert",
+    "vandermonde",
     # lu
     "lu_decompose",
     "lu_solve",
@@ -98,6 +119,7 @@ __all__ = [
     # qr
     "qr_householder",
     "qr_solve",
+    "qr_givens",
     "classical_gram_schmidt",
     "modified_gram_schmidt",
     # svd
@@ -106,13 +128,17 @@ __all__ = [
     "pseudo_inverse",
     "rank",
     "condition_number",
+    "truncated_svd",
     # eigen
     "qr_algorithm",
     "eigen_decomposition",
     "jacobi_eigen",
     "power_iteration",
+    "tridiagonalize",
     # least squares
     "least_squares",
     "least_norm",
     "linear_fit",
+    "polynomial_fit",
+    "residual_norm",
 ]

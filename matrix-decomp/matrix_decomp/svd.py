@@ -154,3 +154,19 @@ def condition_number(a) -> float:
     if s_min == 0.0:
         return float("inf")
     return s_max / s_min
+
+
+def truncated_svd(a, k: int, tol: float = 1e-10):
+    """Truncated SVD keeping only the top-``k`` singular values.
+
+    Returns ``(U_k, S_k, Vt_k)`` where ``U_k`` is m×k, ``S_k`` is length k,
+    and ``Vt_k`` is k×n.  Useful for low-rank approximation / PCA.
+    """
+    U, S, Vt = svd(a, tol=tol)
+    k = min(k, len(S))
+    U_data = U.data
+    Vt_data = Vt.data
+    Uk = Matrix([[U_data[i][j] for j in range(k)] for i in range(U.rows)])
+    Sk = S[:k]
+    Vk = Matrix([[Vt_data[i][j] for j in range(Vt.cols)] for i in range(k)])
+    return Uk, Sk, Vk

@@ -85,6 +85,45 @@ class Matrix:
     def __setitem__(self, idx, value):
         self.data[idx] = value
 
+    # ------------------------------------------------------------------
+    # Operator overloads for ergonomic algebra
+    # ------------------------------------------------------------------
+    def __matmul__(self, other):
+        """``A @ B`` matrix multiply or ``A @ x`` matrix-vector product."""
+        if isinstance(other, Matrix):
+            return matmul(self, other)
+        if isinstance(other, (list, tuple)):
+            return matvec(self, list(other))
+        return NotImplemented
+
+    def __add__(self, other):
+        if isinstance(other, Matrix):
+            return add(self, other)
+        return NotImplemented
+
+    def __sub__(self, other):
+        if isinstance(other, Matrix):
+            d = _to_data(self)
+            e = _to_data(other)
+            if len(d) != len(e) or len(d[0]) != len(e[0]):
+                raise ValueError("sub: shape mismatch")
+            return Matrix([[d[i][j] - e[i][j] for j in range(len(d[0]))] for i in range(len(d))])
+        return NotImplemented
+
+    def __mul__(self, scalar):
+        """Scalar multiplication (``A * s``)."""
+        if isinstance(scalar, (int, float)):
+            return scale(self, float(scalar))
+        return NotImplemented
+
+    __rmul__ = __mul__
+
+    def __neg__(self):
+        return scale(self, -1.0)
+
+    def __len__(self) -> int:
+        return self.rows
+
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Matrix):
             return NotImplemented
@@ -95,6 +134,24 @@ class Matrix:
                 if abs(self.data[i][j] - other.data[i][j]) > EPS:
                     return False
         return True
+
+    def __hash__(self) -> int:
+        return id(self)
+
+    @property
+    def T(self) -> "Matrix":
+        """Transpose (``A.T`` convenience property)."""
+        return transpose(self)
+
+    def norm(self, kind: str = "fro") -> float:
+        """Matrix norm: ``'fro'`` (Frobenius), ``'1'`` (max column sum), ``'inf'`` (max row sum)."""
+        if kind == "fro":
+            return frobenius_norm(self)
+        if kind == "1":
+            return max(sum(abs(self.data[i][j]) for i in range(self.rows)) for j in range(self.cols))
+        if kind == "inf":
+            return max(sum(abs(v) for v in row) for row in self.data)
+        raise ValueError(f"Unknown norm kind: {kind!r}")
 
     def approx_equal(self, other: "Matrix", tol: float = 1e-9) -> bool:
         """Element-wise approximate equality with a configurable tolerance."""
@@ -234,3 +291,59 @@ def scale(a, s: float) -> Matrix:
     """Scalar multiplication."""
     d = _to_data(a)
     return Matrix([[v * s for v in row] for row in d])
+
+
+def diag(values: Sequence[float]) -> Matrix:
+    """Construct a diagonal matrix from a 1-D sequence."""
+    n = len(values)
+    return Matrix([[float(values[i]) if i == j else 0.0 for j in range(n)] for i in range(n)])
+
+
+def diagonal(m) -> List[float]:
+    """Return the diagonal of a matrix as a list."""
+    d = _to_data(m)
+    n = min(len(d), len(d[0]))
+    return [d[i][i] for i in range(n)]
+
+
+def matrix_power(a, p: int) -> Matrix:
+    """Integer power of a square matrix via repeated squaring (p >= 0)."""
+    d = _to_data(a)
+    n = len(d)
+    if n != len(d[0]):
+        raise ValueError("matrix_power requires a square matrix")
+    if p < 0:
+        raise ValueError("matrix_power requires p >= 0; use lu_inverse for negative powers")
+    # Binary exponentiation.
+    result = identity(n).data
+    base = [row[:] for row in d]
+    while p > 0:
+        if p & 1:
+            result = matmul(result, base).data
+        base = matmul(base, base).data
+        p >>= 1
+    return Matrix(result)
+
+
+def hilbert(n: int) -> Matrix:
+    """Hilbert matrix ``H[i][j] = 1/(i+j+1)`` (notoriously ill-conditioned)."""
+    if n <= 0:
+        raise ValueError("hilbert: n must be positive")
+    return Matrix([[1.0 / (i + j + 1) for j in range(n)] for i in range(n)])
+
+
+def vandermonde(values: Sequence[float], order: int | None = None) -> Matrix:
+    """Vandermonde matrix from a sequence of values.
+
+    Returns a matrix with ``len(values)`` rows and ``order`` columns where
+    ``V[i][k] = values[i] ** (order-1-k)`` (matching NumPy convention, highest
+    power first).  ``order`` defaults to ``len(values)``.
+    """
+    vals = [float(v) for v in values]
+    n = len(vals)
+    if n == 0:
+        raise ValueError("vandermonde: need at least one value")
+    m = order if order is not None else n
+    if m <= 0:
+        raise ValueError("vandermonde: order must be positive")
+    return Matrix([[vals[i] ** (m - 1 - k) for k in range(m)] for i in range(n)])

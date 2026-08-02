@@ -166,3 +166,39 @@ def modified_gram_schmidt(a) -> Tuple[Matrix, Matrix]:
             for i in range(m):
                 V[i][k] = vk[i] - R[j][k] * qj[i]
     return Matrix(Q), Matrix(R)
+
+
+def qr_givens(a) -> Tuple[Matrix, Matrix]:
+    """QR decomposition via Givens rotations.
+
+    Zeroes out sub-diagonal entries one at a time using 2×2 rotation
+    matrices.  Slower than Householder but numerically equivalent and
+    pedagogically important.
+    """
+    d = _to_data(a)
+    m = len(d)
+    n = len(d[0])
+    R = [row[:] for row in d]
+    Q = identity(m).data
+    for j in range(min(m, n)):
+        for i in range(m - 1, j, -1):
+            a_val = R[i - 1][j]
+            b_val = R[i][j]
+            if abs(b_val) < EPS:
+                continue
+            r = math.hypot(a_val, b_val)
+            c = a_val / r
+            s = b_val / r
+            # Apply rotation to R rows i-1 and i.
+            for k in range(n):
+                t1 = R[i - 1][k]
+                t2 = R[i][k]
+                R[i - 1][k] = c * t1 + s * t2
+                R[i][k] = -s * t1 + c * t2
+            # Accumulate Q = Q G^T (columns i-1, i).
+            for k in range(m):
+                t1 = Q[k][i - 1]
+                t2 = Q[k][i]
+                Q[k][i - 1] = c * t1 + s * t2
+                Q[k][i] = -s * t1 + c * t2
+    return Matrix(Q), Matrix(R)

@@ -24,8 +24,14 @@ from .qr import qr_householder
 from .lu import SingularMatrixError
 
 
-def qr_algorithm(a, max_iter: int = 1000, tol: float = 1e-12) -> List[float]:
-    """Unshifted QR algorithm to find eigenvalues of a square matrix.
+def qr_algorithm(a, max_iter: int = 1000, tol: float = 1e-12, shift: bool = True) -> List[float]:
+    """QR algorithm to find eigenvalues of a square matrix.
+
+    When ``shift=True`` (default) the **Wilkinson shift** is applied: after
+    each QR step the bottom-right diagonal element is used as a shift,
+    dramatically accelerating convergence to the smallest eigenvalue.  For
+    symmetric matrices the unshifted version already converges reasonably
+    fast, but the shifted variant converges cubically.
 
     For symmetric matrices this converges to a diagonal matrix whose
     diagonal entries are the eigenvalues.  For general matrices it
@@ -44,29 +50,107 @@ def qr_algorithm(a, max_iter: int = 1000, tol: float = 1e-12) -> List[float]:
         raise ValueError("qr_algorithm requires a square matrix")
 
     Ak = [row[:] for row in d]
-    for _ in range(max_iter):
-        Q, R = qr_householder(Ak)
-        # A_{k+1} = R Q
-        n_rows = len(R.data)
-        new = [[0.0] * n_rows for _ in range(n_rows)]
-        for i in range(n_rows):
-            for j in range(n_rows):
-                s = 0.0
-                for k in range(n_rows):
-                    s += R[i][k] * Q[k][j]
-                new[i][j] = s
-        # Check convergence: are the off-diagonal entries tiny?
+    for iteration in range(max_iter):
+        # Deflation: if the bottom-left off-diagonal is tiny, shrink the
+        # active sub-matrix.
+        active = n
+        while active > 1 and abs(Ak[active - 1][active - 2]) < tol * (abs(Ak[active - 2][active - 2]) + abs(Ak[active - 1][active - 1]) + EPS):
+            active -= 1
+        if active <= 1:
+            break
+
+        # Optional Wilkinson shift on the trailing 2x2 block.
+        shift_val = 0.0
+        if shift and active >= 2:
+            a_ = Ak[active - 2][active - 2]
+            b_ = Ak[active - 2][active - 1]
+            c_ = Ak[active - 1][active - 2]
+            d_ = Ak[active - 1][active - 1]
+            # Wilkinson shift: eigenvalue of trailing 2x2 closest to d_.
+            tr = a_ + d_
+            det = a_ * d_ - b_ * c_
+            disc = (tr * tr / 4.0 - det) ** 0.5
+            lam1 = tr / 2.0 + disc
+            lam2 = tr / 2.0 - disc
+            shift_val = lam1 if abs(lam1 - d_) < abs(lam2 - d_) else lam2
+
+        # Apply shift to the active sub-matrix.
+        work = [row[:active] for row in Ak[:active]]
+        if shift and shift_val != 0.0:
+            for i in range(active):
+                work[i][i] -= shift_val
+
+        Q, R = qr_householder(work)
+        # RQ (on the active block).
+        rq = matmul(R, Q).data
+        # Unshift.
+        if shift and shift_val != 0.0:
+            for i in range(active):
+                rq[i][i] += shift_val
+        # Write back.
+        for i in range(active):
+            for j in range(active):
+                Ak[i][j] = rq[i][j]
+
+        # Check convergence of the active block off-diagonal mass.
         off = 0.0
-        for i in range(n):
+        for i in range(active):
             for j in range(i):
-                off += new[i][j] * new[i][j] + new[j][i] * new[j][i]
-        Ak = new
+                off += Ak[i][j] * Ak[i][j] + Ak[j][i] * Ak[j][i]
         if off < tol * tol:
             break
 
     evals = [Ak[i][i] for i in range(n)]
     evals.sort(key=lambda x: -abs(x))
     return evals
+
+
+def tridiagonalize(a) -> Matrix:
+    """Reduce a symmetric matrix to tridiagonal form via Householder reflections.
+
+    Returns a tridiagonal matrix ``T`` such that ``T = Q^T A Q`` for some
+    orthogonal ``Q``.  ``T`` has the same eigenvalues as ``A``.
+    """
+    d = _to_data(a)
+    n = len(d)
+    if n != len(d[0]):
+        raise ValueError("tridiagonalize requires a square matrix")
+    A = [row[:] for row in d]
+    for k in range(n - 2):
+        # Householder vector to zero out A[k+2:, k].
+        x = [A[i][k] for i in range(k + 1, n)]
+        normx = math.sqrt(sum(v * v for v in x))
+        if normx < EPS:
+            continue
+        alpha = -normx if x[0] >= 0 else normx
+        v = x[:]
+        v[0] -= alpha
+        vnorm = math.sqrt(sum(c * c for c in v))
+        if vnorm < EPS:
+            continue
+        v = [c / vnorm for c in v]
+        # Apply H = I - 2 v v^T from both sides: A' = H A H.
+        # Compute p = A v (lower-right block).
+        p = [0.0] * (n - k - 1)
+        for i in range(n - k - 1):
+            for j in range(n - k - 1):
+                p[i] += A[k + 1 + i][k + 1 + j] * v[j]
+        # K = 2 v^T p / 2 ... use beta = v^T p
+        beta = sum(v[i] * p[i] for i in range(len(v)))
+        # q = p - beta v
+        q = [p[i] - beta * v[i] for i in range(len(v))]
+        # A' = A - v q^T - q v^T  (on the lower-right block)
+        for i in range(n - k - 1):
+            for j in range(n - k - 1):
+                A[k + 1 + i][k + 1 + j] -= 2.0 * (v[i] * q[j] + q[i] * v[j])
+        # Zero out the column/row below k+1 explicitly.
+        for i in range(k + 2, n):
+            A[k][i] = 0.0
+            A[i][k] = 0.0
+        # Keep A[k+1][k] as alpha.
+        A[k + 1][k] = alpha
+        A[k][k + 1] = alpha
+    return Matrix(A)
 
 
 def jacobi_eigen(a, max_iter: int = 100, tol: float = 1e-14) -> Tuple[List[float], Matrix]:

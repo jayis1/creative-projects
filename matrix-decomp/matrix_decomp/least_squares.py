@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import List, Sequence
 
 from .matrix import Matrix, _to_data, transpose
@@ -68,3 +69,31 @@ def linear_fit(xs: Sequence[float], ys: Sequence[float]) -> tuple[float, float, 
     ss_res = sum((ys[i] - (intercept + slope * xs[i])) ** 2 for i in range(n))
     r2 = 1.0 - ss_res / ss_tot if ss_tot > 0 else 0.0
     return slope, intercept, r2
+
+
+def polynomial_fit(xs: Sequence[float], ys: Sequence[float], degree: int) -> List[float]:
+    """Polynomial regression ``y = c_0 + c_1 x + ... + c_d x^d``.
+
+    Returns the coefficient list ``[c_0, c_1, ..., c_d]`` (lowest degree
+    first) of the best-fit polynomial of the given ``degree`` via
+    least-squares on a Vandermonde design matrix.
+    """
+    n = len(xs)
+    if n != len(ys):
+        raise ValueError("polynomial_fit: xs and ys must have equal length")
+    if degree < 0:
+        raise ValueError("polynomial_fit: degree must be non-negative")
+    if n < degree + 1:
+        raise ValueError("polynomial_fit: need at least degree+1 points")
+    # Build Vandermonde design with columns [x^0, x^1, ..., x^d].
+    A = [[float(xs[i]) ** k for k in range(degree + 1)] for i in range(n)]
+    coeffs = least_squares(A, list(ys))
+    return coeffs
+
+
+def residual_norm(a, b: Sequence[float], x: Sequence[float]) -> float:
+    """Euclidean norm of the residual ``‖A x - b‖`` (handy for solvers)."""
+    d = _to_data(a)
+    m = len(d)
+    r = [sum(d[i][j] * x[j] for j in range(len(x))) - b[i] for i in range(m)]
+    return math.sqrt(sum(v * v for v in r))
