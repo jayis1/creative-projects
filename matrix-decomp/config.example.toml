@@ -1,0 +1,39 @@
+# matrix-decomp configuration file.
+# Copy to config.toml and modify as needed.
+# All values are optional; defaults are shown.
+
+[general]
+# Logging level: DEBUG, INFO, WARNING, ERROR
+log_level = "WARNING"
+
+[solver]
+# Default solver method: "lu", "qr", "cg", "jacobi", "gauss_seidel", "sor"
+default_method = "lu"
+
+[iterative]
+# Default parameters for iterative solvers
+max_iter = 1000
+tol = 1e-10
+# SOR relaxation factor (0 < omega < 2)
+omega = 1.0
+
+[svd]
+# Tolerance for zero singular value detection
+tol = 1e-10
+
+[eigen]
+# QR algorithm parameters
+max_iter = 1000
+tol = 1e-12
+# Use Wilkinson shift (cubic convergence for symmetric)
+shift = true
+
+[pca]
+# Standardize columns before SVD
+standardize = true
+# Number of components (null = all)
+k = 0  # 0 means all
+
+[output]
+# Number of decimal places for CLI output
+precision = 8

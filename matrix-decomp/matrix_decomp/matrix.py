@@ -121,6 +121,33 @@ class Matrix:
     def __neg__(self):
         return scale(self, -1.0)
 
+    def __pow__(self, p):
+        """Integer power of a square matrix via ``A ** p``."""
+        if isinstance(p, int):
+            return matrix_power(self, p)
+        return NotImplemented
+
+    def __truediv__(self, scalar):
+        """Scalar division ``A / s``."""
+        if isinstance(scalar, (int, float)):
+            s = float(scalar)
+            if abs(s) < EPS:
+                raise ZeroDivisionError("Cannot divide matrix by zero")
+            return scale(self, 1.0 / s)
+        return NotImplemented
+
+    def __iter__(self):
+        """Iterate over rows."""
+        for i in range(self.rows):
+            yield self.data[i]
+
+    def __contains__(self, item) -> bool:
+        """Check whether a value appears anywhere in the matrix."""
+        for row in self.data:
+            if item in row:
+                return True
+        return False
+
     def __len__(self) -> int:
         return self.rows
 
@@ -167,6 +194,28 @@ class Matrix:
 
     def shape(self) -> tuple[int, int]:
         return (self.rows, self.cols)
+
+    def to_list(self) -> list[list[float]]:
+        """Return a deep copy of the underlying data as plain ``list[list[float]]``."""
+        return [row[:] for row in self.data]
+
+    def flatten(self) -> list[float]:
+        """Return all entries in row-major order as a flat list."""
+        return [v for row in self.data for v in row]
+
+    def map(self, fn) -> "Matrix":
+        """Apply a function element-wise, returning a new matrix."""
+        return Matrix([[fn(v) for v in row] for row in self.data])
+
+    def is_symmetric(self, tol: float = 1e-9) -> bool:
+        """Check whether this matrix is symmetric within ``tol``."""
+        if self.rows != self.cols:
+            return False
+        for i in range(self.rows):
+            for j in range(i + 1, self.cols):
+                if abs(self.data[i][j] - self.data[j][i]) > tol:
+                    return False
+        return True
 
     def __repr__(self) -> str:
         return f"Matrix({self.data!r})"

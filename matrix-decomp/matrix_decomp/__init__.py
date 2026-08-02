@@ -5,15 +5,22 @@ algebra algorithms found in numerical libraries like LAPACK and NumPy's
 ``numpy.linalg``:
 
 * LU decomposition (with partial pivoting) and linear system solve
+* LU with complete pivoting (``PAQ = LU``)
 * Gaussian elimination & matrix inverse via LU
 * Cholesky decomposition (LL^T) for symmetric positive-definite matrices
 * QR decomposition via Householder reflections
 * Gram-Schmidt (classical & modified) orthogonalization
+* Givens-rotation QR
 * Eigenvalue / eigenvector computation via the unshifted & shifted QR algorithm
 * Singular Value Decomposition (SVD) via eigen-decomposition of A^T A
+* Schur, spectral, and polar decompositions
 * Least-squares and least-norm solvers, Moore-Penrose pseudo-inverse
 * Determinant, rank, condition number, trace, Frobenius norm
-* Matrix utilities (transpose, multiply, identity, copy)
+* Iterative solvers: Jacobi, Gauss-Seidel, SOR, Conjugate Gradient
+* Sparse (CSR) matrix representation and operations
+* Statistical utilities: covariance, correlation, PCA
+* Matrix file I/O (CSV / JSON)
+* Matrix utilities (transpose, multiply, identity, copy, power)
 
 No third-party dependencies -- everything is built on plain Python lists.
 The package is organised as a small number of focused modules so that each
@@ -46,6 +53,7 @@ from .lu import (
     determinant,
     forward_sub,
     back_sub,
+    SingularMatrixError,
 )
 from .cholesky import (
     cholesky,
@@ -82,8 +90,37 @@ from .least_squares import (
     polynomial_fit,
     residual_norm,
 )
+from .iterative import (
+    jacobi_solve,
+    gauss_seidel_solve,
+    sor_solve,
+    conjugate_gradient,
+    SolveResult,
+)
+from .sparse import CSRMatrix
+from .stats import (
+    mean_center,
+    standardize,
+    covariance_matrix,
+    correlation_matrix,
+    pca,
+    project,
+)
+from .decompositions import (
+    spectral_decomposition,
+    schur_decomposition,
+    polar_decomposition,
+    lu_complete_pivot,
+)
+from .file_io import (
+    save_csv,
+    load_csv,
+    save_json,
+    load_json,
+    parse_matrix_string,
+)
 
-__version__ = "2.0.0"
+__version__ = "3.0.0"
 
 __all__ = [
     # matrix
@@ -111,6 +148,7 @@ __all__ = [
     "determinant",
     "forward_sub",
     "back_sub",
+    "SingularMatrixError",
     # cholesky
     "cholesky",
     "cholesky_solve",
@@ -141,4 +179,30 @@ __all__ = [
     "linear_fit",
     "polynomial_fit",
     "residual_norm",
+    # iterative
+    "jacobi_solve",
+    "gauss_seidel_solve",
+    "sor_solve",
+    "conjugate_gradient",
+    "SolveResult",
+    # sparse
+    "CSRMatrix",
+    # stats
+    "mean_center",
+    "standardize",
+    "covariance_matrix",
+    "correlation_matrix",
+    "pca",
+    "project",
+    # decompositions
+    "spectral_decomposition",
+    "schur_decomposition",
+    "polar_decomposition",
+    "lu_complete_pivot",
+    # file_io
+    "save_csv",
+    "load_csv",
+    "save_json",
+    "load_json",
+    "parse_matrix_string",
 ]
