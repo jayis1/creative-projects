@@ -172,6 +172,17 @@ PYTHONPATH=. python3 -m pytest tests/ -v
 PYTHONPATH=. python3 examples/demo.py
 ```
 
+## Known Issues (Resolved)
+
+### Bug 1: `rank()` used absolute tolerance (fixed)
+The `rank()` function used a fixed absolute tolerance (`tol=1e-9`) to decide which singular values are non-zero. For rank-deficient matrices with O(1) entries, numerical roundoff in the Jacobi eigenvalue algorithm produces tiny singular values (~1e-8) that exceed this absolute threshold, resulting in an incorrectly inflated rank. **Fix:** The tolerance is now *relative* (`tol * max(singular_value)`), making the rank test scale-invariant. The default tolerance was also increased to `1e-6` to account for the Jacobi algorithm's accuracy limits for small eigenvalues.
+
+### Bug 2: `condition_number()` used absolute zero-threshold (fixed)
+The `condition_number()` function used a fixed `1e-15` threshold to identify zero singular values. This caused two problems: (a) for scaled matrices the threshold was too tight, and (b) for rank-deficient matrices with only one non-zero singular value, the function returned 1.0 instead of `inf` because `min()` picked up the sole non-zero value. **Fix:** The threshold is now relative (`1e-12 * s_max`), and the function explicitly checks whether *any* singular value is effectively zero before computing the ratio.
+
+### Bug 3: QR algorithm crashed on complex eigenvalues (fixed)
+The Wilkinson shift formula computed `sqrt(tr²/4 - det)` which produces a complex number in Python 3 when the trailing 2×2 block has complex eigenvalues (e.g., a rotation matrix `[[0,-1],[1,0]]`). The complex value then propagated through the computation, causing a `TypeError` when `float()` was called. **Fix:** The discriminant is now checked for negativity; when it's negative (indicating complex eigenvalues), the shift falls back to the real part (`tr/2`) instead of attempting the square root.
+
 ## License
 
 MIT

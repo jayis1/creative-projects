@@ -140,19 +140,46 @@ def pseudo_inverse(a, tol: float = 1e-10) -> Matrix:
     return Matrix(out)
 
 
-def rank(a, tol: float = 1e-9) -> int:
-    """Numerical rank: count of singular values above ``tol``."""
+def rank(a, tol: float = 1e-6) -> int:
+    """Numerical rank: count of singular values above a *relative* threshold.
+
+    The threshold is ``tol * max(singular_value)``, so the rank test is
+    scale-invariant.  The default ``tol=1e-6`` accounts for the fact that
+    the SVD is computed via the Jacobi eigenvalue algorithm, whose accuracy
+    for small eigenvalues is limited to roughly 1e-8 relative to the
+    largest.  A fixed absolute tolerance would misclassify near-zero
+    singular values from numerical roundoff in rank-deficient matrices.
+    """
     _, S, _ = svd(a, tol=tol)
-    return sum(1 for s in S if s > tol)
+    if not S:
+        return 0
+    s_max = max(S)
+    if s_max == 0.0:
+        return 0
+    threshold = tol * s_max
+    return sum(1 for s in S if s > threshold)
 
 
 def condition_number(a) -> float:
-    """Ratio of largest to smallest non-zero singular value."""
+    """Ratio of largest to smallest singular value.
+
+    Uses a *relative* zero-threshold (``1e-12 * s_max``) to decide which
+    singular values are effectively zero.  If any singular value is below
+    this threshold, the matrix is rank-deficient and the condition number
+    is ``inf``.
+    """
     _, S, _ = svd(a)
-    s_max = max(S) if S else 0.0
-    s_min = min((s for s in S if s > 1e-15), default=0.0)
-    if s_min == 0.0:
+    if not S:
         return float("inf")
+    s_max = max(S)
+    if s_max == 0.0:
+        return float("inf")
+    # Relative threshold for "zero" singular values.
+    threshold = 1e-12 * s_max
+    # If any singular value is effectively zero, the matrix is singular.
+    if any(s <= threshold for s in S):
+        return float("inf")
+    s_min = min(S)
     return s_max / s_min
 
 

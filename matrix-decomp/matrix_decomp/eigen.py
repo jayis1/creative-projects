@@ -69,10 +69,18 @@ def qr_algorithm(a, max_iter: int = 1000, tol: float = 1e-12, shift: bool = True
             # Wilkinson shift: eigenvalue of trailing 2x2 closest to d_.
             tr = a_ + d_
             det = a_ * d_ - b_ * c_
-            disc = (tr * tr / 4.0 - det) ** 0.5
-            lam1 = tr / 2.0 + disc
-            lam2 = tr / 2.0 - disc
-            shift_val = lam1 if abs(lam1 - d_) < abs(lam2 - d_) else lam2
+            disc_sq = tr * tr / 4.0 - det
+            # Guard against complex eigenvalues of the 2x2 block (which
+            # happens when the full matrix has complex eigenvalues).  In
+            # that case fall back to no shift for this iteration.
+            if disc_sq >= 0.0:
+                disc = disc_sq ** 0.5
+                lam1 = tr / 2.0 + disc
+                lam2 = tr / 2.0 - disc
+                shift_val = lam1 if abs(lam1 - d_) < abs(lam2 - d_) else lam2
+            else:
+                # Complex eigenvalues -- use the real part as a shift (or 0).
+                shift_val = tr / 2.0
 
         # Apply shift to the active sub-matrix.
         work = [row[:active] for row in Ak[:active]]
