@@ -147,5 +147,5 @@ MT_TRIANGLE_TABLE: Tuple[Tuple[int, ...], ...] = (
     (2, 5, 3, 3, 4, 2, -1),                  # 12: v2,v3 inside
     (0, 4, 3, 3, 2, 0, 2, 3, 5, -1),         # 13: v0,v2,v3 inside
     (1, 3, 5, 3, 1, 4, 4, 1, 2, -1),         # 14: v1,v2,v3 inside
-    (0, 2, 1, 0, 3, 2, 2, 3, 5, 5, 3, 4, -1),  # 15: all inside -> no surface
+    (-1, -1, -1, -1, -1, -1),               # 15: all inside -> no surface
 )

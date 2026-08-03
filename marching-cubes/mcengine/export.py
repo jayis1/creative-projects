@@ -99,7 +99,7 @@ def write_stl_ascii(mesh: Mesh, path: str) -> None:
 def write_stl_binary(mesh: Mesh, path: str) -> None:
     """Write a binary STL file (80-byte header, per-face normal + 3 verts)."""
     with open(path, "wb") as fh:
-        fh.write(b"mcengine binary STL\x00" + b"\x00" * 61)  # 80-byte header
+        fh.write(b"mcengine binary STL\x00" + b"\x00" * 60)  # 80-byte header (20 + 60 = 80)
         fh.write(struct.pack("<I", mesh.num_faces))
         for (a, b, c) in mesh.faces:
             va = mesh.vertices[a]; vb = mesh.vertices[b]; vc = mesh.vertices[c]

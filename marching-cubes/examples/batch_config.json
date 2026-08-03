@@ -1,0 +1,54 @@
+{
+  "jobs": [
+    {
+      "name": "sphere-mc",
+      "algorithm": "mc",
+      "sampler": "sphere",
+      "sampler_params": {"radius": 1.0},
+      "resolution": 32,
+      "bounds": [-1.5, 1.5],
+      "isolevel": 0.0,
+      "output": "sphere.obj",
+      "preview": true
+    },
+    {
+      "name": "torus-mc",
+      "algorithm": "mc",
+      "sampler": "torus",
+      "sampler_params": {"R": 1.0, "r": 0.35},
+      "resolution": 48,
+      "bounds": [-1.5, 1.5],
+      "output": "torus.stl",
+      "format": "stl-binary"
+    },
+    {
+      "name": "gyroid-surface",
+      "algorithm": "mc",
+      "sampler": "gyroid",
+      "resolution": 64,
+      "bounds": [-3, 3],
+      "output": "gyroid.ply",
+      "format": "ply-binary"
+    },
+    {
+      "name": "octahedron-dc",
+      "algorithm": "dc",
+      "sampler": "octahedron",
+      "sampler_params": {"r": 1.0},
+      "resolution": 16,
+      "bounds": [-1.5, 1.5],
+      "output": "octahedron_dc.obj"
+    },
+    {
+      "name": "heart-mc",
+      "algorithm": "mc",
+      "sampler": "heart",
+      "resolution": 48,
+      "bounds": [-1.5, 1.5],
+      "output": "heart.obj",
+      "preview": true,
+      "preview_width": 40,
+      "preview_height": 16
+    }
+  ]
+}
