@@ -57,6 +57,9 @@ from .diagnostics import (
     analyze_mesh,
 )
 from .vec3 import Vec3, normalize, cross, dot
+from .ascii_preview import render_ascii_preview
+from .volume_sampler import VolumeSampler
+from .simplify import simplify_mesh
 
 __version__ = "1.0.0"
 
@@ -100,4 +103,7 @@ __all__ = [
     "compute_bounding_box",
     "euler_characteristic",
     "analyze_mesh",
+    "render_ascii_preview",
+    "VolumeSampler",
+    "simplify_mesh",
 ]
