@@ -1,0 +1,29 @@
+# TDA Configuration File (YAML)
+# Used by `tda compute --config tda_config.yaml`
+# Generate a default with: tda config generate -o tda_config.yaml
+
+complex:
+  type: rips          # rips, weighted, cech, alpha, sublevel
+  max_scale: 2.0      # maximum filtration scale (epsilon)
+  max_dimension: 2    # maximum simplex dimension
+  metric: euclidean   # euclidean (only euclidean supported in config)
+
+persistence:
+  max_dimension: 2    # compute homology up to this dimension
+  min_persistence: 0.01  # filter features below this persistence
+
+output:
+  format: json        # json, barcode, summary, plot
+  file: null          # output file path (null = stdout)
+
+distance:
+  metric: bottleneck  # bottleneck, hausdorff, wasserstein
+  p: 2.0              # Wasserstein order (for wasserstein metric)
+
+image:
+  resolution: 50      # persistence image resolution
+  sigma: 1.0          # Gaussian bandwidth
+
+landscape:
+  resolution: 100     # landscape sampling resolution
+  max_functions: 5    # number of landscape functions

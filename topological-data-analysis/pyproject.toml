@@ -4,16 +4,47 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tda"
-version = "1.0.0"
-description = "Topological Data Analysis toolkit: persistent homology, persistence diagrams, bottleneck distances"
+version = "3.0.0"
+description = "Topological Data Analysis toolkit: persistent homology, persistence diagrams, bottleneck/Wasserstein distances, persistence kernels, and ML feature extraction"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [{name = "creative-projects"}]
-keywords = ["topology", "persistent-homology", "tda", "vietoris-rips", "persistence-diagrams"]
+keywords = [
+    "topology",
+    "persistent-homology",
+    "tda",
+    "vietoris-rips",
+    "persistence-diagrams",
+    "bottleneck-distance",
+    "wasserstein-distance",
+    "persistence-kernels",
+    "machine-learning",
+    "alpha-complex",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+[project.optional-dependencies]
+yaml = ["pyyaml>=6.0"]
+test = ["pytest>=7.0"]
+dev = ["pyyaml>=6.0", "pytest>=7.0", "pytest-cov>=4.0"]
 
 [project.scripts]
 tda = "tda.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["tda*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

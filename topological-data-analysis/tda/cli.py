@@ -10,12 +10,17 @@ Subcommands:
   plot      — ASCII scatter plot of persistence diagrams
   info      — Show summary info about a diagram file
   compare   — Compare two diagrams with multiple metrics
+  stats     — Show per-dimension statistics table
+  batch     — Process multiple point clouds and output features
+  kernel    — Compute persistence kernel matrix between diagram files
+  config    — Generate or validate a configuration file
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 from typing import List, Optional, Sequence
 
@@ -23,6 +28,7 @@ from . import (
     VietorisRipsComplex,
     WeightedRipsComplex,
     CechComplex,
+    AlphaComplex,
     SublevelFiltration,
     compute_persistence,
     diagrams_from_persistence,
@@ -35,11 +41,27 @@ from . import (
     image_to_ascii,
     plot_diagram_ascii,
     barcode_string,
+    diagram_statistics,
+    statistics_table,
+    vectorize,
+    pss_kernel,
+    pwg_kernel,
+    fisher_kernel,
+    kernel_matrix,
 )
 from .io import diagrams_to_json, diagrams_from_json, save_diagrams
 from .diagram import PersistenceDiagram
 from .curves import landscape_norm
+from .config import load_config, save_config, validate_config, DEFAULT_CONFIG
+from .exceptions import TDAError, FileFormatError
+from .logging_config import get_logger
 
+_log = get_logger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Parsing helpers
+# ---------------------------------------------------------------------------
 
 def _parse_points(path: str) -> List[Sequence[float]]:
     """Load a point cloud from a JSON or CSV file.
@@ -80,41 +102,86 @@ def _parse_weights(path: str) -> List[float]:
     return [float(w) for w in data]
 
 
-def cmd_compute(args: argparse.Namespace) -> int:
-    """Compute persistent homology of a point cloud."""
-    points = _parse_points(args.input)
+def _parse_grid(path: str):
+    """Load a grid (for sublevel filtration) from a JSON file."""
+    with open(path) as f:
+        return json.load(f)
 
-    if args.complex == "rips":
+
+# ---------------------------------------------------------------------------
+# Complex builder factory (used by compute and batch)
+# ---------------------------------------------------------------------------
+
+def _build_complex(args, points=None, grid=None):
+    """Create and build the appropriate complex based on args."""
+    if points is None and grid is None:
+        points = _parse_points(args.input)
+
+    cpx_type = getattr(args, "complex", "rips")
+
+    if cpx_type == "rips":
         builder = VietorisRipsComplex(
             points,
             max_scale=args.max_scale,
             max_dimension=args.max_dimension,
         )
-    elif args.complex == "weighted":
+    elif cpx_type == "weighted":
         if not args.weights:
-            print("Error: --weights required for weighted complex", file=sys.stderr)
-            return 1
+            raise TDAError("--weights required for weighted complex")
         weights = _parse_weights(args.weights)
         if len(weights) != len(points):
-            print(f"Error: {len(weights)} weights for {len(points)} points",
-                  file=sys.stderr)
-            return 1
+            raise TDAError(
+                f"{len(weights)} weights for {len(points)} points"
+            )
         builder = WeightedRipsComplex(
             points, weights,
             max_scale=args.max_scale,
             max_dimension=args.max_dimension,
         )
-    elif args.complex == "cech":
+    elif cpx_type == "cech":
         builder = CechComplex(
             points,
             epsilon=args.max_scale / 2.0,
             max_dimension=args.max_dimension,
         )
+    elif cpx_type == "alpha":
+        builder = AlphaComplex(
+            points,
+            alpha=args.max_scale / 2.0,
+            max_dimension=args.max_dimension,
+        )
+    elif cpx_type == "sublevel":
+        if grid is None:
+            raise TDAError("--grid required for sublevel complex")
+        builder = SublevelFiltration(grid, max_dimension=args.max_dimension)
     else:
-        print(f"Unknown complex type: {args.complex}", file=sys.stderr)
+        raise TDAError(f"Unknown complex type: {cpx_type}")
+
+    return builder.build()
+
+
+# ---------------------------------------------------------------------------
+# Subcommands
+# ---------------------------------------------------------------------------
+
+def cmd_compute(args: argparse.Namespace) -> int:
+    """Compute persistent homology of a point cloud or grid."""
+    points = None
+    grid = None
+    if args.complex == "sublevel":
+        if not args.grid:
+            print("Error: --grid required for sublevel complex", file=sys.stderr)
+            return 1
+        grid = _parse_grid(args.grid)
+    else:
+        points = _parse_points(args.input)
+
+    try:
+        tree = _build_complex(args, points=points, grid=grid)
+    except TDAError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
         return 1
 
-    tree = builder.build()
     persistence = compute_persistence(
         tree,
         max_dimension=args.max_dimension,
@@ -277,19 +344,146 @@ def cmd_info(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_stats(args: argparse.Namespace) -> int:
+    """Show per-dimension statistics table for a diagram file."""
+    diagrams = diagrams_from_json(open(args.input).read())
+    print(statistics_table(diagrams))
+    return 0
+
+
+def cmd_batch(args: argparse.Namespace) -> int:
+    """Process multiple point clouds from a JSON file (list of lists of
+    points) and output features."""
+    from .batch import BatchProcessor
+
+    with open(args.input) as f:
+        data = json.load(f)
+
+    if not isinstance(data, list):
+        print("Error: batch input must be a JSON list of point clouds", file=sys.stderr)
+        return 1
+
+    point_clouds = data
+
+    bp = BatchProcessor(
+        point_clouds,
+        max_scale=args.max_scale,
+        max_dimension=args.max_dimension,
+        min_persistence=args.min_persistence,
+    )
+
+    if args.output_format == "stats":
+        results = bp.run_with_stats()
+        print(json.dumps(results, indent=2, default=str))
+    elif args.output_format == "vectors":
+        vectors = bp.run_with_vectors(max_features=args.max_features)
+        print(json.dumps(vectors, indent=2))
+    else:  # diagrams
+        results = bp.run()
+        all_diagrams = []
+        for diag_dict in results:
+            for dim in sorted(diag_dict):
+                all_diagrams.append(diag_dict[dim].to_dict())
+        print(json.dumps({"diagrams": all_diagrams}, indent=2))
+
+    return 0
+
+
+def cmd_kernel(args: argparse.Namespace) -> int:
+    """Compute persistence kernel matrix between diagram files."""
+    import os
+
+    files = args.files
+    if len(files) < 2:
+        print("Error: need at least two diagram files", file=sys.stderr)
+        return 1
+
+    # Load all diagrams (first dimension found in each file).
+    diagrams: List[PersistenceDiagram] = []
+    for fpath in files:
+        d = diagrams_from_json(open(fpath).read())
+        if not d:
+            print(f"Warning: no diagrams in {fpath}, skipping", file=sys.stderr)
+            continue
+        # Use the dimension specified by --dimension, or the first available.
+        if args.dimension is not None and args.dimension in d:
+            diagrams.append(d[args.dimension])
+        else:
+            # Use first dimension.
+            first_dim = sorted(d.keys())[0]
+            diagrams.append(d[first_dim])
+
+    if len(diagrams) < 2:
+        print("Error: need at least two valid diagrams", file=sys.stderr)
+        return 1
+
+    if args.kernel == "pss":
+        K = kernel_matrix(diagrams, pss_kernel, sigma=args.sigma)
+    elif args.kernel == "pwg":
+        K = kernel_matrix(diagrams, pwg_kernel, sigma=args.sigma)
+    elif args.kernel == "fisher":
+        K = kernel_matrix(diagrams, fisher_kernel, sigma=args.sigma, beta=args.beta)
+    else:
+        print(f"Unknown kernel: {args.kernel}", file=sys.stderr)
+        return 1
+
+    # Print kernel matrix.
+    print("Kernel matrix:")
+    header = "        " + "  ".join(
+        os.path.basename(f)[:8] for f in files[:len(diagrams)]
+    )
+    print(header)
+    for i, row in enumerate(K):
+        label = os.path.basename(files[i])[:8]
+        print(f"{label:>8}  " + "  ".join(f"{v:8.4f}" for v in row))
+
+    if args.output:
+        with open(args.output, "w") as f:
+            json.dump({"kernel": args.kernel, "matrix": K}, f, indent=2)
+
+    return 0
+
+
+def cmd_config(args: argparse.Namespace) -> int:
+    """Generate or validate a configuration file."""
+    if args.action == "generate":
+        cfg = dict(DEFAULT_CONFIG)
+        save_config(cfg, args.output or "tda_config.json")
+        print(f"Default config written to {args.output or 'tda_config.json'}")
+        return 0
+    elif args.action == "validate":
+        try:
+            cfg = load_config(args.file)
+            validate_config(cfg)
+            print("Configuration is valid.")
+            print(json.dumps(cfg, indent=2, default=str))
+            return 0
+        except (FileFormatError, Exception) as exc:
+            print(f"Configuration error: {exc}", file=sys.stderr)
+            return 1
+    return 1
+
+
+# ---------------------------------------------------------------------------
+# Parser
+# ---------------------------------------------------------------------------
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tda",
-        description="Topological Data Analysis toolkit",
+        description="Topological Data Analysis toolkit (v3.0)",
     )
+    parser.add_argument("--verbose", "-v", action="store_true",
+                        help="Enable verbose (debug) logging")
     sub = parser.add_subparsers(dest="command", required=True)
 
     # compute
     p = sub.add_parser("compute", help="Compute persistent homology of a point cloud")
     p.add_argument("input", help="Input point cloud (JSON or CSV)")
-    p.add_argument("--complex", choices=["rips", "weighted", "cech"],
+    p.add_argument("--complex", choices=["rips", "weighted", "cech", "alpha", "sublevel"],
                    default="rips", help="Complex type")
     p.add_argument("--weights", help="Weights JSON file (for weighted complex)")
+    p.add_argument("--grid", help="Grid JSON file (for sublevel complex)")
     p.add_argument("--max-scale", type=float, default=float("inf"),
                    help="Maximum filtration scale (epsilon)")
     p.add_argument("--max-dimension", "-d", type=int, default=1,
@@ -357,13 +551,79 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("input", help="Diagram JSON file")
     p.set_defaults(func=cmd_info)
 
+    # stats
+    p = sub.add_parser("stats", help="Show per-dimension statistics table")
+    p.add_argument("input", help="Diagram JSON file")
+    p.set_defaults(func=cmd_stats)
+
+    # batch
+    p = sub.add_parser("batch", help="Process multiple point clouds")
+    p.add_argument("input", help="JSON file containing list of point clouds")
+    p.add_argument("--max-scale", type=float, default=float("inf"))
+    p.add_argument("--max-dimension", "-d", type=int, default=1)
+    p.add_argument("--min-persistence", type=float, default=0.0)
+    p.add_argument("--output-format", choices=["diagrams", "stats", "vectors"],
+                   default="stats", help="Output format")
+    p.add_argument("--max-features", type=int, default=50,
+                   help="Max features per dimension (for vectors)")
+    p.set_defaults(func=cmd_batch)
+
+    # kernel
+    p = sub.add_parser("kernel", help="Compute persistence kernel matrix")
+    p.add_argument("files", nargs="+", help="Diagram JSON files")
+    p.add_argument("--kernel", choices=["pss", "pwg", "fisher"],
+                   default="pss", help="Kernel type")
+    p.add_argument("--dimension", "-d", type=int, default=None,
+                   help="Homology dimension (default: first available)")
+    p.add_argument("--sigma", type=float, default=1.0, help="Gaussian bandwidth")
+    p.add_argument("--beta", type=float, default=1.0,
+                   help="Fisher beta parameter")
+    p.add_argument("--output", "-o", help="Save kernel matrix as JSON")
+    p.set_defaults(func=cmd_kernel)
+
+    # config
+    p = sub.add_parser("config", help="Generate or validate a config file")
+    p.add_argument("action", choices=["generate", "validate"],
+                   help="Generate default config or validate existing")
+    p.add_argument("--file", "-f", help="Config file to validate")
+    p.add_argument("--output", "-o", help="Output file for generated config")
+    p.set_defaults(func=cmd_config)
+
     return parser
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = build_parser()
-    args = parser.parse_args(argv)
-    return args.func(args)
+    # Strip the global --verbose before subcommand parsing.
+    if argv is None:
+        argv = sys.argv[1:]
+
+    # Handle --verbose as a pre-flag.
+    verbose = False
+    clean_argv = []
+    i = 0
+    while i < len(argv):
+        if argv[i] in ("--verbose", "-v"):
+            verbose = True
+        else:
+            clean_argv.append(argv[i])
+        i += 1
+
+    args = parser.parse_args(clean_argv)
+
+    # Configure logging level.
+    log = get_logger(verbose=verbose)
+    if verbose:
+        log.setLevel(logging.DEBUG)
+
+    try:
+        return args.func(args)
+    except TDAError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    except FileNotFoundError as exc:
+        print(f"File not found: {exc}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":
