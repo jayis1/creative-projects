@@ -12,6 +12,10 @@ The standard algorithm for persistent homology:
 4. Read off persistence pairs: (i, j) where i is the lowest-1 row of j.
 
 Unpaired columns represent essential cycles (infinite persistence).
+
+This implementation uses the *lookup table* optimisation: a dictionary maps
+each row index to the column that currently has it as its lowest-1, giving
+O(1) lookup instead of scanning all prior columns.
 """
 
 from __future__ import annotations
@@ -49,7 +53,10 @@ class BoundaryMatrix:
         column_dims: List[int],
         column_filts: List[float],
     ) -> None:
-        assert len(columns) == len(column_dims) == len(column_filts)
+        if not (len(columns) == len(column_dims) == len(column_filts)):
+            raise ValueError(
+                "columns, column_dims, and column_filts must have equal length"
+            )
         self.columns: List[List[int]] = [sorted(c) for c in columns]
         self.column_dims: List[int] = list(column_dims)
         self.column_filts: List[float] = list(column_filts)
@@ -60,13 +67,18 @@ class BoundaryMatrix:
     def from_simplex_tree(cls, tree: SimplexTree) -> "BoundaryMatrix":
         """Build the boundary matrix from a filtered simplex tree.
 
-        Columns are ordered by (filtration_value, dimension) so that the
-        standard left-to-right reduction produces correct persistence pairs.
+        Columns are ordered by (filtration_value, dimension, simplex) so that
+        the standard left-to-right reduction produces correct persistence pairs.
+        The simplex ordering within a (filtration, dimension) group is
+        lexicographic on vertices, which is a valid refinement of the partial
+        order (a face always precedes its coface in lexicographic order when
+        they share the same filtration value and dimension differs).
         """
         # Get all simplices with their filtration values.
         simplices: List[Tuple[Simplex, float]] = list(tree.iter_with_filtration())
-        # Sort by (filtration, dimension) — this is the filtration order.
-        simplices.sort(key=lambda sf: (sf[1], sf[0].dimension))
+        # Sort by (filtration, dimension, vertex tuple) — a total order that
+        # respects the filtration and dimensional partial order.
+        simplices.sort(key=lambda sf: (sf[1], sf[0].dimension, sf[0].vertices))
 
         # Assign column/row indices in sorted order.
         index_map: Dict[Simplex, int] = {}
@@ -80,8 +92,9 @@ class BoundaryMatrix:
         for s, f in simplices:
             col: List[int] = []
             for face in s.faces():
-                if face in index_map:
-                    col.append(index_map[face])
+                idx = index_map.get(face)
+                if idx is not None:
+                    col.append(idx)
             columns.append(col)
             column_dims.append(s.dimension)
             column_filts.append(f)
@@ -94,7 +107,11 @@ class BoundaryMatrix:
         return c[-1] if c else -1
 
     def add_column(self, target: int, source: int) -> None:
-        """Add (XOR) column ``source`` into column ``target`` (over GF(2))."""
+        """Add (XOR) column ``source`` into column ``target`` (over GF(2)).
+
+        Both columns must be sorted lists of row indices. The result is also
+        a sorted list (XOR of two sorted sets).
+        """
         t = self.columns[target]
         s = self.columns[source]
         # XOR merge of two sorted lists.
@@ -102,11 +119,14 @@ class BoundaryMatrix:
         i = j = 0
         while i < len(t) and j < len(s):
             if t[i] < s[j]:
-                result.append(t[i]); i += 1
+                result.append(t[i])
+                i += 1
             elif t[i] > s[j]:
-                result.append(s[j]); j += 1
+                result.append(s[j])
+                j += 1
             else:
-                i += 1; j += 1  # cancel (XOR)
+                i += 1
+                j += 1  # cancel (XOR)
         result.extend(t[i:])
         result.extend(s[j:])
         self.columns[target] = result
@@ -118,50 +138,53 @@ def reduce_matrix(matrix: BoundaryMatrix) -> List[Tuple[int, int, int]]:
     Returns a list of (birth_col, death_col, dimension) tuples.
     A death_col of -1 means the feature is essential (infinite persistence).
 
-    The algorithm uses the "lowest-one" approach:
+    Algorithm (standard column reduction with lookup table):
 
     For each column j (left to right):
-        while lowest_one(j) != -1 and lowest_one(j) was seen as a birth:
-            add the previously-seen column to j
-        if lowest_one(j) != -1:
-            record pair (lowest_one(j), j)
-        else:
-            j is a birth (unpaired — will pair with infinity or later column)
+        while lowest_one(j) != -1:
+            low = lowest_one(j)
+            if low in low_to_col:  # some earlier column has this as lowest
+                add column low_to_col[low] to column j
+            else:
+                record pair (low, j) with dimension dim(j) - 1
+                low_to_col[low] = j
+                break
+        # if column reduced to zero, it's a potential essential cycle
 
-    This is the standard *matrix reduction* algorithm (Edelsbrunner-Harer).
+    After processing all columns, any column that reduced to zero and whose
+    index never appeared as a birth row (lowest-one of a death column) is
+    an essential cycle.
     """
-    lowest_seen: Dict[int, int] = {}  # row -> column index that has this as lowest
+    low_to_col: Dict[int, int] = {}  # row -> column that has this as lowest
     pairs: List[Tuple[int, int, int]] = []
-    births: Dict[int, int] = {}  # row -> column that is a birth (unpaired after reduction)
 
     for j in range(matrix.num_cols):
         while True:
             low = matrix.lowest_one(j)
             if low == -1:
                 break
-            if low in lowest_seen:
-                # Add the previously reduced column to this one.
-                matrix.add_column(j, lowest_seen[low])
-                # Continue reducing.
+            if low in low_to_col:
+                # Add the previously reduced column to this one (XOR).
+                matrix.add_column(j, low_to_col[low])
             else:
                 # This column has a new lowest-one; it's a death for row `low`.
-                lowest_seen[low] = j
-                dim = matrix.column_dims[j]  # death dim = dim of the simplex
-                # The birth simplex is `low`, which has dimension dim-1.
+                low_to_col[low] = j
+                dim = matrix.column_dims[j]
+                # The birth simplex is row `low`, dimension dim - 1.
                 pairs.append((low, j, dim - 1))
                 break
-        else:
-            # Column reduced to zero — it's a birth (essential cycle).
-            births[j] = j
 
-    # Identify essential cycles: columns that reduced to zero and were never
-    # paired as a birth (i.e., their row index never appeared as the lowest-one
-    # of a death column). These are births with infinite persistence.
-    birth_rows = {p[0] for p in pairs}  # row indices used as births
-    death_cols = {p[1] for p in pairs}  # column indices used as deaths
+    # Identify essential cycles.
+    # A column j is an essential birth if:
+    #   1. It was reduced to zero (lowest_one == -1 after reduction).
+    #   2. j was never used as a death column (j not in death_cols).
+    #   3. j was never used as a birth row (j not in birth_rows).
+    # Condition 3 is key: if some death column has j as its lowest-one, then
+    # j's homology class was killed, so j is not essential.
+    birth_rows = {p[0] for p in pairs}
+    death_cols = {p[1] for p in pairs}
     for j in range(matrix.num_cols):
         if matrix.lowest_one(j) == -1 and j not in birth_rows and j not in death_cols:
-            # This is an essential cycle (infinite persistence).
             pairs.append((j, -1, matrix.column_dims[j]))
 
     return pairs
@@ -170,6 +193,7 @@ def reduce_matrix(matrix: BoundaryMatrix) -> List[Tuple[int, int, int]]:
 def compute_persistence(
     tree: SimplexTree,
     max_dimension: Optional[int] = None,
+    min_persistence: float = 0.0,
 ) -> Dict[int, List[Tuple[float, float]]]:
     """Compute persistent homology from a simplex tree.
 
@@ -182,7 +206,18 @@ def compute_persistence(
         The filtered simplicial complex.
     max_dimension : int, optional
         Only return persistence pairs up to this dimension. Default: all.
+    min_persistence : float, optional
+        Filter out features with persistence < min_persistence (essential
+        cycles are always kept). Default: 0.0 (keep all).
+
+    Raises
+    ------
+    ValueError
+        If the tree is empty.
     """
+    if tree.num_simplices() == 0:
+        raise ValueError("Cannot compute persistence on an empty simplex tree")
+
     matrix = BoundaryMatrix.from_simplex_tree(tree)
     raw_pairs = reduce_matrix(matrix)
 
@@ -195,6 +230,9 @@ def compute_persistence(
             death = float("inf")
         else:
             death = matrix.column_filts[death_col]
+            # Filter by minimum persistence (skip zero-persistence noise).
+            if min_persistence > 0 and (death - birth) < min_persistence:
+                continue
         result.setdefault(dim, []).append((birth, death))
 
     return result
