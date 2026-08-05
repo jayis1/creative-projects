@@ -230,6 +230,22 @@ When computing persistent homology with `max_dimension=k`, features in dimension
 - Use the `min_persistence` filter to suppress noise
 - Interpret essential features in the highest computed dimension with caution
 
+## Known Issues (Resolved)
+
+1. **`Simplex.boundary()` on 0-simplices yielded an invalid empty `Simplex(())`** — Fixed: 0-simplices now correctly yield no boundary faces.
+
+2. **`Simplex.all_subsimplices()` yielded `Simplex(())` (empty simplex) for 0-simplices** — Fixed: the range now starts at k=1, excluding the empty combination.
+
+3. **`SimplexTree` ID assignment was broken** — the `insert()` method called `setdefault()` without incrementing the counter, causing all simplices to receive ID 0. Fixed: IDs are now assigned via `_assign_id()` which properly increments `_next_id` for every newly created node.
+
+4. **Dead duplicate-check code in `Simplex.__init__`** — the check `len(self._vertices) != len(set(self._vertices))` was unreachable because `set(vertices)` already removes duplicates before `sorted()`. Removed the dead code.
+
+5. **`VietorisRipsComplex` ignored custom `metric` parameter** — the `distance_matrix` property always called `pairwise_distances()` which uses Euclidean distance, ignoring the user-supplied metric. Fixed: the property now calls `_compute_distance_matrix()` which uses `self.metric`.
+
+6. **Wasserstein distance with p=∞ returned incorrect results** — the Hungarian algorithm minimizes the *sum* of costs, but for p=∞ the correct objective is to minimize the *maximum* cost. Fixed: p=∞ now delegates to `bottleneck_distance()` (binary search + Hopcroft-Karp), which correctly solves the minimax problem.
+
+7. **Bottleneck and Wasserstein distances used a fixed diagonal point for augmentation** — this gave incorrect distances when one diagram was empty or when diagrams had different sizes. Fixed: both now use per-point diagonal projections `((b+d)/2, (b+d)/2)` — the closest point on the diagonal in L∞ norm — ensuring each off-diagonal point can match its own projection at the correct cost `(d-b)/2`.
+
 ## License
 
 MIT

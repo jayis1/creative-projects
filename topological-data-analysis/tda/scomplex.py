@@ -23,13 +23,12 @@ class Simplex:
     __slots__ = ("_vertices", "_hash")
 
     def __init__(self, vertices: Iterable[int]) -> None:
+        # set() removes duplicates; sorted() ensures canonical ordering.
         self._vertices: Tuple[int, ...] = tuple(sorted(set(vertices)))
-        # Validate strictly increasing, non-negative vertices.
+        # Validate non-negative vertices.
         for v in self._vertices:
             if v < 0:
                 raise ValueError(f"Vertex labels must be non-negative, got {v}")
-        if len(self._vertices) != len(set(self._vertices)):
-            raise ValueError("Duplicate vertex labels are not allowed")
         self._hash = hash(self._vertices)
 
     # ---- core properties -------------------------------------------------
@@ -68,7 +67,11 @@ class Simplex:
         """Yield (sign, face) pairs for the oriented boundary.
 
         Sign alternates by position: (-1)^i.
+
+        For a 0-simplex (vertex), yields nothing — a vertex has no boundary.
         """
+        if self.dimension == 0:
+            return  # 0-simplices have no boundary
         for i in range(len(self._vertices)):
             face = Simplex(self._vertices[:i] + self._vertices[i + 1:])
             yield (1 if i % 2 == 0 else -1, face)
@@ -86,8 +89,9 @@ class Simplex:
             yield Simplex(combo)
 
     def all_subsimplices(self) -> Iterator["Simplex"]:
-        """Yield every proper subsimplex (including vertices, excluding self)."""
-        for k in range(len(self._vertices)):
+        """Yield every proper subsimplex (including vertices, excluding self
+        and the empty simplex)."""
+        for k in range(1, len(self._vertices)):
             for combo in combinations(self._vertices, k):
                 yield Simplex(combo)
 
@@ -182,15 +186,15 @@ class SimplexTree:
                 node = child
                 is_new = True
                 self._size += 1
-                self._id_map.setdefault(simplex_from_path(self._path_to(node)), self._next_id)
-                # We'll assign IDs properly in a second pass if needed.
+                # Assign an ID to every newly created node (including
+                # intermediate simplices like vertices and edges when
+                # inserting a higher-dimensional simplex).
+                self._assign_id(Simplex(self._path_to(node)))
             else:
                 node = node.children[v]
                 # Filtration must be non-decreasing along a chain.
                 if filtration < node.filtration:
                     node.filtration = filtration
-        if is_new:
-            self._assign_id(simplex)
         return is_new
 
     def _path_to(self, node: _Node) -> Tuple[int, ...]:
@@ -202,6 +206,7 @@ class SimplexTree:
         return tuple(reversed(path))
 
     def _assign_id(self, simplex: Simplex) -> None:
+        """Assign a unique integer ID to a simplex if it doesn't have one."""
         if simplex not in self._id_map:
             self._id_map[simplex] = self._next_id
             self._next_id += 1

@@ -128,18 +128,22 @@ def bottleneck_distance(d1: PersistenceDiagram,
     if not pts1 and not pts2:
         return 0.0
 
-    # Pad smaller diagram with diagonal points so both have the same size.
-    # The diagonal value can be any value; we use the mean of finite deaths.
-    finite_deaths = [p[1] for p in pts1 + pts2 if p[1] != Infinity]
-    diag_val = (sum(finite_deaths) / len(finite_deaths)) if finite_deaths else 0.0
+    # Augment both diagrams to size n1 + n2 with diagonal projections.
+    # The diagonal projection of (b, d) is ((b+d)/2, (b+d)/2) — the closest
+    # point on the diagonal in L-infinity norm.
+    # D1 gets projections of D2's points; D2 gets projections of D1's points.
+    # This allows each off-diagonal point to match its own projection (at
+    # cost (d-b)/2) or a real point in the other diagram.
+    def diag_proj(p: Point) -> Point:
+        if p[1] == Infinity:
+            return (p[0], p[0])
+        mid = (p[0] + p[1]) / 2.0
+        return (mid, mid)
 
     n1, n2 = len(pts1), len(pts2)
-    max_size = max(n1, n2)
-
-    # Augment both point sets with diagonal points.
-    P1 = list(pts1) + [diag_val] * (max_size - n1)  # placeholder
-    P1 = list(pts1) + [(diag_val, diag_val)] * (max_size - n1)
-    P2 = list(pts2) + [(diag_val, diag_val)] * (max_size - n2)
+    P1 = list(pts1) + [diag_proj(p) for p in pts2]
+    P2 = list(pts2) + [diag_proj(p) for p in pts1]
+    max_size = n1 + n2
 
     # For infinite-death points, matching to another infinite-death point
     # uses |birth difference|. Matching to a diagonal point gives inf distance.

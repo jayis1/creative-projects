@@ -57,20 +57,31 @@ def wasserstein_distance(
     if p < 1 and p != Infinity:
         raise ValueError("Wasserstein order p must be >= 1")
 
+    # For p = infinity, the Wasserstein distance equals the bottleneck
+    # distance (minimax matching). Delegating to the bottleneck implementation
+    # is both correct and more efficient (binary search + Hopcroft-Karp).
+    if p == Infinity:
+        from .distance import bottleneck_distance
+        return bottleneck_distance(d1, d2)
+
     pts1 = d1.points()
     pts2 = d2.points()
 
     if not pts1 and not pts2:
         return 0.0
 
-    # Augment with diagonal points.
-    finite_deaths = [pt[1] for pt in pts1 + pts2 if pt[1] != Infinity]
-    diag_val = (sum(finite_deaths) / len(finite_deaths)) if finite_deaths else 0.0
+    # Augment with diagonal projections.
+    # Same approach as bottleneck: each diagram gets the other's diagonal projections.
+    def diag_proj(p):
+        if p[1] == Infinity:
+            return (p[0], p[0])
+        mid = (p[0] + p[1]) / 2.0
+        return (mid, mid)
 
     n1, n2 = len(pts1), len(pts2)
-    max_size = max(n1, n2)
-    P1 = list(pts1) + [(diag_val, diag_val)] * (max_size - n1)
-    P2 = list(pts2) + [(diag_val, diag_val)] * (max_size - n2)
+    P1 = list(pts1) + [diag_proj(p) for p in pts2]
+    P2 = list(pts2) + [diag_proj(p) for p in pts1]
+    max_size = n1 + n2
 
     # Build cost matrix.
     if p == Infinity:

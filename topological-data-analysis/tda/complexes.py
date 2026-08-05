@@ -79,8 +79,19 @@ class VietorisRipsComplex:
     @property
     def distance_matrix(self) -> List[List[float]]:
         if self._dist is None:
-            self._dist = pairwise_distances(self.points)
+            self._dist = self._compute_distance_matrix()
         return self._dist
+
+    def _compute_distance_matrix(self) -> List[List[float]]:
+        """Compute the pairwise distance matrix using the configured metric."""
+        n = len(self.points)
+        d = [[0.0] * n for _ in range(n)]
+        for i in range(n):
+            for j in range(i + 1, n):
+                dist = self.metric(self.points[i], self.points[j])
+                d[i][j] = dist
+                d[j][i] = dist
+        return d
 
     def _simplex_filtration(self, vertices: Tuple[int, ...]) -> float:
         """Filtration value = max pairwise distance among vertices."""
