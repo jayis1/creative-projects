@@ -158,6 +158,12 @@ def can_merge(a: str, b: str) -> Optional[str]:
 
     Returns the merged cube (with a dash at the differing position) or None.
     """
+    # Bug fix: validate that both cubes have the same length.
+    # Previously, zip() silently truncated mismatched-length cubes, which
+    # could produce incorrect merges (e.g. can_merge("01", "110") returned
+    # "-1" by only comparing the first 2 characters).
+    if len(a) != len(b):
+        return None
     diff = -1
     for i, (ca, cb) in enumerate(zip(a, b)):
         if ca != cb:
@@ -270,10 +276,15 @@ class BooleanFunction:
                 else:
                     i += 1
         if n_vars is None:
-            sorted_letters = sorted(letters, key=lambda c: ord(c))
-            n_vars = len(sorted_letters)
-        else:
-            sorted_letters = var_names(n_vars)
+            # Bug fix: infer n_vars from the highest letter position, not
+            # the count of distinct letters.  "AC" implies 3 vars (A,B,C)
+            # with B as don't-care, not 2 vars.
+            if not letters:
+                raise ValueError("no variable letters found in SOP expression")
+            max_letter = max(ord(c) for c in letters)
+            n_vars = max_letter - ord("A") + 1
+            if n_vars > 26:
+                raise ValueError(f"too many variables (>{26}) in SOP expression")
         # map letter -> position
         var_idx = {name: i for i, name in enumerate(var_names(n_vars))}
         minterms: List[int] = []

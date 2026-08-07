@@ -315,6 +315,20 @@ print(cfg2.minimizer)  # "espresso"
 pytest tests/ -v
 ```
 
+## Known Issues (Resolved)
+
+The following bugs were identified during the bug hunt phase and fixed:
+
+1. **SOP variable inference from letter count instead of position** (`from_sop`): `from_sop("AC")` raised `ValueError: unknown variable 'C'` because n_vars was inferred from the count of distinct letters (2) rather than the highest letter position (C = 3rd variable). Fixed to compute n_vars from `max(ord(c)) - ord('A') + 1`.
+
+2. **`can_merge` silently truncates mismatched-length cubes**: `can_merge("01", "110")` returned `"-1"` instead of `None` because `zip()` truncates to the shorter length. Fixed by adding an explicit length check at the top of the function.
+
+3. **Espresso `_intersects_off` dead code**: The method contained a `for` loop that called `cube_to_minterms(cube)` and did nothing (body was `pass`), wasting allocation on every call. Removed the dead code.
+
+4. **Espresso final cost check was a no-op**: After the final expand+irredundant pass, the code had `best_cover = best_cover` (a self-assignment that does nothing). If the final pass regressed the cost, the better solution from the loop was lost. Fixed by saving the best cover from the loop and restoring it if the final pass worsens the result.
+
+5. **Multi-output import inside nested loop**: `_generate_tagged_primes` imported `can_merge` inside a doubly-nested loop, causing redundant import lookups on every iteration. Fixed by moving the import to the top of the module.
+
 ## License
 
 MIT

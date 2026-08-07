@@ -20,7 +20,10 @@ Example
 'AB\'C + AC + B\'D'
 """
 
-from .boolean import BooleanFunction, TruthTable, Implicant, minterm_to_cube
+from .boolean import (
+    BooleanFunction, TruthTable, Implicant,
+    minterm_to_cube, cube_to_minterms, cube_covers, can_merge, var_names,
+)
 from .quine_mccluskey import QuineMcCluskey, MinimizationResult
 from .petrick import PetrickSolver, Product, Term
 from .espresso import Espresso
@@ -45,6 +48,10 @@ __all__ = [
     "TruthTable",
     "Implicant",
     "minterm_to_cube",
+    "cube_to_minterms",
+    "cube_covers",
+    "can_merge",
+    "var_names",
     "PetrickSolver",
     "Product",
     "Term",

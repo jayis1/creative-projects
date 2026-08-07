@@ -82,20 +82,28 @@ class Espresso:
         cover = [minterm_to_cube(m, self.n_vars) for m in sorted(onset)]
         best_cover = list(cover)
         best_cost = self._cost(cover)
+        best_cover_loop = list(cover)  # save best from loop iterations
         for _ in range(self.max_iter):
             cover = self._expand_all(cover, func)
             cover = self._irredundant(cover, func)
             current_cost = self._cost(cover)
             if current_cost < best_cost:
                 best_cost = current_cost
-                best_cover = list(cover)
+                best_cover_loop = list(cover)
             cover = self._reduce_all(cover, func)
+        # Use the best cover found during the loop
+        best_cover = best_cover_loop
         # final expand + irredundant to clean up
         best_cover = self._expand_all(best_cover, func)
         best_cover = self._irredundant(best_cover, func)
+        # Bug fix: the original code had `best_cover = best_cover` (a no-op)
+        # here.  After the final expand+irredundant, if the cost got worse
+        # than the best found during the loop, we should keep the loop's best.
         final_cost = self._cost(best_cover)
-        if final_cost < best_cost:
-            best_cover = best_cover
+        if final_cost > best_cost:
+            # restore the best cover from the loop
+            best_cover = self._expand_all(best_cover_loop, func)
+            best_cover = self._irredundant(best_cover, func)
         imps = [Implicant(c) for c in best_cover]
         imps.sort()
         sop_str = " + ".join(imp.sop_term(func.var_names) for imp in imps) or "0"
@@ -164,13 +172,15 @@ class Espresso:
         return "".join(result)
 
     def _intersects_off(self, cube: str, off_cubes: List[str]) -> bool:
-        """Check if ``cube`` covers any off-set minterm."""
-        for m in cube_to_minterms(cube):
-            # check against off-set minterms directly (faster than cube-cube)
-            pass
-        # Direct check: expand cube and see if any minterm is in the off set.
-        # We pass off_cubes as the list of off-set minterm cubes (each is a
-        # pure 0/1 cube with no dashes).
+        """Check if ``cube`` covers any off-set minterm.
+
+        ``off_cubes`` is a list of pure 0/1 cubes (no dashes) representing
+        the off-set minterms.  We check if ``cube`` intersects any of them
+        via cube-cube intersection.
+        """
+        # Bug fix: removed dead code — a for-loop that called
+        # cube_to_minterms(cube) and did nothing (body was `pass`).
+        # This wasted allocation on every call and was confusing.
         for oc in off_cubes:
             if self._cubes_intersect(cube, oc):
                 return True

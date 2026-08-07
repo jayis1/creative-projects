@@ -11,7 +11,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, FrozenSet, Iterable, List, Optional, Sequence, Set, Tuple
 
-from .boolean import BooleanFunction, Implicant, cube_covers, cube_to_minterms, minterm_to_cube, var_names
+from .boolean import (
+    BooleanFunction,
+    Implicant,
+    can_merge,
+    cube_covers,
+    cube_to_minterms,
+    minterm_to_cube,
+    var_names,
+)
 from .quine_mccluskey import MinimizationResult, QuineMcCluskey
 
 
@@ -184,7 +192,9 @@ class MultiOutputMinimizer:
                         continue
                     for a in by_ones[a_ones]:
                         for b in by_ones[b_ones]:
-                            from .boolean import can_merge
+                            # Bug fix: moved import to top of file (was
+                            # importing can_merge inside a nested loop,
+                            # causing redundant import lookups every iteration)
                             merged = can_merge(a, b)
                             if merged is not None:
                                 next_level.append((merged, tag))
