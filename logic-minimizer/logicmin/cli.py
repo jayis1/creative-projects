@@ -10,6 +10,17 @@ Subcommands
 * ``truth``     — show the truth table of a function
 * ``verify``    — verify a minimized expression against the original function
 * ``info``      — show prime implicants and chart info
+* ``pos``       — product-of-sums minimization
+* ``kmap``      — render Karnaugh map
+* ``benchmark`` — benchmark QM vs Espresso
+* ``config``    — show or save configuration
+* ``bdd``       — build a ROBDD and show stats / SOP
+* ``sensitivity`` — sensitivity analysis for each variable
+* ``unate``     — classify variables as positive/negative/binate
+* ``dc-optimize`` — optimize don't-care assignment
+* ``batch``     — batch minimize multiple functions from a PLA file
+* ``html``      — generate HTML visualization (truth table / K-map / report)
+* ``export``    — serialize a function or result to JSON
 """
 
 from __future__ import annotations
@@ -29,7 +40,7 @@ from .parser import parse_truth_table, parse_minterms, parse_sop, parse_pla
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="logicmin",
-        description="Boolean logic minimization toolkit (Quine–McCluskey + Espresso + Petrick)",
+        description="Boolean logic minimization toolkit (Quine–McCluskey + Espresso + Petrick + BDD + Analysis)",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -112,6 +123,60 @@ def _build_parser() -> argparse.ArgumentParser:
                    help="Save default config to file")
     p.add_argument("--load", type=str, default="",
                    help="Load and display config from file")
+
+    # bdd
+    p = sub.add_parser("bdd", help="Build a ROBDD and show stats / SOP")
+    p.add_argument("--minterms", "-m", type=str, default="")
+    p.add_argument("--nvars", "-n", type=int, required=True)
+    p.add_argument("--sop", "-s", type=str, default="")
+    p.add_argument("--render", action="store_true", help="Render BDD as ASCII")
+    p.add_argument("--count", action="store_true", help="Count satisfying assignments")
+
+    # sensitivity
+    p = sub.add_parser("sensitivity", help="Sensitivity analysis for each variable")
+    p.add_argument("--minterms", "-m", type=str, default="")
+    p.add_argument("--nvars", "-n", type=int, required=True)
+    p.add_argument("--sop", "-s", type=str, default="")
+
+    # unate
+    p = sub.add_parser("unate", help="Classify variables as positive/negative/binate")
+    p.add_argument("--minterms", "-m", type=str, default="")
+    p.add_argument("--nvars", "-n", type=int, required=True)
+    p.add_argument("--sop", "-s", type=str, default="")
+
+    # dc-optimize
+    p = sub.add_parser("dc-optimize", help="Optimize don't-care assignment")
+    p.add_argument("--minterms", "-m", type=str, required=True)
+    p.add_argument("--nvars", "-n", type=int, required=True)
+    p.add_argument("--minimizer", type=str, default="qm", choices=["qm", "espresso"])
+
+    # batch
+    p = sub.add_parser("batch", help="Batch minimize from a PLA file")
+    p.add_argument("pla_file", type=str, help="PLA file path")
+    p.add_argument("--minimizer", type=str, default="qm", choices=["qm", "espresso", "pos"])
+    p.add_argument("--json", action="store_true")
+
+    # html
+    p = sub.add_parser("html", help="Generate HTML visualization")
+    p.add_argument("--minterms", "-m", type=str, default="")
+    p.add_argument("--nvars", "-n", type=int, required=True)
+    p.add_argument("--sop", "-s", type=str, default="")
+    p.add_argument("--output", "-o", type=str, default="",
+                   help="Output HTML file (default: stdout)")
+    p.add_argument("--mode", type=str, default="report",
+                   choices=["truth", "kmap", "report"],
+                   help="What to generate: truth table, K-map, or full report")
+
+    # export
+    p = sub.add_parser("export", help="Serialize a function or result to JSON")
+    p.add_argument("--minterms", "-m", type=str, default="")
+    p.add_argument("--nvars", "-n", type=int, required=True)
+    p.add_argument("--sop", "-s", type=str, default="")
+    p.add_argument("--result", action="store_true",
+                   help="Also minimize and export the result")
+
+    # version
+    p = sub.add_parser("version", help="Show version info")
 
     return parser
 
@@ -226,7 +291,6 @@ def _cmd_truth(args: argparse.Namespace) -> int:
 def _cmd_verify(args: argparse.Namespace) -> int:
     func_orig = parse_minterms(args.minterms, args.nvars)
     func_check = parse_sop(args.sop, args.nvars)
-    # compare on all minterms (don't-cares excluded)
     mismatch = False
     for m in range(1 << args.nvars):
         if m in func_orig.dontcare:
@@ -297,7 +361,6 @@ def _cmd_benchmark(args: argparse.Namespace) -> int:
         print(f"--- Trial {i + 1} ---")
         print(Benchmark.format_results(results))
         print()
-    # summary
     from collections import defaultdict
     methods = defaultdict(list)
     for results in all_results:
@@ -327,6 +390,131 @@ def _cmd_config(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_bdd(args: argparse.Namespace) -> int:
+    from .bdd import BDDManager
+    func = _load_function(args)
+    mgr = BDDManager(args.nvars)
+    root = mgr.from_function(func)
+    n_nodes = mgr.node_count(root)
+    print(f"BDD: {args.nvars} vars, {n_nodes} nodes")
+    if args.count:
+        count = mgr.count_satisfying(root)
+        print(f"  Satisfying assignments: {count}")
+    if args.render:
+        print()
+        print(mgr.render_ascii(root))
+    sop_cubes = mgr.to_sop(root)
+    names = var_names(args.nvars)
+    from .boolean import Implicant
+    sop_str = " + ".join(Implicant(c).sop_term(names) for c in sop_cubes) if sop_cubes else "0"
+    print(f"  SOP from BDD: {sop_str}")
+    return 0
+
+
+def _cmd_sensitivity(args: argparse.Namespace) -> int:
+    from .analysis import all_sensitivities, boolean_difference
+    func = _load_function(args)
+    names = var_names(args.nvars)
+    sens = all_sensitivities(func)
+    print(f"Sensitivity analysis for {func.name} ({args.nvars} vars):")
+    for i, name in enumerate(names):
+        print(f"  {name}: {sens[i]:.4f}")
+    print()
+    print("Boolean differences:")
+    for i, name in enumerate(names):
+        if args.nvars > 1:
+            diff = boolean_difference(func, i)
+            print(f"  ∂f/∂{name}: minterms={sorted(diff.minterms)}")
+    return 0
+
+
+def _cmd_unate(args: argparse.Namespace) -> int:
+    from .analysis import unate_profile
+    func = _load_function(args)
+    names = var_names(args.nvars)
+    profile = unate_profile(func)
+    print(f"Unate classification for {func.name} ({args.nvars} vars):")
+    for i, name in enumerate(names):
+        cls = profile[i]
+        print(f"  {name}: {cls}")
+    return 0
+
+
+def _cmd_dc_optimize(args: argparse.Namespace) -> int:
+    from .dc_optimize import assign_dontcares
+    func = parse_minterms(args.minterms, args.nvars)
+    result = assign_dontcares(func, minimizer=args.minimizer)
+    print(f"Don't-care optimization ({args.minimizer}):")
+    print(f"  Original SOP:  {result.original_sop}  (cost={result.original_cost})")
+    print(f"  Optimized SOP: {result.optimized_sop} (cost={result.optimized_cost})")
+    print(f"  Improvement:   {result.improvement} literals")
+    if result.assignment:
+        print(f"  Assignment:")
+        for dc, val in sorted(result.assignment.items()):
+            print(f"    minterm {dc} → {val}")
+    return 0
+
+
+def _cmd_batch(args: argparse.Namespace) -> int:
+    from .batch import BatchProcessor, batch_from_pla_file, batch_summary, batch_to_json
+    entries = batch_from_pla_file(args.pla_file, minimizer=args.minimizer)
+    summary = batch_summary(entries)
+    if args.json:
+        print(batch_to_json(entries))
+    else:
+        print(f"Batch: {summary.n_functions} functions, minimizer={args.minimizer}")
+        print(f"  {'Name':<15} {'Vars':>4} {'Method':>15} {'Terms':>6} {'Lits':>5} {'Time(ms)':>10} {'OK':>4}")
+        print("  " + "-" * 65)
+        for e in entries:
+            ok = "✓" if e.correct else "✗"
+            print(f"  {e.name:<15} {e.n_vars:>4} {e.method:>15} {e.n_terms:>6} {e.n_literals:>5} {e.elapsed_ms:>10.2f} {ok:>4}")
+        print()
+        print(f"  Total: {summary.total_terms} terms, {summary.total_literals} literals, {summary.total_time_ms:.1f}ms")
+        print(f"  All correct: {'Yes' if summary.all_correct else 'NO'}")
+    return 0
+
+
+def _cmd_html(args: argparse.Namespace) -> int:
+    from .htmlviz import truth_table_html, kmap_html, full_report_html
+    func = _load_function(args)
+    if args.mode == "truth":
+        html = truth_table_html(func)
+    elif args.mode == "kmap":
+        html = kmap_html(func)
+    else:  # report
+        qm = QuineMcCluskey(args.nvars)
+        result = qm.minimize(func)
+        html = full_report_html(func, result)
+    if args.output:
+        with open(args.output, "w") as fh:
+            fh.write(html)
+        print(f"HTML written to {args.output}")
+    else:
+        print(html)
+    return 0
+
+
+def _cmd_export(args: argparse.Namespace) -> int:
+    func = _load_function(args)
+    if args.result:
+        from .serialize import result_to_json
+        qm = QuineMcCluskey(args.nvars)
+        result = qm.minimize(func)
+        print(result_to_json(result))
+    else:
+        from .serialize import function_to_json
+        print(function_to_json(func))
+    return 0
+
+
+def _cmd_version(args: argparse.Namespace) -> int:
+    from . import __version__
+    print(f"logicmin v{__version__}")
+    print("Boolean logic minimization toolkit")
+    print("  Quine-McCluskey, Petrick, Espresso, BDD, Analysis, PLA, HTML viz")
+    return 0
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
@@ -342,6 +530,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "kmap": _cmd_kmap,
         "benchmark": _cmd_benchmark,
         "config": _cmd_config,
+        "bdd": _cmd_bdd,
+        "sensitivity": _cmd_sensitivity,
+        "unate": _cmd_unate,
+        "dc-optimize": _cmd_dc_optimize,
+        "batch": _cmd_batch,
+        "html": _cmd_html,
+        "export": _cmd_export,
+        "version": _cmd_version,
     }
     handler = dispatch.get(args.command)
     if handler is None:

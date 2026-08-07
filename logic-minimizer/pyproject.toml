@@ -4,23 +4,41 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "logicmin"
-version = "1.0.0"
-description = "Boolean logic minimization toolkit: Quine-McCluskey, Petrick's method, Espresso, multi-output, factorization"
+version = "2.0.0"
+description = "Boolean logic minimization toolkit: Quine-McCluskey, Petrick, Espresso, BDD, multi-output, factorization, sensitivity analysis, PLA, HTML viz"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [{name = "creative-projects"}]
-keywords = ["boolean", "logic", "minimization", "quine-mccluskey", "espresso", "petrick"]
+keywords = [
+    "boolean", "logic", "minimization", "quine-mccluskey", "espresso",
+    "petrick", "bdd", "pos", "karnaugh", "pla", "sensitivity", "unate",
+]
 classifiers = [
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Electronic Design Automation (EDA)",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
 ]
 
 [project.scripts]
 logicmin = "logicmin.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov",
+]
 
 [tool.setuptools.packages.find]
 include = ["logicmin*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "-v --tb=short"

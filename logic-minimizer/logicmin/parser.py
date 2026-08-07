@@ -12,7 +12,7 @@ Supported formats
 
 from __future__ import annotations
 
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 from .boolean import BooleanFunction, TruthTable, var_names
 
@@ -73,7 +73,7 @@ def parse_minterms(text: str, n_vars: int, name: str = "f") -> BooleanFunction:
     )
 
 
-def parse_sop(sop: str, n_vars: int = None) -> BooleanFunction:  # type: ignore[assignment]
+def parse_sop(sop: str, n_vars: Optional[int] = None) -> BooleanFunction:
     """Parse a sum-of-products string."""
     return BooleanFunction.from_sop(sop, n_vars=n_vars)
 
