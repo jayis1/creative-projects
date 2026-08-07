@@ -85,6 +85,34 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--nvars", "-n", type=int, required=True)
     p.add_argument("--sop", "-s", type=str, default="")
 
+    # pos
+    p = sub.add_parser("pos", help="Product-of-sums minimization")
+    p.add_argument("--minterms", "-m", type=str, default="")
+    p.add_argument("--nvars", "-n", type=int, required=True)
+    p.add_argument("--sop", "-s", type=str, default="")
+    p.add_argument("--no-petrick", action="store_true")
+
+    # kmap
+    p = sub.add_parser("kmap", help="Render Karnaugh map")
+    p.add_argument("--minterms", "-m", type=str, default="")
+    p.add_argument("--nvars", "-n", type=int, required=True)
+    p.add_argument("--sop", "-s", type=str, default="")
+    p.add_argument("--cover", action="store_true",
+                   help="Highlight the minimized cover in the K-map")
+
+    # benchmark
+    p = sub.add_parser("benchmark", help="Benchmark QM vs Espresso")
+    p.add_argument("--nvars", "-n", type=int, required=True)
+    p.add_argument("--trials", "-t", type=int, default=5)
+    p.add_argument("--seed", type=int, default=None)
+
+    # config
+    p = sub.add_parser("config", help="Show or save configuration")
+    p.add_argument("--save", type=str, default="",
+                   help="Save default config to file")
+    p.add_argument("--load", type=str, default="",
+                   help="Load and display config from file")
+
     return parser
 
 
@@ -233,6 +261,72 @@ def _cmd_info(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_pos(args: argparse.Namespace) -> int:
+    from .pos import POSMinimizer
+    func = _load_function(args)
+    pm = POSMinimizer(args.nvars, use_petrick=not args.no_petrick)
+    result = pm.minimize(func)
+    print(f"Minimized POS: {result.pos}")
+    print(f"  Clauses:     {result.n_clauses}")
+    print(f"  Literals:    {result.n_literals}")
+    print(f"  Dual SOP:    {result.dual_sop}")
+    return 0
+
+
+def _cmd_kmap(args: argparse.Namespace) -> int:
+    from .kmap import KarnaughMap
+    func = _load_function(args)
+    km = KarnaughMap(func)
+    if args.cover:
+        qm = QuineMcCluskey(args.nvars)
+        r = qm.minimize(func)
+        print(km.render_with_coverage(r.sop_cubes))
+        print(f"\nCover: {r.sop}")
+    else:
+        print(km.render())
+    return 0
+
+
+def _cmd_benchmark(args: argparse.Namespace) -> int:
+    from .benchmark import Benchmark
+    bench = Benchmark(args.nvars, n_trials=args.trials, seed=args.seed)
+    all_results = bench.run_trials()
+    print(f"Benchmark: {args.nvars} vars, {args.trials} trials")
+    print()
+    for i, results in enumerate(all_results):
+        print(f"--- Trial {i + 1} ---")
+        print(Benchmark.format_results(results))
+        print()
+    # summary
+    from collections import defaultdict
+    methods = defaultdict(list)
+    for results in all_results:
+        for r in results:
+            methods[r.method].append(r)
+    print("--- Summary (avg) ---")
+    for method, rs in methods.items():
+        avg_lits = sum(r.n_literals for r in rs) / len(rs)
+        avg_time = sum(r.elapsed_ms for r in rs) / len(rs)
+        print(f"  {method:<20} avg_lits={avg_lits:.1f}  avg_time={avg_time:.2f}ms")
+    return 0
+
+
+def _cmd_config(args: argparse.Namespace) -> int:
+    from .config import Config
+    if args.save:
+        cfg = Config()
+        cfg.save(args.save)
+        print(f"Saved default config to {args.save}")
+        return 0
+    if args.load:
+        cfg = Config.from_file(args.load)
+        print(cfg.to_json())
+        return 0
+    cfg = Config()
+    print(cfg.to_json())
+    return 0
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
@@ -244,6 +338,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "truth": _cmd_truth,
         "verify": _cmd_verify,
         "info": _cmd_info,
+        "pos": _cmd_pos,
+        "kmap": _cmd_kmap,
+        "benchmark": _cmd_benchmark,
+        "config": _cmd_config,
     }
     handler = dispatch.get(args.command)
     if handler is None:

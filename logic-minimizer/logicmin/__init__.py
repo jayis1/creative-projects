@@ -26,6 +26,14 @@ from .petrick import PetrickSolver, Product, Term
 from .espresso import Espresso
 from .multi_output import MultiOutputMinimizer, MultiOutputResult
 from .factorizer import Factorizer, FactoredForm
+from .pos import POSMinimizer, POSResult
+from .kmap import KarnaughMap, gray_code
+from .benchmark import Benchmark, BenchmarkResult
+from .config import Config
+from .exceptions import (
+    LogicMinError, ParseError, MinimizationError,
+    InvalidFunctionError, PetrickExpansionError,
+)
 from .parser import parse_truth_table, parse_minterms, parse_sop, parse_pla
 from .cli import main
 
@@ -44,6 +52,18 @@ __all__ = [
     "MultiOutputResult",
     "Factorizer",
     "FactoredForm",
+    "POSMinimizer",
+    "POSResult",
+    "KarnaughMap",
+    "gray_code",
+    "Benchmark",
+    "BenchmarkResult",
+    "Config",
+    "LogicMinError",
+    "ParseError",
+    "MinimizationError",
+    "InvalidFunctionError",
+    "PetrickExpansionError",
     "parse_truth_table",
     "parse_minterms",
     "parse_sop",

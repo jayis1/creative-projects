@@ -1,16 +1,21 @@
 # logic-minimizer — Boolean Logic Minimization Toolkit
 
-A from-scratch boolean logic minimization toolkit implementing the **Quine–McCluskey** exact algorithm, **Petrick's method** for minimum cover selection, an **Espresso-style** heuristic minimizer, **multi-output** minimization with shared implicants, and **multi-level factorization** — all in pure Python with zero dependencies.
+A from-scratch boolean logic minimization toolkit implementing the **Quine–McCluskey** exact algorithm, **Petrick's method** for minimum cover selection, an **Espresso-style** heuristic minimizer, **Product-of-Sums** minimization via De Morgan duality, **multi-output** minimization with shared implicants, **multi-level factorization**, **Karnaugh map** rendering, and **benchmarking** — all in pure Python with zero dependencies.
 
 ## Features
 
-| Algorithm | Description |
-|-----------|-------------|
+| Algorithm / Feature | Description |
+|---------------------|-------------|
 | **Quine–McCluskey** | Exact two-level SOP minimization via the tabular method |
 | **Petrick's Method** | Exact minimum-cost cover of the cyclic core (absorption-pruned product-of-sums expansion) |
 | **Espresso Heuristic** | Expand → Irredundant → Reduce loop for scalable heuristic minimization |
+| **POS Minimization** | Product-of-sums form via De Morgan duality on the off-set |
 | **Multi-Output** | Output-tagged prime implicant generation with shared implicant detection |
 | **Factorizer** | Greedy algebraic extraction for multi-level factored forms |
+| **Karnaugh Map** | ASCII K-map rendering with Gray-code ordering (2–5 variables) and cover highlighting |
+| **Benchmark** | QM vs. Espresso comparison with timing and literal-cost metrics |
+| **Config System** | JSON / TOML / YAML configuration with load/save |
+| **Exception Hierarchy** | Structured exceptions for parse, minimization, and Petrick errors |
 
 ### Additional capabilities
 
@@ -23,6 +28,8 @@ A from-scratch boolean logic minimization toolkit implementing the **Quine–McC
 - Literal cost metric for solution quality comparison
 - JSON output mode for CLI integration
 - Variable names auto-assigned (A, B, C, …) or custom
+- Structured logging (text or JSON format)
+- Custom exception hierarchy (`LogicMinError` → `ParseError`, `MinimizationError`, etc.)
 
 ## Installation
 
@@ -36,22 +43,79 @@ Or use directly with `PYTHONPATH=.`.
 ## Quick Start
 
 ```python
-from logicmin import QuineMcCluskey, BooleanFunction, Espresso
+from logicmin import QuineMcCluskey, BooleanFunction, Espresso, POSMinimizer
 
 # F(A,B,C,D) = Σm(4,8,10,11,12,15) + d(9,14)
 f = BooleanFunction(n_vars=4, minterms=[4, 8, 10, 11, 12, 15], dontcare=[9, 14])
 
-# Exact minimization
+# Exact SOP minimization
 qm = QuineMcCluskey(n_vars=4)
 result = qm.minimize(f)
-print(result.sop)       # "BC'D' + AD' + AC"
-print(result.n_terms)   # 3
-print(result.n_literals)# 7
+print(result.sop)        # "BC'D' + AD' + AC"
+print(result.n_terms)    # 3
+print(result.n_literals) # 7
 
 # Heuristic minimization (scales better for many vars)
 esp = Espresso(n_vars=4)
 result = esp.minimize(f)
-print(result.sop)       # "BC'D' + AD' + AC"
+print(result.sop)        # "BC'D' + AD' + AC"
+
+# POS minimization (via De Morgan duality on off-set)
+pm = POSMinimizer(n_vars=4)
+pos = pm.minimize(f)
+print(pos.pos)           # "(C + D') · (A + C') · (A + B)"
+```
+
+### Karnaugh Map
+
+```python
+from logicmin import KarnaughMap, BooleanFunction, QuineMcCluskey
+
+f = BooleanFunction(n_vars=4, minterms=[4,8,10,11,12,15], dontcare=[9,14])
+km = KarnaughMap(f)
+print(km.render())
+#      A  B |   00    01    11    10
+#    --------------------------------
+#        00 |   0     0     0     0
+#        01 |   1     0     0     0
+#        11 |   1     0     1     -
+#        10 |   1     -     1     1
+
+# Highlight the minimized cover
+qm = QuineMcCluskey(4)
+r = qm.minimize(f)
+print(km.render_with_coverage(r.sop_cubes))
+```
+
+### Multi-Output Minimization
+
+```python
+from logicmin import MultiOutputMinimizer, BooleanFunction
+
+# 2-bit adder: Sum and Carry
+sum_out = BooleanFunction(3, [1,2,4,7], name="sum")
+carry   = BooleanFunction(3, [3,5,6,7], name="carry")
+
+mom = MultiOutputMinimizer(3)
+result = mom.minimize([sum_out, carry])
+print(result.sop)           # per-output SOP list
+print(result.total_literals)
+```
+
+### Benchmarking
+
+```python
+from logicmin import Benchmark
+
+bench = Benchmark(n_vars=4, n_trials=10, seed=42)
+results = bench.run()
+from logicmin.benchmark import Benchmark as B
+print(B.format_results(results))
+# Method               Vars  Terms  Lits   Time(ms)
+# --------------------------------------------------
+# quine-mccluskey         4      3    10       0.09
+# espresso                4      3    10       5.80
+# pos-dual                4      4     9       0.24
 ```
 
 ## How It Works
@@ -82,6 +146,15 @@ For functions with many variables, the exact QM method is exponential. The Espre
 
 The loop continues until no improvement in literal cost is observed.
 
+### POS Minimization
+
+Product-of-sums is minimized by applying QM to the **off-set** (the zeros of the function). The resulting SOP represents the complement of the function; De Morgan's law converts each product term into a sum clause:
+
+```
+F' = A'B + CD'   (SOP of off-set)
+F  = (A + B') · (C' + D)   (POS via De Morgan)
+```
+
 ### Multi-Output Minimization
 
 When several functions share inputs, prime implicants are generated with **output tags** — a cube can only merge with another cube if they serve the same set of outputs. This discovers implicants usable by multiple outputs, reducing total literal cost compared to independent minimization.
@@ -100,23 +173,33 @@ This reduces total literal count at the cost of increasing logic depth.
 ## CLI Usage
 
 ```bash
-# Exact minimization
+# Exact SOP minimization
 logicmin minimize -n 4 -m "4 8 10 11 12 15 d: 9 14"
-
-# With prime implicant listing
-logicmin minimize -n 4 -m "4 8 10 11 12 15 d: 9 14" --show-primes
-
-# JSON output
-logicmin minimize -n 4 -m "4 8 10 11 12 15 d: 9 14" --json
+logicmin minimize -n 4 -m "4 8 10 11 12 15 d: 9 14" --show-primes --json
 
 # Espresso heuristic
 logicmin espresso -n 6 -m "0 1 2 5 6 7 8 9 10 14" --max-iter 100
+
+# POS minimization
+logicmin pos -n 4 -m "4 8 10 11 12 15 d: 9 14"
+
+# Karnaugh map
+logicmin kmap -n 4 -m "4 8 10 11 12 15 d: 9 14"
+logicmin kmap -n 4 -m "4 8 10 11 12 15 d: 9 14" --cover
 
 # Multi-output from PLA file
 logicmin multi circuit.pla
 
 # Factorize a SOP expression
 logicmin factor "AB'C + AC + BC'"
+
+# Benchmark QM vs Espresso
+logicmin benchmark -n 4 -t 10 --seed 42
+
+# Configuration
+logicmin config                          # show default config
+logicmin config --save config.json       # save default config
+logicmin config --load config.json       # load and display config
 
 # Show truth table
 logicmin truth -n 2 -m "1 2"
@@ -167,36 +250,36 @@ Each token is one entry (0, 1, or `-` for don't-care).
 Represents a boolean function. Methods: `from_truth_table()`, `from_sop()`, `eval()`, `truth_table()`.
 
 ### `QuineMcCluskey(n_vars, use_petrick=True)`
-Exact minimizer. `minimize(func)` returns `MinimizationResult` with `.sop`, `.n_terms`, `.n_literals`, `.prime_implicants`, `.essential_implicants`.
+Exact SOP minimizer. `minimize(func)` → `MinimizationResult` with `.sop`, `.n_terms`, `.n_literals`, `.prime_implicants`, `.essential_implicants`.
 
 ### `Espresso(n_vars, max_iter=50, expand_strategy='guarded')`
 Heuristic minimizer. Same `minimize(func)` interface.
 
+### `POSMinimizer(n_vars, use_petrick=True)`
+POS minimizer. `minimize(func)` → `POSResult` with `.pos`, `.n_clauses`, `.n_literals`, `.dual_sop`.
+
 ### `MultiOutputMinimizer(n_vars, use_petrick=True)`
-Multi-output minimizer. `minimize(functions)` returns `MultiOutputResult` with `.per_output`, `.shared_implicants`, `.sop`, `.total_literals`.
+Multi-output minimizer. `minimize(functions)` → `MultiOutputResult` with `.per_output`, `.shared_implicants`, `.sop`, `.total_literals`.
+
+### `KarnaughMap(func)`
+K-map renderer. `render()` for plain, `render_with_coverage(cubes)` for highlighted cover.
 
 ### `Factorizer(n_vars, max_rounds=20)`
-Multi-level factorizer. `factorize(cubes)` or `factorize_sop(sop_string)` returns `FactoredForm` with `.to_string(names)` and `.literal_count()`.
+Multi-level factorizer. `factorize(cubes)` or `factorize_sop(sop_string)` → `FactoredForm`.
+
+### `Benchmark(n_vars, n_trials, seed)`
+Benchmark runner. `run()` → `List[BenchmarkResult]`. `run_trials()` for multiple random functions.
+
+### `Config`
+Configuration dataclass. `from_file(path)`, `save(path)`, `to_json()`, `to_dict()`. Supports JSON/TOML/YAML.
 
 ### `PetrickSolver`
-Standalone Petrick's method solver. `solve(clauses)` returns minimum-cost covers as lists of frozensets.
+Standalone Petrick's method solver. `solve(clauses)` returns minimum-cost covers.
+
+### Exceptions
+`LogicMinError` (base) → `ParseError`, `MinimizationError`, `InvalidFunctionError`, `PetrickExpansionError`.
 
 ## Examples
-
-### 2-bit Adder (multi-output)
-
-```python
-from logicmin import MultiOutputMinimizer, BooleanFunction
-
-# Sum and Carry outputs of a 2-bit adder
-# A B C_in → Sum Carry
-sum_out = BooleanFunction(3, [1,2,4,7], name="sum")    # XOR
-carry   = BooleanFunction(3, [3,5,6,7], name="carry")  # majority
-
-mom = MultiOutputMinimizer(3)
-result = mom.minimize([sum_out, carry])
-print(result.sop)  # ["A'B'C + A'BC' + AB'C' + ABC", "AB + AC + BC"]
-```
 
 ### 7-segment decoder (multi-output with don't-cares)
 
@@ -211,7 +294,19 @@ seg_a = BooleanFunction(
     name="seg_a",
 )
 qm = QuineMcCluskey(4)
-print(qm.minimize(seg_a).sop)  # minimal SOP for segment a
+print(qm.minimize(seg_a).sop)
+```
+
+### Configuration
+
+```python
+from logicmin import Config
+
+cfg = Config(minimizer="espresso", n_vars=6, espresso_max_iter=100)
+cfg.save("my_config.json")
+
+cfg2 = Config.from_file("my_config.json")
+print(cfg2.minimizer)  # "espresso"
 ```
 
 ## Testing
