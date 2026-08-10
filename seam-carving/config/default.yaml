@@ -1,0 +1,35 @@
+# Seam Carving Configuration
+# Edit this file and pass it to the CLI: --config config.yaml
+
+# Energy function: sobel, prewitt, laplacian, gradient, forward, hofer, entropy
+energy_type: sobel
+
+# Target dimensions (null = no change)
+target_width: null
+target_height: null
+
+# Mask files (null = no mask)
+protect_mask_path: null
+remove_mask_path: null
+
+# Visualization output (null = no output)
+energy_map_path: null
+seam_vis_path: null
+
+# Animation
+animation_dir: null
+animation_format: png
+
+# Output format: ppm, pgm, png
+output_format: ppm
+
+# Logging
+log_level: INFO
+log_file: null
+json_logs: false
+
+# Object removal
+max_iterations: 500
+
+# Record seam history for debugging/animation
+record_seams: false

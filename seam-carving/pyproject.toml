@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "seamcarving"
+version = "3.0.0"
+description = "Content-aware image resizing via seam carving (Avidan & Shamir 2007)"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Creative Coder Pipeline"},
+]
+keywords = [
+    "seam-carving",
+    "content-aware",
+    "image-resizing",
+    "retargeting",
+    "computer-vision",
+    "image-processing",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Multimedia :: Graphics",
+    "Topic :: Scientific/Engineering :: Image Processing",
+]
+dependencies = [
+    "numpy>=1.20",
+]
+
+[project.optional-dependencies]
+yaml = ["pyyaml>=5.0"]
+dev = ["pytest>=7.0", "pyyaml>=5.0"]
+
+[project.scripts]
+seamcarving = "seamcarving.cli:main"
+
+[tool.setuptools]
+packages = ["seamcarving"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"

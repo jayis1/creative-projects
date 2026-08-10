@@ -1,0 +1,17 @@
+{
+  "energy_type": "sobel",
+  "target_width": null,
+  "target_height": null,
+  "protect_mask_path": null,
+  "remove_mask_path": null,
+  "energy_map_path": null,
+  "seam_vis_path": null,
+  "animation_dir": null,
+  "animation_format": "png",
+  "output_format": "ppm",
+  "log_level": "INFO",
+  "log_file": null,
+  "json_logs": false,
+  "max_iterations": 500,
+  "record_seams": false
+}
