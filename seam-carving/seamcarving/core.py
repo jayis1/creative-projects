@@ -84,7 +84,13 @@ def read_ppm(path: str) -> np.ndarray:
     if maxval != 255:
         raise InvalidImageError(f"Unsupported maxval {maxval}, expected 255")
     expected = h * w * channels
-    pixels = np.frombuffer(data[idx:], dtype=np.uint8, count=expected)
+    try:
+        pixels = np.frombuffer(data[idx:], dtype=np.uint8, count=expected)
+    except ValueError as e:
+        raise InvalidImageError(
+            f"Truncated file {path}: expected {expected} bytes of pixel data, "
+            f"but only {len(data) - idx} available"
+        ) from e
     return pixels.reshape(h, w, channels).copy()
 
 
@@ -116,14 +122,21 @@ def write_ppm(path: str, img: np.ndarray) -> None:
 # ---------------------------------------------------------------------------
 
 def _to_gray(img: np.ndarray) -> np.ndarray:
-    """Convert RGB image to grayscale using Rec. 601 luminance weights."""
+    """Convert RGB image to grayscale using Rec. 601 luminance weights.
+
+    Uses integer arithmetic internally to avoid floating-point precision
+    artifacts (e.g., 128*0.299 + 128*0.587 + 128*0.114 != 128.0 exactly),
+    then converts to float64 for downstream gradient computation.
+    """
     if img.shape[2] == 1:
         return img[:, :, 0].astype(np.float64)
-    return (
-        img[:, :, 0].astype(np.float64) * 0.299
-        + img[:, :, 1].astype(np.float64) * 0.587
-        + img[:, :, 2].astype(np.float64) * 0.114
+    # Integer-weighted sum: 299 + 587 + 114 = 1000
+    gray_int = (
+        img[:, :, 0].astype(np.int32) * 299
+        + img[:, :, 1].astype(np.int32) * 587
+        + img[:, :, 2].astype(np.int32) * 114
     )
+    return gray_int.astype(np.float64) / 1000.0
 
 
 def _sobel_energy(gray: np.ndarray) -> np.ndarray:
@@ -454,12 +467,16 @@ class SeamCarver:
                 candidates.append(j + 1)
             seam[i] = min(candidates, key=lambda c: M[i, c])
 
-        # Record the seam cost for quality metrics
-        cost = float(M[-1, seam[-1]])
         return seam
 
     def _find_horizontal_seam(self) -> np.ndarray:
-        """Find the lowest-energy horizontal seam (transpose, find vertical)."""
+        """Find the lowest-energy horizontal seam (transpose, find vertical).
+
+        Note: We transpose the image and masks, call _find_vertical_seam (which
+        sets self.energy on the transposed image), then transpose everything back.
+        After transposing back, self.energy is stale (it has the transposed shape),
+        so we clear it to prevent dimension mismatches in subsequent operations.
+        """
         self.image = np.transpose(self.image, (1, 0, 2))
         self.h, self.w = self.w, self.h
         if self.protect_mask is not None:
@@ -474,6 +491,9 @@ class SeamCarver:
             self.protect_mask = self.protect_mask.T
         if self.remove_mask is not None:
             self.remove_mask = self.remove_mask.T
+        # Clear stale energy map (it was computed on the transposed image and
+        # has dimensions (w, h) instead of (h, w))
+        self.energy = None
         return seam
 
     # -- seam removal (vectorized) ------------------------------------------
@@ -511,19 +531,24 @@ class SeamCarver:
         """
         Remove a horizontal seam (height decreases by 1).
         Vectorized using boolean mask.
-        Returns the seam cost.
+        Returns the seam cost (total energy of the removed seam).
+
+        Note: self.energy may be None after _find_horizontal_seam (which clears
+        it because the energy was computed on the transposed image). In that case,
+        we recompute the energy here for accurate cost tracking.
         """
         h, w, c = self.image.shape
         mask = np.ones((h, w), dtype=bool)
         mask[seam, np.arange(w)] = False
 
-        # Compute seam cost: we need the energy map for the current (non-transposed)
-        # image. self.energy may be stale after horizontal seam finding (which
-        # transposes internally), so recompute if dimensions don't match.
-        if self.energy is not None and self.energy.shape == (h, w):
-            cost = float(self.energy[seam, np.arange(w)].sum())
+        # Compute seam cost: self.energy may be stale or None after horizontal
+        # seam finding (which transposes internally and clears energy).
+        # Recompute if needed for accurate cost tracking.
+        if self.energy is None or self.energy.shape != (h, w):
+            energy = self._compute_energy()
         else:
-            cost = 0.0
+            energy = self.energy
+        cost = float(energy[seam, np.arange(w)].sum())
 
         self.image = self.image[mask].reshape(h - 1, w, c)
         self.h -= 1
@@ -728,10 +753,11 @@ class SeamCarver:
             cols_with_mask = int(np.any(self.remove_mask, axis=0).sum())
             if cols_with_mask >= rows_with_mask:
                 seam = self._find_vertical_seam()
-                self._remove_vertical_seam(seam)
+                cost = self._remove_vertical_seam(seam)
             else:
                 seam = self._find_horizontal_seam()
-                self._remove_horizontal_seam(seam)
+                cost = self._remove_horizontal_seam(seam)
+            self.seam_costs.append(cost)  # Track costs for quality metrics
             self.num_seams_carved += 1
             iterations += 1
 
@@ -838,7 +864,12 @@ class SeamCarver:
 
 def resize_width(image: np.ndarray, target_width: int,
                  energy_type: EnergyType = EnergyType.SOBEL) -> np.ndarray:
-    """Resize image to target width using seam carving."""
+    """Resize image to target width using seam carving.
+
+    Raises ValueError if target_width <= 0.
+    """
+    if target_width <= 0:
+        raise ValueError(f"target_width must be positive, got {target_width}")
     h, w = image.shape[:2]
     diff = target_width - w
     if diff == 0:
@@ -852,7 +883,12 @@ def resize_width(image: np.ndarray, target_width: int,
 
 def resize_height(image: np.ndarray, target_height: int,
                   energy_type: EnergyType = EnergyType.SOBEL) -> np.ndarray:
-    """Resize image to target height using seam carving."""
+    """Resize image to target height using seam carving.
+
+    Raises ValueError if target_height <= 0.
+    """
+    if target_height <= 0:
+        raise ValueError(f"target_height must be positive, got {target_height}")
     h, w = image.shape[:2]
     diff = target_height - h
     if diff == 0:

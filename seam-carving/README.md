@@ -196,6 +196,50 @@ seam-carving/
 └── README.md            # This file
 ```
 
+## Known Issues (Resolved)
+
+The following bugs were identified during the bug hunt phase and have been fixed:
+
+1. **Floating-point precision in grayscale conversion** — The original `_to_gray` used
+   floating-point weights (0.299, 0.587, 0.114) which caused tiny precision errors
+   (~1e-14) for uniform images, making the Sobel energy non-zero when it should be
+   exactly zero. **Fix**: Rewrote `_to_gray` using integer arithmetic
+   (`(R*299 + G*587 + B*114) / 1000`) to eliminate floating-point artifacts.
+
+2. **Stale energy map after horizontal seam finding** — `_find_horizontal_seam`
+   transposes the image, calls `_find_vertical_seam` (which sets `self.energy` on
+   the transposed image), then transposes back — but left `self.energy` with the
+   transposed dimensions `(w, h)` instead of `(h, w)`. This caused dimension
+   mismatches in subsequent operations and incorrect cost tracking. **Fix**: Clear
+   `self.energy = None` after transposing back, and recompute energy in
+   `_remove_horizontal_seam` when needed for cost tracking.
+
+3. **`remove_object` didn't track seam costs** — The `remove_object` method called
+   `_remove_vertical_seam` and `_remove_horizontal_seam` but discarded the returned
+   cost values, so `seam_costs` remained empty after object removal, making quality
+   metrics inaccurate. **Fix**: Append the returned cost to `self.seam_costs` in
+   the removal loop.
+
+4. **Dead code in `_find_vertical_seam`** — A `cost` variable was computed
+   (`float(M[-1, seam[-1]])`) but never returned or used, as cost is properly
+   computed in `_remove_vertical_seam`. **Fix**: Removed the dead code.
+
+5. **Missing validation in `resize_width` and `resize_height`** — These functions
+   didn't validate that `target_width`/`target_height` was positive, which could
+   lead to confusing errors or undefined behavior. **Fix**: Added explicit
+   `ValueError` for non-positive target dimensions.
+
+6. **Unclear error for truncated PPM/PGM files** — `read_ppm` passed a raw
+   `ValueError` from `np.frombuffer` when the file had fewer pixels than expected,
+   with no context about what went wrong. **Fix**: Wrapped the call in
+   `try/except ValueError` and raise `InvalidImageError` with a descriptive message
+   showing expected vs. available bytes.
+
+7. **Seam insertion index bug (Phase 1)** — `insert_vertical` used
+   `seams_to_insert.index(seam)` to find the current seam's position, which fails
+   on numpy arrays (ambiguous truth value). **Fix**: Replaced with
+   `enumerate()` for index tracking.
+
 ## License
 
 MIT
