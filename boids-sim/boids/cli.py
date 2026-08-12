@@ -1,6 +1,19 @@
 """Command-line interface for the boids flocking simulation.
 
-Enhanced v2.0: config files, presets, save/load, parameter sweep, animation export.
+Enhanced v3.0: animated SVG, stats tracking, multi-species, path following,
+quadtree spatial index, structured logging, JSON state export.
+
+Subcommands:
+    run       — Run simulation and render frames (SVG/PPM/ASCII/JSON)
+    stats     — Run N steps and print JSON statistics
+    ascii     — Live terminal ASCII animation
+    save      — Run and save final state to JSON
+    sweep     — Parameter sweep with range or list values
+    presets   — List available named presets
+    config    — Save a config template file
+    animate   — Generate animated SVG from simulation
+    track     — Run simulation and output time-series statistics
+    benchmark — Benchmark spatial index performance
 """
 
 from __future__ import annotations
@@ -8,14 +21,21 @@ import argparse
 import json
 import sys
 import os
+import logging
 
 from boids.simulation import BoidSimulation
 from boids.config import SimulationConfig, load_config, save_config, get_preset, list_presets
-from boids.renderer import ASCIIRenderer, SVGRenderer, PPMRenderer, TrailSVGRenderer
+from boids.renderer import (
+    ASCIIRenderer, SVGRenderer, PPMRenderer, TrailSVGRenderer,
+    AnimatedSVGRenderer, JSONRenderer,
+)
+
+logger = logging.getLogger("boids.cli")
 
 
 def cmd_run(args: argparse.Namespace) -> int:
     """Run the simulation and render frames."""
+    _setup_logging(args)
     cfg = _build_config(args)
     sim = BoidSimulation(cfg)
 
@@ -31,12 +51,18 @@ def cmd_run(args: argparse.Namespace) -> int:
     if args.goal:
         sim.set_goal(args.goal[0], args.goal[1])
 
+    # set paths if provided
+    if args.path:
+        waypoints = [(args.path[i], args.path[i+1]) for i in range(0, len(args.path)-1, 2)]
+        sim.set_all_paths(waypoints, loop=args.path_loop)
+
     os.makedirs(args.output, exist_ok=True)
 
     ascii_renderer = ASCIIRenderer(args.cols, args.rows)
     svg_renderer = SVGRenderer()
     trail_svg_renderer = TrailSVGRenderer()
     ppm_renderer = PPMRenderer()
+    json_renderer = JSONRenderer()
 
     for step in range(args.steps):
         sim.step()
@@ -56,8 +82,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                 ppm_renderer.render(sim, os.path.join(args.output, f"frame_{step:05d}.ppm"), scale=args.scale)
             # JSON state
             if args.json:
-                with open(os.path.join(args.output, f"frame_{step:05d}.json"), "w") as f:
-                    json.dump(sim.to_dict(), f, indent=2)
+                json_renderer.render(sim, os.path.join(args.output, f"frame_{step:05d}.json"))
 
     # save final state
     if args.save:
@@ -79,6 +104,7 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 def cmd_stats(args: argparse.Namespace) -> int:
     """Run N steps and report statistics."""
+    _setup_logging(args)
     cfg = _build_config(args)
     sim = BoidSimulation(cfg)
     for _ in range(args.steps):
@@ -90,6 +116,7 @@ def cmd_stats(args: argparse.Namespace) -> int:
 
 def cmd_ascii(args: argparse.Namespace) -> int:
     """Run and display ASCII animation in terminal."""
+    _setup_logging(args)
     cfg = _build_config(args)
     sim = BoidSimulation(cfg)
     renderer = ASCIIRenderer(args.cols, args.rows)
@@ -109,6 +136,7 @@ def cmd_ascii(args: argparse.Namespace) -> int:
 
 def cmd_save(args: argparse.Namespace) -> int:
     """Run N steps and save the final state to a JSON file."""
+    _setup_logging(args)
     cfg = _build_config(args)
     sim = BoidSimulation(cfg)
     if args.obstacles:
@@ -130,6 +158,7 @@ def cmd_save(args: argparse.Namespace) -> int:
 
 def cmd_sweep(args: argparse.Namespace) -> int:
     """Parameter sweep: vary one parameter and report statistics for each value."""
+    _setup_logging(args)
     cfg = _build_config(args)
     param = args.param
     values = _parse_sweep_values(args.values)
@@ -171,9 +200,91 @@ def cmd_config(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_animate(args: argparse.Namespace) -> int:
+    """Generate an animated SVG from the simulation."""
+    _setup_logging(args)
+    cfg = _build_config(args)
+    sim = BoidSimulation(cfg)
+    if args.obstacles:
+        for pair in args.obstacles:
+            x, y, r = pair
+            sim.add_obstacle(x, y, r)
+    if args.predators:
+        for pair in args.predators:
+            x, y = pair
+            sim.add_predator(x, y)
+    if args.goal:
+        sim.set_goal(args.goal[0], args.goal[1])
+    renderer = AnimatedSVGRenderer(fps=args.fps, loop=not args.no_loop)
+    renderer.render(sim, args.output, steps=args.steps)
+    print(f"Saved animated SVG to {args.output} ({args.steps} frames at {args.fps} fps)")
+    return 0
+
+
+def cmd_track(args: argparse.Namespace) -> int:
+    """Run simulation and output time-series statistics as JSON."""
+    _setup_logging(args)
+    cfg = _build_config(args)
+    sim = BoidSimulation(cfg)
+    if args.predators:
+        for pair in args.predators:
+            x, y = pair
+            sim.add_predator(x, y)
+    for _ in range(args.steps):
+        sim.step()
+    history = sim.tracker.history()
+    ticks = sim.tracker.ticks()
+    output = {
+        "ticks": ticks,
+        "stats": history,
+        "summary": sim.tracker.summary(),
+    }
+    if args.output:
+        with open(args.output, "w") as f:
+            json.dump(output, f, indent=2)
+        print(f"Saved {len(history)} stat snapshots to {args.output}")
+    else:
+        print(json.dumps(output, indent=2))
+    return 0
+
+
+def cmd_benchmark(args: argparse.Namespace) -> int:
+    """Benchmark spatial index performance."""
+    _setup_logging(args)
+    import time
+
+    cfg = _build_config(args)
+    print(f"Benchmarking with {cfg.num_boids} boids, {args.steps} steps\n")
+
+    for index_type in ("grid", "quadtree"):
+        bench_cfg = SimulationConfig.from_dict(cfg.to_dict())
+        bench_cfg.spatial_index = index_type
+        sim = BoidSimulation(bench_cfg)
+        # Warmup
+        sim.step()
+        start = time.perf_counter()
+        for _ in range(args.steps):
+            sim.step()
+        elapsed = time.perf_counter() - start
+        steps_per_sec = args.steps / elapsed
+        ms_per_step = (elapsed / args.steps) * 1000
+        print(f"  {index_type:10s}: {ms_per_step:.2f} ms/step  ({steps_per_sec:.0f} steps/s)")
+    return 0
+
+
 # --------------------------------------------------------------------------- #
 #  Helpers
 # --------------------------------------------------------------------------- #
+def _setup_logging(args: argparse.Namespace) -> None:
+    """Configure logging level from CLI args."""
+    level = logging.WARNING
+    if getattr(args, "verbose", 0) >= 2:
+        level = logging.DEBUG
+    elif getattr(args, "verbose", 0) >= 1:
+        level = logging.INFO
+    logging.basicConfig(level=level, format="[%(name)s] %(levelname)s: %(message)s")
+
+
 def _build_config(args: argparse.Namespace) -> SimulationConfig:
     """Build config from CLI args, optionally loading from file or preset."""
     # Start from config file if specified
@@ -203,6 +314,10 @@ def _build_config(args: argparse.Namespace) -> SimulationConfig:
         cfg.use_wrap = True
     if getattr(args, "trail", None) is not None:
         cfg.trail_length = args.trail
+    if getattr(args, "spatial_index", None) is not None:
+        cfg.spatial_index = args.spatial_index
+    if getattr(args, "num_species", None) is not None:
+        cfg.num_species = args.num_species
     return cfg
 
 
@@ -239,7 +354,7 @@ def _parse_sweep_values(values_str: str) -> list:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="boids-sim",
-        description="Boids flocking simulation v2.0 — Reynolds 1987",
+        description="Boids flocking simulation v3.0 — Reynolds 1987",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -256,6 +371,9 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--trail", type=int, default=None, help="Trail length (0=off)")
         p.add_argument("--config-file", type=str, default=None, help="Load config from JSON/YAML/TOML file")
         p.add_argument("--preset", type=str, default=None, help="Use a named preset")
+        p.add_argument("--spatial-index", type=str, default=None, choices=["grid", "quadtree"], help="Spatial index type")
+        p.add_argument("--num-species", type=int, default=None, help="Number of species for multi-species flocking")
+        p.add_argument("-v", "--verbose", action="count", default=0, help="Increase verbosity (-v info, -vv debug)")
 
     # run
     p_run = subparsers.add_parser("run", help="Run simulation and render frames")
@@ -275,6 +393,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("--obstacles", nargs=3, type=float, action="append", metavar=("X", "Y", "R"), help="Add obstacle (repeatable)")
     p_run.add_argument("--predators", nargs=2, type=float, action="append", metavar=("X", "Y"), help="Add predator (repeatable)")
     p_run.add_argument("--goal", nargs=2, type=float, metavar=("X", "Y"), help="Set goal position")
+    p_run.add_argument("--path", nargs="+", type=float, metavar="X Y ...", help="Waypoint coords for path following (x1 y1 x2 y2 ...)")
+    p_run.add_argument("--path-loop", action="store_true", default=False, help="Loop the path")
     p_run.set_defaults(func=cmd_run)
 
     # stats
@@ -319,6 +439,32 @@ def build_parser() -> argparse.ArgumentParser:
     add_common(p_config)
     p_config.add_argument("output", type=str, help="Output config file path (.json/.yaml/.toml)")
     p_config.set_defaults(func=cmd_config)
+
+    # animate
+    p_animate = subparsers.add_parser("animate", help="Generate animated SVG")
+    add_common(p_animate)
+    p_animate.add_argument("-s", "--steps", type=int, default=100, help="Number of steps to animate")
+    p_animate.add_argument("-o", "--output", type=str, default="flock.svg", help="Output SVG file")
+    p_animate.add_argument("--fps", type=float, default=10.0, help="Frames per second")
+    p_animate.add_argument("--no-loop", action="store_true", default=False, help="Don't loop animation")
+    p_animate.add_argument("--obstacles", nargs=3, type=float, action="append", metavar=("X", "Y", "R"), help="Add obstacle")
+    p_animate.add_argument("--predators", nargs=2, type=float, action="append", metavar=("X", "Y"), help="Add predator")
+    p_animate.add_argument("--goal", nargs=2, type=float, metavar=("X", "Y"), help="Set goal")
+    p_animate.set_defaults(func=cmd_animate)
+
+    # track
+    p_track = subparsers.add_parser("track", help="Run simulation and output time-series statistics")
+    add_common(p_track)
+    p_track.add_argument("-s", "--steps", type=int, default=100, help="Number of steps")
+    p_track.add_argument("-o", "--output", type=str, default=None, help="Save results to JSON file")
+    p_track.add_argument("--predators", nargs=2, type=float, action="append", metavar=("X", "Y"), help="Add predator")
+    p_track.set_defaults(func=cmd_track)
+
+    # benchmark
+    p_bench = subparsers.add_parser("benchmark", help="Benchmark spatial index performance")
+    add_common(p_bench)
+    p_bench.add_argument("-s", "--steps", type=int, default=50, help="Steps to benchmark")
+    p_bench.set_defaults(func=cmd_benchmark)
 
     return parser
 

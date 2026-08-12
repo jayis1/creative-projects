@@ -1,20 +1,33 @@
-"""Boids simulation engine — ties boids, spatial hashing, and behaviors together.
+"""Boids simulation engine — ties boids, spatial indexing, and behaviors together.
 
-Enhanced v2.0: uses enhanced SimulationConfig, supports save/load, wander behavior,
-config presets, trail rendering, improved neighbor queries with unified perception radius.
+Enhanced v3.0:
+    - Pluggable spatial index (grid or quadtree)
+    - Multi-species flocking
+    - Path following behavior
+    - Event/callback system
+    - Predator-catch-boid collision detection
+    - Arrival behavior
+    - Stats tracker integration
+    - Structured logging
 """
 
 from __future__ import annotations
 import json
+import logging
 import math
 import random
 from dataclasses import dataclass, field
-from typing import Optional, Any
+from typing import Optional, Any, Callable
 
 from boids.boid import Boid, BoidState
 from boids.config import SimulationConfig
 from boids.vector import Vector2
 from boids.spatial_hash import SpatialHashGrid
+from boids.spatial_index import SpatialIndex
+from boids.events import EventBus
+from boids.stats_tracker import StatsTracker
+
+logger = logging.getLogger("boids.simulation")
 
 
 @dataclass
@@ -28,6 +41,18 @@ class Obstacle:
         return {"pos": [self.pos.x, self.pos.y], "radius": self.radius}
 
 
+def _make_spatial_index(cfg: SimulationConfig) -> SpatialIndex:
+    """Create the configured spatial index implementation."""
+    index_type = getattr(cfg, "spatial_index", "grid")
+    if index_type == "quadtree":
+        from boids.quadtree import QuadTree
+        return QuadTree(cfg.width, cfg.height)
+    elif index_type == "grid":
+        return SpatialHashGrid(cfg.cell_size)
+    else:
+        raise ValueError(f"Unknown spatial_index '{index_type}' (use 'grid' or 'quadtree')")
+
+
 class BoidSimulation:
     """Manages a collection of boids and steps the simulation forward.
 
@@ -37,12 +62,15 @@ class BoidSimulation:
         for _ in range(100):
             sim.step()
 
-    Enhanced v2.0:
-        - Config from boids.config (with presets, save/load)
-        - Wander behavior
-        - Save/load simulation state to JSON
-        - Trail support
-        - Improved stats with flock centroid and spread
+    Enhanced v3.0:
+        - Pluggable spatial index (grid or quadtree via config.spatial_index)
+        - Multi-species flocking (boids only flock with same species)
+        - Path following behavior (assign paths to boids)
+        - Event/callback system (sim.events.on("step_end", callback))
+        - Predator-catch-boid detection with configurable callback
+        - Arrival behavior
+        - Stats tracker (sim.tracker) records time-series data automatically
+        - Structured logging via logging module
     """
 
     def __init__(self, config: Optional[SimulationConfig] = None):
@@ -51,26 +79,36 @@ class BoidSimulation:
         self.obstacles: list[Obstacle] = []
         self.predators: list[Boid] = []
         self.goal: Optional[Vector2] = None
-        self.grid = SpatialHashGrid(self.config.cell_size)
+        self.grid: SpatialIndex = _make_spatial_index(self.config)
         self.tick = 0
+        self.events = EventBus()
+        self.tracker = StatsTracker()
+        self._rng = random.Random()
         self._populate()
+        logger.debug("BoidSimulation initialized with %d boids", len(self.boids))
 
     def _populate(self) -> None:
-        """Initialize boids with random positions and velocities."""
-        rng = random.Random()
+        """Initialize boids with random positions and velocities.
+
+        If ``num_species > 1``, boids are evenly distributed across species.
+        """
+        rng = self._rng
         cfg = self.config
-        for _ in range(cfg.num_boids):
+        num_species = max(1, getattr(cfg, "num_species", 1))
+        for i in range(cfg.num_boids):
             x = rng.uniform(0, cfg.width)
             y = rng.uniform(0, cfg.height)
             angle = rng.uniform(0, math.tau)
             speed = rng.uniform(1.0, cfg.max_speed)
             vx = math.cos(angle) * speed
             vy = math.sin(angle) * speed
+            species = (i % num_species) if num_species > 1 else 0
             b = Boid(
                 x, y, vx, vy,
                 max_speed=cfg.max_speed,
                 max_force=cfg.max_force,
                 radius=cfg.radius,
+                species=species,
                 trail_length=cfg.trail_length,
             )
             self.boids.append(b)
@@ -79,11 +117,18 @@ class BoidSimulation:
     #  Setup helpers
     # ------------------------------------------------------------------ #
     def add_obstacle(self, x: float, y: float, radius: float) -> None:
-        self.obstacles.append(Obstacle(Vector2(x, y), radius))
+        """Add a circular obstacle at (x, y) with given *radius*."""
+        if radius <= 0:
+            raise ValueError(f"obstacle radius must be positive, got {radius}")
+        obs = Obstacle(Vector2(x, y), radius)
+        self.obstacles.append(obs)
+        self.events.emit("obstacle_added", obs)
+        logger.debug("Added obstacle at (%.1f, %.1f) r=%.1f", x, y, radius)
 
     def add_predator(self, x: float, y: float) -> None:
+        """Add a predator at position (x, y)."""
         cfg = self.config
-        angle = random.uniform(0, math.tau)
+        angle = self._rng.uniform(0, math.tau)
         pred = Boid(
             x, y,
             math.cos(angle) * 2.0, math.sin(angle) * 2.0,
@@ -94,37 +139,73 @@ class BoidSimulation:
             trail_length=cfg.trail_length,
         )
         self.predators.append(pred)
+        self.events.emit("predator_added", pred)
+        logger.debug("Added predator at (%.1f, %.1f)", x, y)
 
     def set_goal(self, x: float, y: float) -> None:
+        """Set the goal position that boids will seek toward."""
         self.goal = Vector2(x, y)
 
     def clear_goal(self) -> None:
+        """Remove the current goal."""
         self.goal = None
 
-    def add_boid(self, x: float, y: float) -> None:
-        """Add a single boid at position (x, y)."""
-        angle = random.uniform(0, math.tau)
-        speed = random.uniform(1.0, self.config.max_speed)
+    def add_boid(self, x: float, y: float, species: int = 0) -> None:
+        """Add a single boid at position (x, y).
+
+        Args:
+            x: x-coordinate
+            y: y-coordinate
+            species: species identifier (0 = default, no species filtering)
+        """
+        angle = self._rng.uniform(0, math.tau)
+        speed = self._rng.uniform(1.0, self.config.max_speed)
         b = Boid(
             x, y,
             math.cos(angle) * speed, math.sin(angle) * speed,
             max_speed=self.config.max_speed,
             max_force=self.config.max_force,
             radius=self.config.radius,
+            species=species,
             trail_length=self.config.trail_length,
         )
         self.boids.append(b)
+        self.events.emit("boid_added", b)
 
     def remove_boid(self, index: int) -> None:
         """Remove the boid at *index* from the flock."""
         if 0 <= index < len(self.boids):
-            self.boids.pop(index)
+            removed = self.boids.pop(index)
+            self.events.emit("boid_removed", removed)
+
+    def set_boid_path(self, index: int, waypoints: list[tuple[float, float]]) -> None:
+        """Assign a path of waypoints to the boid at *index*.
+
+        The boid will follow these waypoints using the path-following behavior.
+        """
+        if 0 <= index < len(self.boids):
+            self.boids[index].path = [Vector2(x, y) for x, y in waypoints]
+            self.boids[index].path_index = 0
+
+    def set_all_paths(self, waypoints: list[tuple[float, float]], loop: bool = False) -> None:
+        """Assign the same path to all boids.
+
+        Args:
+            waypoints: list of (x, y) coordinates
+            loop: if True, the path loops back to the start
+        """
+        path = [Vector2(x, y) for x, y in waypoints]
+        for b in self.boids:
+            b.path = path
+            b.path_index = 0
+        # Also update config for loop behavior
+        self.config.path_loop = loop
 
     # ------------------------------------------------------------------ #
     #  Simulation step
     # ------------------------------------------------------------------ #
     def _rebuild_grid(self) -> None:
-        """Clear and re-populate the spatial hash grid with all boids and predators."""
+        """Clear and re-populate the spatial index with all boids and predators."""
         self.grid.clear()
         for b in self.boids:
             self.grid.insert(b, b.pos.x, b.pos.y)
@@ -132,7 +213,7 @@ class BoidSimulation:
             self.grid.insert(p, p.pos.x, p.pos.y)
 
     def _get_neighbors(self, boid: Boid, perception: float) -> list[Boid]:
-        """Query the spatial hash for candidate neighbors within *perception*.
+        """Query the spatial index for candidate neighbors within *perception*.
 
         Uses a distance-squared comparison to avoid sqrt calls.
         """
@@ -154,20 +235,21 @@ class BoidSimulation:
         """Advance the simulation by one tick.
 
         For each boid, computes separation, alignment, cohesion, obstacle
-        avoidance, predator evasion, goal seeking, wander, and boundary
-        forces, sums them with configurable weights, and integrates.
+        avoidance, predator evasion, goal seeking, path following, wander,
+        and boundary forces, sums them with configurable weights, and integrates.
+
+        Fires events: "step_start" at the beginning, "step_end" at the end,
+        and "collision" if a predator catches a boid.
         """
         self.tick += 1
         cfg = self.config
+        self.events.emit("step_start", self.tick)
         self._rebuild_grid()
 
-        # FIX: removed unused all_neighbors_cache dict that wasted memory
-        # each tick (was populated but never read after population).
         max_perception = max(cfg.sep_perception, cfg.ali_perception, cfg.coh_perception)
 
         for boid in self.boids:
             # Query once with the largest radius and reuse for all behaviors
-            # FIX: removed unused cache storage
             neighbors = self._get_neighbors(boid, max_perception)
 
             sep = boid.separation(neighbors, cfg.sep_perception)
@@ -177,6 +259,14 @@ class BoidSimulation:
             boid.apply_force(sep * cfg.w_sep)
             boid.apply_force(ali * cfg.w_ali)
             boid.apply_force(coh * cfg.w_coh)
+
+            # path following
+            if boid.path is not None and cfg.w_path > 0:
+                path_force = boid.follow_path(
+                    loop=cfg.path_loop,
+                    arrival_radius=cfg.path_arrival_radius,
+                )
+                boid.apply_force(path_force * cfg.w_path)
 
             # wander
             if cfg.w_wander > 0:
@@ -213,10 +303,18 @@ class BoidSimulation:
         for pred in self.predators:
             self._update_predator(pred)
 
+        # detect predator-catch-boid collisions
+        self._detect_catches()
+
+        # Record stats
+        self.tracker.record(self.tick, self.stats())
+
+        self.events.emit("step_end", self.tick)
+
     def _update_predator(self, pred: Boid) -> None:
         """Predators wander and chase the nearest boid within chase radius."""
         cfg = self.config
-        # find nearest boid via spatial hash
+        # find nearest boid via spatial index
         candidates = self.grid.query(pred.pos.x, pred.pos.y, cfg.predator_chase_radius)
         nearest = None
         nearest_d = float("inf")
@@ -243,6 +341,25 @@ class BoidSimulation:
             bf = pred.boundary_force(cfg.width, cfg.height, cfg.boundary_margin)
             pred.apply_force(bf * 2.0)
         pred.update(cfg.dt)
+
+    def _detect_catches(self) -> None:
+        """Detect when a predator is close enough to catch a boid.
+
+        A catch occurs when a predator's position is within its radius + the
+        boid's radius. Caught boids emit a "collision" event but are NOT removed
+        automatically — the caller can handle this via the event callback.
+        """
+        if not self.predators or not self.boids:
+            return
+        for pred in self.predators:
+            catch_dist = pred.radius + self.config.radius
+            catch_sq = catch_dist * catch_dist
+            for b in self.boids:
+                if b.kind == "predator":
+                    continue
+                d_sq = Vector2.dist_sq(pred.pos, b.pos)
+                if d_sq <= catch_sq:
+                    self.events.emit("collision", pred, b)
 
     def _wrap(self, boid: Boid) -> None:
         """Toroidal wrap: boids that exit one side re-enter the opposite."""
@@ -316,6 +433,7 @@ class BoidSimulation:
         """Save simulation state to a JSON file."""
         with open(path, "w") as f:
             json.dump(self.to_dict(), f, indent=2)
+        logger.info("Saved simulation state to %s", path)
 
     @classmethod
     def load(cls, path: str) -> "BoidSimulation":
@@ -332,8 +450,11 @@ class BoidSimulation:
         sim.predators = []
         sim.obstacles = []
         sim.goal = None
-        sim.grid = SpatialHashGrid(cfg.cell_size)
+        sim.grid = _make_spatial_index(cfg)
         sim.tick = data.get("tick", 0)
+        sim.events = EventBus()
+        sim.tracker = StatsTracker()
+        sim._rng = random.Random()
 
         for bdata in data.get("boids", []):
             state = BoidState(
@@ -344,6 +465,8 @@ class BoidSimulation:
                 max_force=bdata["max_force"],
                 radius=bdata["radius"],
                 kind=bdata["kind"],
+                species=bdata.get("species", 0),
+                path_index=bdata.get("path_index", 0),
             )
             sim.boids.append(Boid.restore(state, trail_length=cfg.trail_length))
 
@@ -365,4 +488,5 @@ class BoidSimulation:
         if data.get("goal"):
             sim.goal = Vector2(data["goal"][0], data["goal"][1])
 
+        logger.info("Loaded simulation state from %s (%d boids)", path, len(sim.boids))
         return sim

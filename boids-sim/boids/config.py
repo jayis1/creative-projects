@@ -60,6 +60,21 @@ class SimulationConfig:
     predator_chase_radius: float = 200.0
     predator_panic_dist: float = 80.0
 
+    # Path following
+    w_path: float = 1.0
+    path_arrival_radius: float = 20.0
+    path_loop: bool = False
+
+    # Species
+    num_species: int = 1  # 1 = single species (all boids interact)
+
+    # Arrival behavior
+    w_arrive: float = 0.5
+    arrive_slow_radius: float = 100.0
+
+    # Spatial index type: "grid" or "quadtree"
+    spatial_index: str = "grid"
+
     # Trail rendering
     trail_length: int = 0  # 0 = disabled
     trail_fade: bool = True
@@ -138,6 +153,27 @@ PRESETS: dict[str, dict[str, Any]] = {
         "num_boids": 200, "max_speed": 4.5,
         "w_sep": 2.0, "w_ali": 1.0, "w_coh": 0.8,
         "w_flee": 5.0, "predator_panic_dist": 120,
+        "use_wrap": True,
+    },
+
+    "multi-species": {
+        "num_boids": 200, "num_species": 3,
+        "max_speed": 4.0, "max_force": 0.2,
+        "w_sep": 1.8, "w_ali": 1.2, "w_coh": 1.2,
+        "use_wrap": True, "trail_length": 10,
+    },
+
+    "path-followers": {
+        "num_boids": 80, "max_speed": 3.5,
+        "w_sep": 1.2, "w_ali": 0.8, "w_coh": 0.8,
+        "w_path": 2.0, "path_loop": True, "path_arrival_radius": 25,
+        "spatial_index": "quadtree",
+    },
+
+    "quadtree-demo": {
+        "num_boids": 300, "max_speed": 4.0,
+        "spatial_index": "quadtree",
+        "w_sep": 1.5, "w_ali": 1.0, "w_coh": 1.0,
         "use_wrap": True,
     },
 }

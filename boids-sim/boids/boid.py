@@ -1,6 +1,23 @@
 """Individual boid entity with steering behaviors.
 
-Enhanced v2.0: trail tracking, BoidState snapshot/restore, wander behavior.
+Enhanced v3.0: trail tracking, BoidState snapshot/restore, wander behavior,
+path following, species support, arrival behavior, queue/flow-field helpers.
+
+The Boid class implements Craig Reynolds' steering model where each agent
+accumulates steering forces (accelerations) each tick and integrates them
+via simple Euler integration.
+
+Behaviors implemented:
+    - Separation: steer away from crowding neighbors
+    - Alignment: match average heading of neighbors
+    - Cohesion: steer toward average position of neighbors
+    - Seek: steer toward a target position
+    - Flee: steer away from a threat (with urgency scaling)
+    - Arrive: like seek but decelerates near target (Reynolds arrival)
+    - Wander: Reynolds-style constrained random walk
+    - Path following: follow a sequence of waypoints with arrival radius
+    - Obstacle avoidance: steer away from circular obstacles
+    - Boundary force: soft steering to stay inside the simulation area
 """
 
 from __future__ import annotations
@@ -8,6 +25,7 @@ import math
 import random
 from collections import deque
 from dataclasses import dataclass
+from typing import Optional
 from boids.vector import Vector2
 
 
@@ -24,6 +42,8 @@ class BoidState:
     max_force: float
     radius: float
     kind: str
+    species: int = 0
+    path_index: int = 0
 
     def to_dict(self) -> dict:
         return {
@@ -34,6 +54,8 @@ class BoidState:
             "max_force": self.max_force,
             "radius": self.radius,
             "kind": self.kind,
+            "species": self.species,
+            "path_index": self.path_index,
         }
 
 
@@ -51,8 +73,7 @@ class Boid:
     """
 
     __slots__ = ("id", "pos", "vel", "acc", "max_speed", "max_force", "radius",
-                  "kind", "trail", "_wander_angle")
-    # trail is typed as Optional[deque] — Pyright can't infer from __slots__
+                  "kind", "species", "trail", "_wander_angle", "path", "path_index")
 
     _next_id = 0
 
@@ -66,7 +87,9 @@ class Boid:
         max_force: float = 0.2,
         radius: float = 3.0,
         kind: str = "boid",
+        species: int = 0,
         trail_length: int = 0,
+        path: Optional[list[Vector2]] = None,
     ):
         self.id = Boid._next_id
         Boid._next_id += 1
@@ -77,8 +100,11 @@ class Boid:
         self.max_force = max_force
         self.radius = radius
         self.kind = kind  # "boid", "predator"
+        self.species = species
         self.trail: deque[tuple[float, float]] = deque(maxlen=trail_length) if trail_length > 0 else None
         self._wander_angle: float = random.uniform(0, math.tau)
+        self.path = path
+        self.path_index = 0
 
     # ------------------------------------------------------------------ #
     #  Steering behaviors
@@ -88,11 +114,16 @@ class Boid:
 
         The force is inversely proportional to distance — closer neighbors
         exert a stronger repulsion.
+
+        If the boid has a non-zero ``species``, only same-species boids are
+        considered for separation.
         """
         steer = Vector2(0.0, 0.0)
         count = 0
         for other in neighbors:
             if other is self or other.kind == "predator":
+                continue
+            if self.species != 0 and other.species != self.species:
                 continue
             d = Vector2.dist(self.pos, other.pos)
             if 0.0 < d < perception:
@@ -110,11 +141,16 @@ class Boid:
         return steer
 
     def alignment(self, neighbors: list["Boid"], perception: float) -> Vector2:
-        """Steer toward the average heading of nearby neighbors."""
+        """Steer toward the average heading of nearby neighbors.
+
+        Respects species boundaries if ``species`` is non-zero.
+        """
         avg = Vector2(0.0, 0.0)
         count = 0
         for other in neighbors:
             if other is self or other.kind == "predator":
+                continue
+            if self.species != 0 and other.species != self.species:
                 continue
             if Vector2.dist(self.pos, other.pos) < perception:
                 avg.add(other.vel)
@@ -127,11 +163,16 @@ class Boid:
         return avg
 
     def cohesion(self, neighbors: list["Boid"], perception: float) -> Vector2:
-        """Steer toward the average position of nearby neighbors."""
+        """Steer toward the average position of nearby neighbors.
+
+        Respects species boundaries if ``species`` is non-zero.
+        """
         center = Vector2(0.0, 0.0)
         count = 0
         for other in neighbors:
             if other is self or other.kind == "predator":
+                continue
+            if self.species != 0 and other.species != self.species:
                 continue
             if Vector2.dist(self.pos, other.pos) < perception:
                 center.add(other.pos)
@@ -153,6 +194,57 @@ class Boid:
 
     def seek(self, target: Vector2) -> Vector2:
         """Public seek behavior."""
+        return self._seek(target)
+
+    def arrive(self, target: Vector2, slow_radius: float = 100.0) -> Vector2:
+        """Steer toward a target, decelerating as it approaches.
+
+        Like ``seek()`` but reduces speed when within *slow_radius* of the
+        target. The desired speed is scaled linearly from 0 (at target) to
+        max_speed (at slow_radius).
+
+        Reynolds' arrival behavior (1999).
+        """
+        desired = target - self.pos
+        d = desired.length()
+        if d < 1e-10:
+            return Vector2(0.0, 0.0)
+        if d < slow_radius:
+            # Map speed from 0 at d=0 to max_speed at d=slow_radius
+            speed = self.max_speed * (d / slow_radius)
+        else:
+            speed = self.max_speed
+        desired.set_length(speed)
+        steer = desired - self.vel
+        steer.limit(self.max_force)
+        return steer
+
+    def follow_path(self, loop: bool = False, arrival_radius: float = 20.0) -> Vector2:
+        """Follow a predefined path of waypoints.
+
+        The boid seeks the current waypoint and advances to the next when
+        within *arrival_radius*. If *loop* is True, the path wraps around;
+        otherwise the boid arrives at the final waypoint.
+
+        Returns a zero vector if no path is set.
+        """
+        if self.path is None or len(self.path) == 0:
+            return Vector2(0.0, 0.0)
+        # Clamp path_index to valid range
+        if self.path_index >= len(self.path):
+            self.path_index = len(self.path) - 1
+        target = self.path[self.path_index]
+        d = Vector2.dist(self.pos, target)
+        if d < arrival_radius:
+            # Advance to next waypoint
+            if self.path_index < len(self.path) - 1:
+                self.path_index += 1
+            elif loop:
+                self.path_index = 0
+            else:
+                # Arrived at final waypoint — decelerate
+                return self.arrive(target, slow_radius=arrival_radius * 2)
+            target = self.path[self.path_index]
         return self._seek(target)
 
     def flee(self, target: Vector2, panic_dist: float = 80.0) -> Vector2:
@@ -278,6 +370,8 @@ class Boid:
             max_force=self.max_force,
             radius=self.radius,
             kind=self.kind,
+            species=self.species,
+            path_index=self.path_index,
         )
 
     @classmethod
@@ -293,8 +387,11 @@ class Boid:
         b.max_force = state.max_force
         b.radius = state.radius
         b.kind = state.kind
+        b.species = getattr(state, "species", 0)
         b.trail = deque(maxlen=trail_length) if trail_length > 0 else None
         b._wander_angle = random.uniform(0, math.tau)
+        b.path = None
+        b.path_index = getattr(state, "path_index", 0)
         # Ensure _next_id stays ahead of restored ids
         if state.id >= Boid._next_id:
             Boid._next_id = state.id + 1
@@ -312,4 +409,6 @@ class Boid:
             "max_force": self.max_force,
             "radius": self.radius,
             "kind": self.kind,
+            "species": self.species,
+            "path_index": self.path_index,
         }

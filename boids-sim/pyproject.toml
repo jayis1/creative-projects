@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "boids-sim"
+version = "3.0.0"
+description = "Reynolds boids flocking simulation with spatial hashing, multi-species, path following, and multiple renderers"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Creative Coder Pipeline"},
+]
+keywords = ["boids", "flocking", "simulation", "emergent-behavior", "steering", "reynolds", "spatial-hash", "quadtree"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Education",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Games/Entertainment :: Simulation",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "pytest-cov"]
+
+[project.scripts]
+boids-sim = "boids.cli:main"
+
+[tool.setuptools]
+packages = ["boids"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+
+[tool.coverage.run]
+source = ["boids"]
+
+[tool.coverage.report]
+show_missing = true

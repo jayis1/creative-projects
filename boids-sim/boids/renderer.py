@@ -8,6 +8,7 @@ from __future__ import annotations
 import math
 from typing import Optional
 from boids.simulation import BoidSimulation
+from abc import ABC, abstractmethod
 
 
 class ASCIIRenderer:
@@ -334,3 +335,137 @@ class PPMRenderer:
         with open(filename, "wb") as f:
             f.write(f"P6\n{w} {h}\n255\n".encode())
             f.write(bytes(pixels))
+
+
+class AnimatedSVGRenderer:
+    """Render multiple simulation steps as a single animated SVG.
+
+    Captures frames by running the simulation and creates an SVG with
+    SMIL animations (no JavaScript required). Each frame is shown for
+    a configurable duration before transitioning to the next.
+
+    Usage::
+
+        sim = BoidSimulation(cfg)
+        renderer = AnimatedSVGRenderer(fps=10, loop=True)
+        renderer.render(sim, "flock.svg", steps=100)
+    """
+
+    def __init__(self, fps: float = 10.0, loop: bool = True):
+        if fps <= 0:
+            raise ValueError(f"fps must be positive, got {fps}")
+        self.fps = fps
+        self.loop = loop
+
+    def render(self, sim: BoidSimulation, filename: str, steps: int = 100) -> str:
+        """Run *steps* ticks and save an animated SVG to *filename*.
+
+        Returns the SVG string.
+        """
+        w, h = sim.config.width, sim.config.height
+        cfg = sim.config
+        frame_duration = 1.0 / self.fps
+
+        # Capture frames as SVG fragments
+        boid_fragments: list[str] = []
+        predator_fragments: list[str] = []
+        trail_fragments: list[str] = []
+
+        for step_num in range(steps):
+            sim.step()
+            # Boids
+            b_parts = []
+            for b in sim.boids:
+                angle = b.vel.angle
+                cos_a, sin_a = math.cos(angle), math.sin(angle)
+                tip = (b.pos.x + cos_a * b.radius * 2, b.pos.y + sin_a * b.radius * 2)
+                left = (b.pos.x + math.cos(angle + 2.5) * b.radius, b.pos.y + math.sin(angle + 2.5) * b.radius)
+                right = (b.pos.x + math.cos(angle - 2.5) * b.radius, b.pos.y + math.sin(angle - 2.5) * b.radius)
+                pts = f"{tip[0]:.1f},{tip[1]:.1f} {left[0]:.1f},{left[1]:.1f} {right[0]:.1f},{right[1]:.1f}"
+                b_parts.append(f'<polygon points="{pts}" fill="{cfg.boid_color}" opacity="0.8"/>')
+            boid_fragments.append("\n".join(b_parts))
+
+            # Predators
+            p_parts = []
+            for p in sim.predators:
+                angle = p.vel.angle
+                cos_a, sin_a = math.cos(angle), math.sin(angle)
+                tip = (p.pos.x + cos_a * p.radius * 3, p.pos.y + sin_a * p.radius * 3)
+                left = (p.pos.x + math.cos(angle + 2.5) * p.radius * 1.5, p.pos.y + math.sin(angle + 2.5) * p.radius * 1.5)
+                right = (p.pos.x + math.cos(angle - 2.5) * p.radius * 1.5, p.pos.y + math.sin(angle - 2.5) * p.radius * 1.5)
+                pts = f"{tip[0]:.1f},{tip[1]:.1f} {left[0]:.1f},{left[1]:.1f} {right[0]:.1f},{right[1]:.1f}"
+                p_parts.append(f'<polygon points="{pts}" fill="{cfg.predator_color}" opacity="0.9"/>')
+            predator_fragments.append("\n".join(p_parts))
+
+            # Obstacles (static, only need one frame)
+            if step_num == 0:
+                obs_parts = []
+                for obs in sim.obstacles:
+                    obs_parts.append(
+                        f'<circle cx="{obs.pos.x:.1f}" cy="{obs.pos.y:.1f}" '
+                        f'r="{obs.radius:.1f}" fill="{cfg.obstacle_color}" opacity="0.7"/>'
+                    )
+                trail_fragments.append("\n".join(obs_parts))
+
+        # Build the animated SVG
+        parts: list[str] = [
+            f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" '
+            f'viewBox="0 0 {w} {h}">',
+            f'<rect width="{w}" height="{h}" fill="{cfg.background_color}"/>',
+        ]
+
+        # Static obstacles
+        if trail_fragments:
+            parts.append(trail_fragments[0])
+
+        # Goal
+        if sim.goal:
+            parts.append(f'<circle cx="{sim.goal.x:.1f}" cy="{sim.goal.y:.1f}" r="8" fill="{cfg.goal_color}" opacity="0.6"/>')
+
+        # Animated boid groups
+        total_duration = steps * frame_duration
+        repeat = "indefinite" if self.loop else str(total_duration)
+
+        for i, frag in enumerate(boid_fragments):
+            begin = f"{i * frame_duration:.3f}s"
+            dur = f"{frame_duration:.3f}s"
+            parts.append(
+                f'<g opacity="0">'
+                f'<animate attributeName="opacity" values="1;1;0" '
+                f'keyTimes="0;0.999;1" begin="{begin}" dur="{dur}" '
+                f'repeatCount="{repeat}"/>'
+                f'{frag}</g>'
+            )
+
+        # Animated predator groups
+        for i, frag in enumerate(predator_fragments):
+            if not frag:
+                continue
+            begin = f"{i * frame_duration:.3f}s"
+            dur = f"{frame_duration:.3f}s"
+            parts.append(
+                f'<g opacity="0">'
+                f'<animate attributeName="opacity" values="1;1;0" '
+                f'keyTimes="0;0.999;1" begin="{begin}" dur="{dur}" '
+                f'repeatCount="{repeat}"/>'
+                f'{frag}</g>'
+            )
+
+        parts.append("</svg>")
+        svg = "\n".join(parts)
+        with open(filename, "w") as f:
+            f.write(svg)
+        return svg
+
+
+class JSONRenderer:
+    """Render a simulation frame as a JSON state file.
+
+    Useful for piping simulation state to external tools or for debugging.
+    """
+
+    def render(self, sim: BoidSimulation, filename: str) -> None:
+        """Save the full simulation state to a JSON file."""
+        import json
+        with open(filename, "w") as f:
+            json.dump(sim.to_dict(), f, indent=2)
