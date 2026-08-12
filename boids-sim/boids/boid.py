@@ -197,8 +197,14 @@ class Boid:
 
         The force is zero when the boid is more than *margin* away from any
         edge, and ramps up linearly as the boid approaches the boundary.
+
+        FIX: guards against ZeroDivisionError when margin=0 by returning
+        a zero vector (no boundary force with zero margin).
         """
         force = Vector2(0.0, 0.0)
+        # FIX: avoid division by zero when margin is 0
+        if margin <= 0:
+            return force
         if self.pos.x < margin:
             force.x = (margin - self.pos.x) / margin * self.max_force * 5
         elif self.pos.x > width - margin:

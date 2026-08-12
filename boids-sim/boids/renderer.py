@@ -52,13 +52,23 @@ class ASCIIRenderer:
                 grid[py][px] = "X"
 
         # draw boids as directional arrows (8 directions)
+        # FIX: arrows must account for screen coordinates where Y increases
+        # downward. In math, angle 0 = right, pi/2 = up. But in screen coords,
+        # positive vy means moving down. So we negate the y component when
+        # mapping angle to arrow direction.
+        # Index mapping: 0=→, 1=↗, 2=↑, 3=↖, 4=←, 5=↙, 6=↓, 7=↘
         dir_arrows = ["→", "↗", "↑", "↖", "←", "↙", "↓", "↘"]
         for b in sim.boids:
             bx = int(b.pos.x / w * self.cols)
             by = int(b.pos.y / h * self.rows)
             if 0 <= bx < self.cols and 0 <= by < self.rows:
-                angle = b.vel.angle
-                idx = int((angle / (math.pi / 4)) + 0.5) % 8
+                # Negate y because screen Y is inverted relative to math Y.
+                # atan2(vy, vx) gives math angle, but vy>0 = down on screen.
+                screen_angle = math.atan2(-b.vel.y, b.vel.x)
+                # FIX: use round() instead of int() — int() truncates toward
+                # zero causing off-by-one for negative angles (e.g. -pi/2
+                # should map to index 6 for '↓', but int(-2+0.5)=-1 → index 7).
+                idx = round(screen_angle / (math.pi / 4)) % 8
                 grid[by][bx] = dir_arrows[idx]
 
         lines = ["".join(row) for row in grid]
@@ -83,10 +93,12 @@ class SVGRenderer:
 
         # obstacles
         for obs in sim.obstacles:
+            # FIX: removed invalid 'sroke=' typo (was not valid SVG attribute,
+            # fill is sufficient for solid circles)
             parts.append(
                 f'<circle cx="{obs.pos.x:.1f}" cy="{obs.pos.y:.1f}" '
                 f'r="{obs.radius:.1f}" fill="{cfg.obstacle_color}" '
-                f'sroke="{cfg.obstacle_color}" opacity="0.7"/>'
+                f'opacity="0.7"/>'
             )
 
         # goal
@@ -258,6 +270,9 @@ class PPMRenderer:
         filename: str,
         scale: float = 1.0,
     ) -> None:
+        # FIX: validate scale to prevent 0x0 or negative-dimension PPM output
+        if scale <= 0:
+            raise ValueError(f"scale must be positive, got {scale}")
         w = int(sim.config.width * scale)
         h = int(sim.config.height * scale)
         cfg = sim.config

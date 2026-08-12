@@ -188,6 +188,19 @@ boids/
 | `presets` | List available named presets |
 | `config` | Save a config template file |
 
+## Known Issues (Resolved)
+
+All bugs identified during Phase 3 bug hunt have been fixed. Each fix includes a test proving the fix works.
+
+| # | Bug | Impact | Fix |
+|---|-----|--------|-----|
+| 1 | **SVG typo `sroke=` instead of `stroke=`** | Obstacle circles in SVG output had an invalid attribute name, causing SVG renderers to ignore it | Removed the redundant `sroke` attribute entirely (fill is sufficient for solid circles) |
+| 2 | **ASCII arrows inverted on Y-axis** | Boids moving down (vy>0) showed ↑ instead of ↓; moving up showed ↓ instead of ↑. Screen Y increases downward, opposite to math Y | Negated the y-component before computing the arrow angle (`atan2(-vy, vx)`) and switched from `int()` to `round()` for proper rounding of negative angles |
+| 3 | **Duplicate `max_force` key in `calm-glide` preset** | Dict literal had `max_force` twice; second value silently overwrote the first. Both were 0.1 so no runtime impact, but dead code that could mask future bugs | Removed the duplicate key |
+| 4 | **Unused `all_neighbors_cache` dict in `step()`** | Allocated a dict and populated it every tick but never read it, wasting memory and CPU for no benefit | Removed the unused cache variable entirely |
+| 5 | **`boundary_force()` ZeroDivisionError when `margin=0`** | If `boundary_margin` was set to 0 and a boid was outside the boundary (e.g. negative position), division by zero crashed the simulation | Added early return of zero vector when `margin <= 0` |
+| 6 | **PPM renderer accepted `scale=0` and negative scale** | `scale=0` produced a 0×0 pixel PPM file (invalid); negative scale produced a PPM with negative dimensions in the header (also invalid) | Added input validation: `scale <= 0` now raises `ValueError` |
+
 ## License
 
 MIT

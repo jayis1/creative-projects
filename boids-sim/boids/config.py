@@ -130,7 +130,8 @@ PRESETS: dict[str, dict[str, Any]] = {
     "calm-glide": {
         "w_sep": 1.0, "w_ali": 1.0, "w_coh": 1.0,
         "num_boids": 80, "max_speed": 2.0, "max_force": 0.1,
-        "max_force": 0.1, "dt": 0.5,
+        # FIX: removed duplicate 'max_force' key (was silently overwriting)
+        "dt": 0.5,
     },
 
     "predator-hunt": {

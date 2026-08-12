@@ -161,15 +161,14 @@ class BoidSimulation:
         cfg = self.config
         self._rebuild_grid()
 
-        # Use the largest perception radius for a single neighbor query,
-        # then filter within each behavior (avoids 3x grid queries per boid).
+        # FIX: removed unused all_neighbors_cache dict that wasted memory
+        # each tick (was populated but never read after population).
         max_perception = max(cfg.sep_perception, cfg.ali_perception, cfg.coh_perception)
-        all_neighbors_cache: dict[int, list[Boid]] = {}
 
         for boid in self.boids:
             # Query once with the largest radius and reuse for all behaviors
+            # FIX: removed unused cache storage
             neighbors = self._get_neighbors(boid, max_perception)
-            all_neighbors_cache[boid.id] = neighbors
 
             sep = boid.separation(neighbors, cfg.sep_perception)
             ali = boid.alignment(neighbors, cfg.ali_perception)
