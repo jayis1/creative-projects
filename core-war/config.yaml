@@ -1,0 +1,40 @@
+# Core War Battle Configuration
+# ==============================
+# This file configures battles and tournaments.
+# Use with: python3 -m core_war.cli --config config.yaml battle
+
+# Core memory size (circular array)
+core_size: 8000
+
+# Maximum cycles before a draw is declared
+max_cycles: 80000
+
+# Maximum processes per warrior
+max_processes: 8000
+
+# Minimum distance between warrior load positions
+min_separation: 100
+
+# Number of rounds per battle pair
+rounds: 10
+
+# Random seed (null for random)
+seed: 42
+
+# Warrior files to load
+warriors:
+  - warriors/imp.red
+  - warriors/dwarf.red
+  - warriors/stone.red
+
+# Logging level: DEBUG, INFO, WARNING, ERROR
+log_level: INFO
+
+# Output format: table, json, csv
+output_format: table
+
+# Enable execution trace
+trace: false
+
+# Show heatmap in core-dump
+heatmap: false

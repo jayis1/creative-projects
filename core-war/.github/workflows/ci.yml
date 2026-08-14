@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    paths:
+      - 'core-war/**'
+  pull_request:
+    paths:
+      - 'core-war/**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        working-directory: core-war
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          pip install pyyaml
+
+      - name: Run tests
+        working-directory: core-war
+        run: |
+          python -m pytest tests/ -v --tb=short
+
+      - name: Run tests with coverage
+        working-directory: core-war
+        run: |
+          pip install pytest-cov
+          python -m pytest tests/ --cov=core_war --cov-report=term-missing
+
+      - name: Validate all built-in warriors
+        working-directory: core-war
+        run: |
+          for f in warriors/*.red; do
+            python -m core_war.cli validate "$f"
+          done
+
+      - name: Test CLI commands
+        working-directory: core-war
+        run: |
+          python -m core_war.cli --core-size 100 --max-cycles 50 battle warriors/imp.red warriors/dwarf.red
+          python -m core_war.cli --core-size 100 --max-cycles 50 --rounds 2 tournament warriors/imp.red warriors/dwarf.red warriors/stone.red
+          python -m core_war.cli analyze warriors/dwarf.red
+          python -m core_war.cli --core-size 100 --max-cycles 50 step warriors/imp.red warriors/dwarf.red --steps 5
+          python -m core_war.cli config /tmp/test-config.yaml
