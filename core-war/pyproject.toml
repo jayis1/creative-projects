@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "core-war"
+version = "2.0.0"
+description = "Core War MARS simulator — ICWS'94 Redcode virtual machine with battle scheduler and tournaments"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [{name = "Creative Projects"}]
+keywords = ["core-war", "mars", "redcode", "assembly", "simulation", "game"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Topic :: Games/Entertainment",
+    "Topic :: Software Development :: Interpreters",
+]
+
+[project.scripts]
+core-war = "core_war.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["core_war*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

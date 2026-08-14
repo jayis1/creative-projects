@@ -23,7 +23,6 @@ class Opcode(IntEnum):
     SEQ = 9   # Alias for CMP
     SNE = 10  # Skip next if A-field not equal to B-field
     SLT = 11  # Skip if A-field less than B-field
-    SLT_old = 12  # (unused, reserved)
     NOP = 13  # No operation
     MOD = 14  # B-field = B-field mod A-field
     MUL = 15  # B-field = A-field * B-field

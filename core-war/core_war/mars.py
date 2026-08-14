@@ -83,6 +83,12 @@ class MARS:
         self.trace: List[dict] = []
         self.trace_enabled = False
 
+        # Access tracking: how many times each core address was executed
+        self.access_counts: Dict[int, int] = {}
+
+        # Callback hooks for event observation
+        self.on_execute = None  # callable(warrior_name, pc, instruction)
+
     def reset(self) -> None:
         """Reset the MARS to initial state."""
         # Initialize core with DAT 0, 0 instructions
@@ -92,6 +98,7 @@ class MARS:
         self.warriors = []
         self.cycle = 0
         self.trace = []
+        self.access_counts = {}
 
     def load_warrior(self, warrior: ParsedWarrior, position: Optional[int] = None) -> WarriorState:
         """
@@ -186,15 +193,22 @@ class MARS:
 
         # Get next process from the queue
         pc = warrior.processes.popleft()
-        instr = self.core[pc % self.core_size]
+        pc = pc % self.core_size
+        instr = self.core[pc]
+
+        # Track access
+        self.access_counts[pc] = self.access_counts.get(pc, 0) + 1
 
         if self.trace_enabled:
             self.trace.append({
                 "warrior": warrior.name,
-                "pc": pc % self.core_size,
+                "pc": pc,
                 "instruction": str(instr),
                 "cycle": self.cycle,
             })
+
+        if self.on_execute:
+            self.on_execute(warrior.name, pc, instr)
 
         warrior.instructions_executed += 1
 
@@ -210,6 +224,29 @@ class MARS:
         # Check if warrior has no more processes (it's dead)
         if not warrior.processes:
             warrior.alive = False
+
+    def step(self) -> bool:
+        """
+        Execute a single cycle (one instruction per alive warrior).
+
+        Returns True if the battle is still running, False if finished.
+        """
+        if self.cycle >= self.max_cycles:
+            return False
+
+        alive_count = sum(1 for w in self.warriors if w.alive)
+        if alive_count == 0:
+            return False
+        if len(self.warriors) > 1 and alive_count <= 1:
+            return False
+
+        for warrior in self.warriors:
+            if not warrior.alive:
+                continue
+            self._execute_one_instruction(warrior)
+
+        self.cycle += 1
+        return True
 
     def _execute_instruction(
         self, pc: int, instr: Instruction, warrior: WarriorState
