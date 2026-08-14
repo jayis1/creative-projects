@@ -155,12 +155,27 @@ class RedcodeParser:
                 continue
 
             # Check for ORG pseudo-op
-            if tokens[0].upper() == "ORG":
+            # ORG is only a pseudo-op when the first token is "ORG" and the
+            # second token is not an opcode (otherwise "ORG" could be a label).
+            # In practice, ORG is always the first token on its line.
+            if tokens[0].upper() == "ORG" and len(tokens) >= 2:
+                # Check if the second token could be a label reference or expression
+                # ORG always takes an expression argument, so treat it as pseudo-op
                 continue  # Handled in _resolve_org
 
             # Check for END pseudo-op
+            # END is a pseudo-op only when it's the first token AND there's no
+            # opcode following it. If "end" is followed by an opcode, it's a label.
             if tokens[0].upper() == "END":
-                continue  # Handled in _resolve_org
+                if len(tokens) == 1:
+                    continue  # Bare END, handled in _resolve_org
+                # Check if the second token is an opcode
+                next_token_base = tokens[1].split(".")[0].upper()
+                if next_token_base in OPCODE_NAMES:
+                    # "end" is a label, not the END pseudo-op — fall through to normal parsing
+                    pass
+                else:
+                    continue  # END pseudo-op with label/expression argument
 
             # Parse labels (may have multiple labels on one line)
             label_tokens = []

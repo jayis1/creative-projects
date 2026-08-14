@@ -209,6 +209,30 @@ bomb    DAT     #0, #0      ; The bomb
 | `max_processes` | 8000 | Max processes per warrior |
 | `min_separation` | 100 | Min distance between warrior load positions |
 
+## Known Issues (Resolved)
+
+The following bugs were found and fixed during the bug hunt phase:
+
+1. **Label named "end" treated as END pseudo-op** — Labels matching pseudo-op names (like `end`) were incorrectly skipped during the first pass, causing "undefined label" errors. Fixed by checking if the token following `END` is an opcode — if so, `END` is treated as a label, not a pseudo-op.
+
+2. **Immediate addressing in comparisons (SEQ/SNE/SLT)** — When using immediate addressing mode (`#`), comparison instructions compared the instruction against itself (since immediate resolves to `pc`), making `SNE #5, #3` always fail to skip. Fixed by adding `_compare_with_modes` and `_compare_less_with_modes` methods that use the immediate operand value directly for comparison.
+
+3. **Immediate addressing in conditional jumps (JMZ/JMN/DJN)** — Same issue as comparisons: `JMZ 0, #0` didn't check the immediate value `0` but instead read the B-field of the instruction at `pc`. Fixed by special-casing immediate mode in JMZ, JMN, and DJN to use the operand value directly.
+
+4. **Dead code in `_execute_instruction`** — Four variables (`a_val_a`, `a_val_b`, `b_val_a`, `b_val_b`) were fetched but never used. Removed.
+
+5. **`_safe_eval` uses `eval()` with restricted character set** — The expression evaluator uses Python's `eval()` but restricts the input to digits, operators, parentheses, and whitespace only. Verified that code injection attempts (e.g., `__import__('os')`) are rejected by the character filter.
+
+6. **Division by zero in arithmetic expressions** — Expressions like `1/0` in Redcode operands are caught and raise a `ParseError` instead of crashing.
+
+7. **Division/modulo by zero in DIV/MOD opcodes** — `DIV` and `MOD` with a zero A-field return 0 instead of crashing, per ICWS'94 standard.
+
+8. **Warrior loading wrap-around** — Warriors loaded near the end of core correctly wrap instructions to the beginning. Verified with core_size=20 and 3-instruction warrior at position 18.
+
+9. **SPL at max processes** — When the process limit is reached, new processes from SPL are silently dropped instead of crashing.
+
+10. **Arithmetic overflow wrapping** — ADD, SUB, MUL, DIV, MOD results are all wrapped via mod core_size to prevent overflow.
+
 ## License
 
 MIT

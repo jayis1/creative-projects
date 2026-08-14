@@ -266,12 +266,6 @@ class MARS:
         a_addr = self._resolve_address(pc, instr.a_mode, instr.a_value, warrior)
         b_addr = self._resolve_address(pc, instr.b_mode, instr.b_value, warrior)
 
-        # Apply predecrement / postincrement side effects
-        a_val_a = core[a_addr].a_value
-        a_val_b = core[a_addr].b_value
-        b_val_a = core[b_addr].a_value
-        b_val_b = core[b_addr].b_value
-
         op = instr.opcode
         mod = instr.modifier
 
@@ -317,34 +311,56 @@ class MARS:
             return [next_pc, a_addr]
 
         elif op == Opcode.JMZ:
-            if self._is_zero(mod, core, b_addr):
+            # For immediate B-mode, compare the immediate value; otherwise read core
+            if instr.b_mode == AddressMode.IMMEDIATE:
+                check_zero = (instr.b_value == 0)
+            else:
+                check_zero = self._is_zero(mod, core, b_addr)
+            if check_zero:
                 return [a_addr]
             return [next_pc]
 
         elif op == Opcode.JMN:
-            if not self._is_zero(mod, core, b_addr):
+            if instr.b_mode == AddressMode.IMMEDIATE:
+                check_nonzero = (instr.b_value != 0)
+            else:
+                check_nonzero = not self._is_zero(mod, core, b_addr)
+            if check_nonzero:
                 return [a_addr]
             return [next_pc]
 
         elif op == Opcode.DJN:
             # Decrement B-field, then jump if non-zero
-            core[b_addr].b_value = (core[b_addr].b_value - 1) % cs
-            if core[b_addr].b_value != 0:
-                return [a_addr]
+            # For immediate mode, decrement the B-field of the instruction at pc
+            if instr.b_mode == AddressMode.IMMEDIATE:
+                # DJN with immediate B: decrement the instruction's own B-field
+                core[pc].b_value = (core[pc].b_value - 1) % cs
+                if core[pc].b_value != 0:
+                    return [a_addr]
+            else:
+                core[b_addr].b_value = (core[b_addr].b_value - 1) % cs
+                if core[b_addr].b_value != 0:
+                    return [a_addr]
             return [next_pc]
 
         elif op in (Opcode.CMP, Opcode.SEQ):
-            if self._compare_equal(mod, core, a_addr, b_addr):
+            if self._compare_with_modes(mod, core, a_addr, b_addr,
+                                        instr.a_mode, instr.a_value,
+                                        instr.b_mode, instr.b_value):
                 return [(pc + 2) % cs]  # Skip next instruction
             return [next_pc]
 
         elif op == Opcode.SNE:
-            if not self._compare_equal(mod, core, a_addr, b_addr):
+            if not self._compare_with_modes(mod, core, a_addr, b_addr,
+                                            instr.a_mode, instr.a_value,
+                                            instr.b_mode, instr.b_value):
                 return [(pc + 2) % cs]
             return [next_pc]
 
         elif op == Opcode.SLT:
-            if self._compare_less(mod, core, a_addr, b_addr):
+            if self._compare_less_with_modes(mod, core, a_addr, b_addr,
+                                             instr.a_mode, instr.a_value,
+                                             instr.b_mode, instr.b_value):
                 return [(pc + 2) % cs]
             return [next_pc]
 
@@ -484,6 +500,69 @@ class MARS:
                     and a.b_mode == b.b_mode and a.b_value == b.b_value)
         return False
 
+    def _compare_with_modes(
+        self,
+        mod: Modifier,
+        core: List[Instruction],
+        a_addr: int,
+        b_addr: int,
+        a_mode: AddressMode,
+        a_value: int,
+        b_mode: AddressMode,
+        b_value: int,
+    ) -> bool:
+        """
+        Compare two operands for equality, handling immediate addressing.
+
+        When an operand is immediate, the comparison uses the operand's own
+        field value from the instruction (i.e., the immediate value),
+        not the instruction at the resolved address (which would be pc).
+
+        For non-immediate modes, falls back to _compare_equal.
+        """
+        # If both are non-immediate, use the standard comparison
+        if a_mode != AddressMode.IMMEDIATE and b_mode != AddressMode.IMMEDIATE:
+            return self._compare_equal(mod, core, a_addr, b_addr)
+
+        a = core[a_addr]
+        b = core[b_addr]
+
+        # Build "virtual" values for comparison:
+        # For immediate mode, use the operand value from the instruction itself.
+        # For non-immediate, use the field from the resolved instruction.
+        # We compare per the modifier rules.
+
+        if mod == Modifier.A:
+            av = a_value if a_mode == AddressMode.IMMEDIATE else a.a_value
+            bv = b_value if b_mode == AddressMode.IMMEDIATE else b.a_value
+            return av == bv
+        elif mod == Modifier.B:
+            av = a_value if a_mode == AddressMode.IMMEDIATE else a.b_value
+            bv = b_value if b_mode == AddressMode.IMMEDIATE else b.b_value
+            return av == bv
+        elif mod == Modifier.AB:
+            av = a_value if a_mode == AddressMode.IMMEDIATE else a.a_value
+            bv = b_value if b_mode == AddressMode.IMMEDIATE else b.b_value
+            return av == bv
+        elif mod == Modifier.BA:
+            av = a_value if a_mode == AddressMode.IMMEDIATE else a.b_value
+            bv = b_value if b_mode == AddressMode.IMMEDIATE else b.a_value
+            return av == bv
+        elif mod in (Modifier.F, Modifier.I):
+            av_a = a_value if a_mode == AddressMode.IMMEDIATE else a.a_value
+            av_b = a_value if a_mode == AddressMode.IMMEDIATE else a.b_value
+            bv_a = b_value if b_mode == AddressMode.IMMEDIATE else b.a_value
+            bv_b = b_value if b_mode == AddressMode.IMMEDIATE else b.b_value
+            # For .I with immediates, fall back to comparing field values only
+            return av_a == bv_a and av_b == bv_b
+        elif mod == Modifier.X:
+            av_a = a_value if a_mode == AddressMode.IMMEDIATE else a.a_value
+            av_b = a_value if a_mode == AddressMode.IMMEDIATE else a.b_value
+            bv_a = b_value if b_mode == AddressMode.IMMEDIATE else b.a_value
+            bv_b = b_value if b_mode == AddressMode.IMMEDIATE else b.b_value
+            return av_a == bv_b and av_b == bv_a
+        return False
+
     def _compare_less(self, mod: Modifier, core: List[Instruction], a_addr: int, b_addr: int) -> bool:
         """Compare if A < B per modifier."""
         a = core[a_addr]
@@ -497,6 +576,46 @@ class MARS:
             return a.a_value < b.a_value and a.b_value < b.b_value
         elif mod == Modifier.X:
             return a.a_value < b.b_value and a.b_value < b.a_value
+        return False
+
+    def _compare_less_with_modes(
+        self,
+        mod: Modifier,
+        core: List[Instruction],
+        a_addr: int,
+        b_addr: int,
+        a_mode: AddressMode,
+        a_value: int,
+        b_mode: AddressMode,
+        b_value: int,
+    ) -> bool:
+        """Compare if A < B, handling immediate addressing."""
+        if a_mode != AddressMode.IMMEDIATE and b_mode != AddressMode.IMMEDIATE:
+            return self._compare_less(mod, core, a_addr, b_addr)
+
+        a = core[a_addr]
+        b = core[b_addr]
+
+        if mod in (Modifier.A, Modifier.BA):
+            av = a_value if a_mode == AddressMode.IMMEDIATE else a.a_value
+            bv = b_value if b_mode == AddressMode.IMMEDIATE else b.a_value
+            return av < bv
+        elif mod in (Modifier.B, Modifier.AB):
+            av = a_value if a_mode == AddressMode.IMMEDIATE else a.b_value
+            bv = b_value if b_mode == AddressMode.IMMEDIATE else b.b_value
+            return av < bv
+        elif mod in (Modifier.F, Modifier.I):
+            av_a = a_value if a_mode == AddressMode.IMMEDIATE else a.a_value
+            av_b = a_value if a_mode == AddressMode.IMMEDIATE else a.b_value
+            bv_a = b_value if b_mode == AddressMode.IMMEDIATE else b.a_value
+            bv_b = b_value if b_mode == AddressMode.IMMEDIATE else b.b_value
+            return av_a < bv_a and av_b < bv_b
+        elif mod == Modifier.X:
+            av_a = a_value if a_mode == AddressMode.IMMEDIATE else a.a_value
+            av_b = a_value if a_mode == AddressMode.IMMEDIATE else a.b_value
+            bv_a = b_value if b_mode == AddressMode.IMMEDIATE else b.a_value
+            bv_b = b_value if b_mode == AddressMode.IMMEDIATE else b.b_value
+            return av_a < bv_b and av_b < bv_a
         return False
 
     def _make_result(self) -> BattleResult:
