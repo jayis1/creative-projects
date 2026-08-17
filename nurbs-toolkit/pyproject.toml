@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nurbs-toolkit"
+version = "1.0.0"
+description = "Pure-Python NURBS & B-spline CAGD toolkit"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "creative-projects"}]
+
+[project.scripts]
+nurbs = "nurbs.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["nurbs*"]
