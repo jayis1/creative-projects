@@ -38,8 +38,35 @@ from .knot_vector import (
     validate_knot_vector,
 )
 from .export import tessellate_curve, tessellate_surface, export_obj, export_ply_ascii
+from .fitting import fit_bspline_curve
+from .projection import project_point, arc_length, reparameterize_arc_length
+from .presets import (
+    make_circle,
+    make_sphere_patch,
+    make_torus,
+    make_cylinder,
+    make_cone,
+)
+from .svg_render import curve_to_svg, surface_to_svg_wireframe
+from .serialization import (
+    curve_to_dict,
+    curve_from_dict,
+    curve_to_json,
+    curve_from_json,
+    surface_to_dict,
+    surface_from_dict,
+    surface_to_json,
+    surface_from_json,
+)
+from .exceptions import (
+    NURBSError,
+    InvalidKnotVector,
+    InvalidControlPoint,
+    InvalidWeight,
+    SingularMatrix,
+)
 
-__version__ = "1.0.0"
+__version__ = "2.0.0"
 
 __all__ = [
     "BSplineBasis",
@@ -62,5 +89,29 @@ __all__ = [
     "tessellate_surface",
     "export_obj",
     "export_ply_ascii",
+    "fit_bspline_curve",
+    "project_point",
+    "arc_length",
+    "reparameterize_arc_length",
+    "make_circle",
+    "make_sphere_patch",
+    "make_torus",
+    "make_cylinder",
+    "make_cone",
+    "curve_to_svg",
+    "surface_to_svg_wireframe",
+    "curve_to_dict",
+    "curve_from_dict",
+    "curve_to_json",
+    "curve_from_json",
+    "surface_to_dict",
+    "surface_from_dict",
+    "surface_to_json",
+    "surface_from_json",
+    "NURBSError",
+    "InvalidKnotVector",
+    "InvalidControlPoint",
+    "InvalidWeight",
+    "SingularMatrix",
     "__version__",
 ]

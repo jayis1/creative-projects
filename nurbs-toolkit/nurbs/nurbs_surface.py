@@ -6,6 +6,8 @@ import math
 from typing import Sequence, List, Tuple
 
 from .bspline import find_span, basis_functions, basis_functions_derivatives
+from .knot_vector import validate_knot_vector
+from .exceptions import InvalidWeight, InvalidControlPoint
 
 
 class NURBSSurface:
@@ -33,6 +35,8 @@ class NURBSSurface:
         control_points: Sequence[Sequence[Sequence[float]]],
         weights: Sequence[Sequence[float]] | None = None,
     ):
+        if degree_u < 0 or degree_v < 0:
+            raise ValueError("degrees must be non-negative")
         self.degree_u = int(degree_u)
         self.degree_v = int(degree_v)
         self.knots_u = [float(k) for k in knots_u]
@@ -40,13 +44,25 @@ class NURBSSurface:
         self.control_points = [
             [list(map(float, cp)) for cp in row] for row in control_points
         ]
+        if not self.control_points or not self.control_points[0]:
+            raise InvalidControlPoint("need at least a 1x1 control grid")
         self.nu = len(self.control_points) - 1
-        self.nv = len(self.control_points[0]) - 1 if self.nu >= 0 else 0
-        self.dim = (
-            len(self.control_points[0][0])
-            if self.nu >= 0 and self.nv >= 0
-            else 0
-        )
+        self.nv = len(self.control_points[0]) - 1
+        # Verify all rows have the same number of columns.
+        for row in self.control_points:
+            if len(row) != self.nv + 1:
+                raise InvalidControlPoint(
+                    "all rows must have the same number of columns"
+                )
+        self.dim = len(self.control_points[0][0])
+        for row in self.control_points:
+            for cp in row:
+                if len(cp) != self.dim:
+                    raise InvalidControlPoint(
+                        "all control points must have the same dimension"
+                    )
+        validate_knot_vector(self.knots_u, self.nu, self.degree_u)
+        validate_knot_vector(self.knots_v, self.nv, self.degree_v)
 
         if weights is None:
             self.weights = [[1.0] * (self.nv + 1) for _ in range(self.nu + 1)]
@@ -55,11 +71,11 @@ class NURBSSurface:
             if len(self.weights) != self.nu + 1 or any(
                 len(r) != self.nv + 1 for r in self.weights
             ):
-                raise ValueError("weight grid shape must match control points")
+                raise InvalidWeight("weight grid shape must match control points")
             for row in self.weights:
                 for w in row:
                     if w <= 0:
-                        raise ValueError("weights must be positive")
+                        raise InvalidWeight("weights must be positive")
 
     def evaluate(self, u: float, v: float) -> List[float]:
         span_u = find_span(self.nu, self.degree_u, u, self.knots_u)

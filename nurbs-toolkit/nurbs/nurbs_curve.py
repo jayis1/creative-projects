@@ -11,6 +11,8 @@ import math
 from typing import Sequence, List, Tuple
 
 from .bspline import find_span, basis_functions, basis_functions_derivatives
+from .knot_vector import validate_knot_vector
+from .exceptions import InvalidWeight, InvalidControlPoint
 
 
 class NURBSCurve:
@@ -23,20 +25,35 @@ class NURBSCurve:
         control_points: Sequence[Sequence[float]],
         weights: Sequence[float] | None = None,
     ):
+        if degree < 0:
+            raise ValueError("degree must be non-negative")
         self.degree = int(degree)
         self.knots = [float(k) for k in knots]
         self.control_points = [list(map(float, cp)) for cp in control_points]
+        if not self.control_points:
+            raise InvalidControlPoint("need at least one control point")
         self.n = len(self.control_points) - 1
+        if self.n < self.degree:
+            raise InvalidControlPoint(
+                "too few control points for this degree"
+            )
+        # Verify all control points have the same dimension.
+        self.dim = len(self.control_points[0])
+        for cp in self.control_points:
+            if len(cp) != self.dim:
+                raise InvalidControlPoint(
+                    "all control points must have the same dimension"
+                )
+        validate_knot_vector(self.knots, self.n, self.degree)
         if weights is None:
             self.weights = [1.0] * (self.n + 1)
         else:
             if len(weights) != self.n + 1:
-                raise ValueError("weights length must match control points")
+                raise InvalidWeight("weights length must match control points")
             self.weights = [float(w) for w in weights]
             for w in self.weights:
                 if w <= 0:
-                    raise ValueError("weights must be positive")
-        self.dim = len(self.control_points[0]) if self.control_points else 0
+                    raise InvalidWeight("weights must be positive")
 
     # -- evaluation --------------------------------------------------
     def evaluate(self, u: float) -> List[float]:
