@@ -16,3 +16,6 @@ nurbs = "nurbs.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["nurbs*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

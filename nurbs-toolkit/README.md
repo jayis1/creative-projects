@@ -225,3 +225,44 @@ nurbs-toolkit/
 ## License
 
 MIT
+
+## Known Issues (Resolved)
+
+The following bugs were identified during the Phase 3 bug hunt and
+have been fixed:
+
+1. **`basis_functions_derivatives` crash on order > degree**
+   (`nurbs/bspline.py`): Requesting a derivative of order higher than
+   the spline degree caused an `IndexError` because the internal
+   `ders` array was sized to `min(n_derivatives, p) + 1` rows but the
+   computation loop iterated up to `n_derivatives`.  **Fix**: Allocate
+   `n_derivatives + 1` rows (higher orders remain zero since
+   derivatives of order > p are identically zero for B-splines), and
+   cap the computation loop at `du = min(n_derivatives, p)`.
+   *Test: `test_derivative_zero_at_endpoint_bezier`*
+
+2. **`decompose_bezier_segments` infinite re-processing of knots**
+   (`nurbs/operations.py`): After inserting a knot to raise its
+   multiplicity to `p` (for Bezier decomposition), the loop index
+   advancement (`i = j`) didn't skip past the newly-inserted
+   occurrences.  On the next iteration the same knot value was
+   encountered again, causing additional insertions that pushed
+   multiplicity beyond `p + 1` and triggered a validation error.
+   **Fix**: After each insertion, advance `i` past *all* occurrences
+   of the processed knot value in the updated knot vector.  Also skip
+   knots that already have full multiplicity `p + 1` (end knots).
+   *Test: `test_decompose_multi_segment`*
+
+3. **`make_sphere_patch` produced non-spherical geometry**
+   (`nurbs/presets.py`): The sphere octant control net used incorrect
+   revolution control point coordinates.  The middle revolution
+   control point was placed at `(w, w)` (the point on the circle)
+   instead of `(1, 1)` (the tangent-line intersection).  This caused
+   the surface to deviate from a true sphere — interior points had
+   radii as low as 0.76 instead of 1.0.  **Fix**: Use the correct
+   tangent-intersection control points `(1, 0), (1, 1), (0, 1)` with
+   weights `(1, 1/√2, 1)` for the revolution direction, and
+   `(0, 0, r), (r, 0, r), (r, 0, 0)` for the profile direction.  All
+   evaluated points now lie exactly on the sphere (radius = 1.0
+   within machine precision).
+   *Test: `test_sphere_patch`*

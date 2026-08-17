@@ -90,6 +90,9 @@ def basis_functions_derivatives(
     """
     if n_derivatives < 0:
         raise ValueError("n_derivatives must be >= 0")
+    # Derivatives of order > p are identically zero.  Cap the computation
+    # at p and pad the result with zero rows for higher orders.
+    du = min(n_derivatives, p)
     ndu = [[0.0] * (p + 1) for _ in range(p + 1)]
     ndu[0][0] = 1.0
     left = [0.0] * (p + 1)
@@ -105,17 +108,19 @@ def basis_functions_derivatives(
             saved = left[j - r] * temp
         ndu[j][j] = saved
 
-    ders = [[0.0] * (p + 1) for _ in range(min(n_derivatives, p) + 1)]
+    # Allocate output for all requested derivative orders; higher orders
+    # (k > p) remain zero.
+    ders = [[0.0] * (p + 1) for _ in range(n_derivatives + 1)]
     for j in range(p + 1):
         ders[0][j] = ndu[j][p]
 
-    # Compute derivatives.
+    # Compute derivatives up to order du (= min(n_derivatives, p)).
     a = [[0.0] * (p + 1) for _ in range(2)]
     for r in range(p + 1):
         s1 = 0
         s2 = 1
         a[0][0] = 1.0
-        for k in range(1, n_derivatives + 1):
+        for k in range(1, du + 1):
             d = 0.0
             rk = r - k
             pk = p - k
@@ -141,7 +146,7 @@ def basis_functions_derivatives(
 
     # Multiply through by factorials.
     r = p
-    for k in range(1, n_derivatives + 1):
+    for k in range(1, du + 1):
         for j in range(p + 1):
             ders[k][j] *= r
         r *= (p - k)

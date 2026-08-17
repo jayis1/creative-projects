@@ -81,24 +81,66 @@ def make_sphere_patch(
 ) -> NURBSSurface:
     """Create a NURBS sphere octant patch.
 
-    Uses a 3×3 biquadratic rational control net with the standard
-    1/√2 and 1/2 weights for an exact octant representation.
+    The octant is built as a surface of revolution: a quarter-circle
+    profile in the XZ plane (from the north pole ``(0, 0, r)`` to the
+    equator point ``(r, 0, 0)``) is revolved 90° around the Z axis.
+    This is the standard NURBS construction and gives an exact sphere.
+
+    The control net is 3×3 (biquadratic).  The profile direction (v)
+    is a quarter-circle with weights ``(1, 1/√2, 1)``.  The revolution
+    direction (u) is also a quarter-circle with weights
+    ``(1, 1/√2, 1)``.  The pole edge (v=0) degenerates because all
+    three profile-start control points are at ``(0, 0, r)`` (the
+    distance from the Z axis is 0 at the pole).
     """
     w = math.sqrt(0.5)  # 1/√2
     r = radius
-    # Control net for the octant in the positive octant.
-    cps = [
-        [[0, 0, r], [r * w, 0, r * w], [r, 0, 0]],
-        [[0, r * w, r * w], [r * w, r * w, r * w], [r, r * w, 0]],
-        [[0, r, 0], [r * w, r, 0], [r, r, 0]],
-    ]
+    rw = r * w           # r/√2
+    # Profile (v-direction) quarter-circle from (0,0,r) to (r,0,0):
+    #   control points: (0, 0, r), (rw, 0, rw), (r, 0, 0)
+    #   weights: 1, w, 1
+    #   (middle cp at tangent intersection, distance rw = r/cos(45°) * cos(45°)
+    #    = r * cos(45°) ... actually rw = r * w = r/√2, which is r * cos(45°).
+    #    The tangent intersection is at distance r/cos(45°) = r√2 from center,
+    #    but the *control point* x-coordinate is rw = r/√2.  Wait no.
+    #
+    # For a quarter circle from (r,0) to (0,r) with center at origin:
+    #   cp0 = (r, 0), cp1 = (r, r), cp2 = (0, r)  [tangent intersection at (r,r)]
+    #   weights = 1, cos(45°)=w, 1
+    # The evaluated point at t=0.5 is:
+    #   (r*1*N0 + r*w*N1 + 0*1*N2, 0*1*N0 + r*w*N1 + r*1*N2) / (N0 + w*N1 + N2)
+    #   = (r*(N0 + w*N1), r*(w*N1 + N2)) / (N0 + w*N1 + N2)
+    #   At t=0.5: N0=N2=0.25, N1=0.5, so:
+    #   = (r*(0.25 + 0.5w), r*(0.5w + 0.25)) / (0.25 + 0.5w + 0.25)
+    #   = r*(0.25+0.5w) / (0.5+0.5w) = r*(0.25+0.354) / (0.5+0.354) = r*0.604/0.854 = r*0.707
+    #   ✓ This gives (r/√2, r/√2) — correct!
+    #
+    # So the revolution control point coordinates should be:
+    #   (1, 0), (1, 1), (0, 1) with weights 1, w, 1
+    # NOT (1, 0), (w, w), (0, 1) — that was the bug!
+    rx = [1.0, 1.0, 0.0]  # revolution x-component (tangent intersection cp)
+    ry = [0.0, 1.0, 1.0]  # revolution y-component
+    # Profile control points (v-direction):
+    # Quarter circle from (0,0,r) to (r,0,0) in XZ plane.
+    # cp0 = (0, 0, r) [pole], cp1 = (r, 0, r) [tangent intersection],
+    # cp2 = (r, 0, 0) [equator], weights = 1, w, 1
+    # The "distance from Z axis" for each profile cp:
+    dist = [0.0, r, r]       # profile x (distance from Z axis)
+    # The "height" for each profile cp:
+    height = [r, r, 0.0]     # profile z (height)
+    cps: List[List[List[float]]] = []
+    for i in range(3):
+        row: List[List[float]] = []
+        for j in range(3):
+            row.append([dist[j] * rx[i], dist[j] * ry[i], height[j]])
+        cps.append(row)
     weights = [
         [1.0, w, 1.0],
         [w, w * w, w],
         [1.0, w, 1.0],
     ]
-    ku = [0, 0, 0, 1, 1, 1]
-    kv = [0, 0, 0, 1, 1, 1]
+    ku = [0.0, 0.0, 0.0, 1.0, 1.0, 1.0]
+    kv = [0.0, 0.0, 0.0, 1.0, 1.0, 1.0]
     return NURBSSurface(2, 2, ku, kv, cps, weights)
 
 

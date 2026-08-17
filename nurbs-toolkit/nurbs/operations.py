@@ -221,6 +221,22 @@ def decompose_bezier_segments(curve: BSplineCurve) -> List[List[List[float]]]:
     i = p + 1
     while i < len(work.knots) - p - 1:
         u = work.knots[i]
+        # Count the FULL multiplicity of this knot value across the
+        # entire knot vector (not just up to the loop bound), since
+        # end knots with multiplicity p+1 should not be processed.
+        full_mult = 0
+        for x in work.knots:
+            if abs(x - u) < 1e-12:
+                full_mult += 1
+        if full_mult >= p + 1:
+            # This is an end knot (or already at max multiplicity); skip.
+            # Advance past all occurrences within the loop bound.
+            j = i
+            while j < len(work.knots) - p - 1 and abs(work.knots[j] - u) < 1e-12:
+                j += 1
+            i = j
+            continue
+
         mult = 0
         j = i
         while j < len(work.knots) - p - 1 and abs(work.knots[j] - u) < 1e-12:
@@ -229,7 +245,19 @@ def decompose_bezier_segments(curve: BSplineCurve) -> List[List[List[float]]]:
         if mult < p:
             work = knot_insert(work, u, p - mult)
         interior_knots.append(u)
-        i = j
+        # Advance past ALL occurrences of this knot value in the
+        # updated knot vector to avoid reprocessing.
+        i = p + 1
+        for idx in range(len(work.knots)):
+            if abs(work.knots[idx] - u) < 1e-12:
+                i = idx + 1
+        # i is now past the last occurrence of u; but we need to find
+        # the next distinct interior knot.  Reset i to just past all
+        # occurrences of u.
+        i_new = p + 1
+        while i_new < len(work.knots) - p - 1 and abs(work.knots[i_new] - u) < 1e-12:
+            i_new += 1
+        i = i_new
 
     # Now extract segments: each segment has p+1 control points.
     segments: List[List[List[float]]] = []
