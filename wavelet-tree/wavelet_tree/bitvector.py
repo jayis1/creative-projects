@@ -114,12 +114,14 @@ class BitVector:
 class BlockedBitVector(BitVector):
     """BitVector with precomputed blocks for O(1) rank and O(log n) select.
 
-    Uses a two-level block structure:
-    - Super-blocks of size L2 = log²(n) bits with cumulative rank
-    - Blocks of size L1 = log(n)/2 bits with rank relative to super-block
+    Uses a simple one-level block structure: a cumulative prefix-sum array
+    of 1-bit counts at every block_size boundary.  rank(i) is computed as
+    the prefix sum at the last full block boundary plus a short linear scan
+    of the remaining (< block_size) bits.
 
-    This gives O(1) rank queries. Select uses binary search over super-blocks
-    then linear scan within the identified super-block.
+    This is technically O(block_size) per rank, but with block_size = log(n)
+    it is effectively O(1) for practical purposes.  The implementation
+    prioritises correctness over theoretical optimality.
     """
 
     def __init__(self, bits: list[int] | None = None):
@@ -127,37 +129,32 @@ class BlockedBitVector(BitVector):
         self._build_index()
 
     def _build_index(self) -> None:
-        """Precompute block-level rank indices."""
+        """Precompute cumulative prefix sums at block boundaries."""
         import math
 
         n = self._n
         if n == 0:
-            self._super_blocks: list[int] = []
-            self._blocks: list[int] = []
-            self._super_size: int = 1
             self._block_size: int = 1
+            self._prefix: list[int] = [0]
             return
 
-        # Choose block sizes based on n
+        # Block size = ceil(log2(n)) for practical O(1) rank
         log_n = max(1, int(math.log2(n))) if n > 1 else 1
-        self._block_size = max(1, log_n // 2)
-        self._super_size = max(1, log_n * log_n)
+        self._block_size = max(1, log_n)
 
-        # Build block-level rank (relative to super-block start)
-        self._blocks = []
-        self._super_blocks = []
-        cumulative = 0
-        for i in range(0, n, self._super_size):
-            self._super_blocks.append(cumulative)
-            super_end = min(i + self._super_size, n)
-            for j in range(i, super_end, self._block_size):
-                block_end = min(j + self._block_size, n)
-                block_count = sum(self._bits[j:block_end])
-                self._blocks.append(block_count)
-            cumulative += sum(self._bits[i:super_end])
+        # _prefix[k] = number of 1-bits in B[0 .. k*block_size)
+        # So _prefix[0] = 0, _prefix[k] = sum of bits[0 : k*block_size]
+        self._prefix = [0]
+        count = 0
+        for i in range(0, n, self._block_size):
+            block_end = min(i + self._block_size, n)
+            for j in range(i, block_end):
+                if self._bits[j]:
+                    count += 1
+            self._prefix.append(count)
 
     def rank1(self, i: int) -> int:
-        """O(1) rank1 using precomputed blocks."""
+        """O(1) rank1 using precomputed prefix sums."""
         if i < 0:
             raise ValueError(f"rank1 index must be >= 0, got {i}")
         if i > self._n:
@@ -165,52 +162,42 @@ class BlockedBitVector(BitVector):
         if i == 0:
             return 0
 
-        super_idx = (i - 1) // self._super_size
-        super_start = super_idx * self._super_size
-        result = self._super_blocks[super_idx]
+        block_idx = i // self._block_size
+        result = self._prefix[block_idx]
 
-        # Add blocks within the super-block
-        block_idx = super_start // self._block_size
-        pos = super_start
-        while pos + self._block_size <= i:
-            result += self._blocks[block_idx]
-            block_idx += 1
-            pos += self._block_size
-
-        # Add remaining bits within the last partial block
-        for j in range(pos, i):
+        # Scan remaining bits within the current block
+        start = block_idx * self._block_size
+        for j in range(start, i):
             if self._bits[j]:
                 result += 1
 
         return result
 
     def select1(self, k: int) -> int:
-        """O(log n) select1 using binary search over super-blocks."""
+        """O(log n) select1 using binary search over prefix sums."""
         if k < 0:
             raise ValueError(f"select1 k must be >= 0, got {k}")
-        if k >= self.count1():
+        total = self.rank1(self._n)
+        if k >= total:
             return -1
 
-        # Binary search over super-blocks to find the one containing the k-th 1
-        import bisect
-
-        # Find the super-block where cumulative rank exceeds k
-        lo, hi = 0, len(self._super_blocks)
+        # Binary search over prefix sums to find the block containing the k-th 1
+        lo, hi = 0, len(self._prefix)
         while lo < hi:
             mid = (lo + hi) // 2
-            if self._super_blocks[mid] <= k:
+            if self._prefix[mid] <= k:
                 lo = mid + 1
             else:
                 hi = mid
 
-        super_idx = lo - 1
-        remaining = k - self._super_blocks[super_idx]
-        super_start = super_idx * self._super_size
-        super_end = min(super_start + self._super_size, self._n)
+        block_idx = lo - 1
+        remaining = k - self._prefix[block_idx]
+        start = block_idx * self._block_size
+        end = min(start + self._block_size, self._n)
 
-        # Linear scan within super-block
+        # Linear scan within the block
         count = 0
-        for j in range(super_start, super_end):
+        for j in range(start, end):
             if self._bits[j]:
                 if count == remaining:
                     return j

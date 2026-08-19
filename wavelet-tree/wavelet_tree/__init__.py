@@ -13,11 +13,18 @@ from .queries import (
     range_quantile,
     range_count,
     range_next_value,
+    range_prev_value,
+    range_min,
+    range_max,
     interval_symbols,
+    range_intersection,
+    prefix_search,
+    count_distinct,
 )
 from .serialization import save, load
+from .config import Config
 
-__version__ = "1.0.0"
+__version__ = "2.0.0"
 
 __all__ = [
     "BitVector",
@@ -30,7 +37,14 @@ __all__ = [
     "range_quantile",
     "range_count",
     "range_next_value",
+    "range_prev_value",
+    "range_min",
+    "range_max",
     "interval_symbols",
+    "range_intersection",
+    "prefix_search",
+    "count_distinct",
     "save",
     "load",
+    "Config",
 ]

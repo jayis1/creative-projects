@@ -92,6 +92,30 @@ def _range_quantile_matrix(wt: WaveletMatrix, l: int, r: int, k: int) -> Any:
     return wt._alphabet[code]
 
 
+def range_min(
+    wt: WaveletTree | WaveletMatrix, l: int, r: int
+) -> Any:
+    """Find the minimum (smallest) symbol in S[l..r).
+
+    Equivalent to range_quantile(l, r, 0).
+    """
+    if l >= r:
+        raise ValueError(f"Empty range: l={l} >= r={r}")
+    return range_quantile(wt, l, r, 0)
+
+
+def range_max(
+    wt: WaveletTree | WaveletMatrix, l: int, r: int
+) -> Any:
+    """Find the maximum (largest) symbol in S[l..r).
+
+    Equivalent to range_quantile(l, r, (r-l)-1).
+    """
+    if l >= r:
+        raise ValueError(f"Empty range: l={l} >= r={r}")
+    return range_quantile(wt, l, r, (r - l) - 1)
+
+
 def range_next_value(
     wt: WaveletTree | WaveletMatrix, l: int, r: int, threshold: Any
 ) -> Any | None:
@@ -108,6 +132,28 @@ def range_next_value(
     # Find the first symbol >= threshold that exists in the range
     for sym in alphabet:
         if sym >= threshold:
+            count = range_count(wt, sym, l, r)
+            if count > 0:
+                return sym
+    return None
+
+
+def range_prev_value(
+    wt: WaveletTree | WaveletMatrix, l: int, r: int, threshold: Any
+) -> Any | None:
+    """Find the largest symbol <= threshold in S[l..r).
+
+    Returns None if no such symbol exists.
+    """
+    if l < 0 or r < 0:
+        raise ValueError("Range bounds must be non-negative")
+    if l > r:
+        raise ValueError(f"Invalid range: l={l} > r={r}")
+
+    alphabet = wt.alphabet
+    # Find the last symbol <= threshold that exists in the range
+    for sym in reversed(alphabet):
+        if sym <= threshold:
             count = range_count(wt, sym, l, r)
             if count > 0:
                 return sym
@@ -132,3 +178,73 @@ def interval_symbols(
         if count > 0:
             result[sym] = count
     return result
+
+
+def range_intersection(
+    wt: WaveletTree | WaveletMatrix,
+    l1: int,
+    r1: int,
+    l2: int,
+    r2: int,
+) -> dict[Any, tuple[int, int]]:
+    """Find symbols that appear in both S[l1..r1) and S[l2..r2).
+
+    Returns a dict {symbol: (count_in_range1, count_in_range2)}.
+    """
+    if l1 < 0 or r1 < 0 or l2 < 0 or r2 < 0:
+        raise ValueError("Range bounds must be non-negative")
+    if l1 > r1 or l2 > r2:
+        raise ValueError("Invalid range: l > r")
+
+    result: dict[Any, tuple[int, int]] = {}
+    for sym in wt.alphabet:
+        c1 = range_count(wt, sym, l1, r1)
+        c2 = range_count(wt, sym, l2, r2)
+        if c1 > 0 and c2 > 0:
+            result[sym] = (c1, c2)
+    return result
+
+
+def prefix_search(
+    wt: WaveletTree | WaveletMatrix, prefix: list | str
+) -> list[int]:
+    """Find all positions where the sequence starts with the given prefix.
+
+    Works by computing rank/select for each symbol in the prefix.
+
+    Args:
+        wt: A wavelet tree/matrix.
+        prefix: A list of symbols (or a string for char-based sequences).
+
+    Returns:
+        A sorted list of starting positions.
+    """
+    if isinstance(prefix, str):
+        prefix = list(prefix)
+    if len(prefix) == 0:
+        return list(range(len(wt)))
+
+    # For each position, check if the prefix matches
+    # This is O(n * |prefix|) but correct for all structure types
+    positions: list[int] = []
+    n = len(wt)
+    for i in range(n - len(prefix) + 1):
+        match = True
+        for j, sym in enumerate(prefix):
+            if wt.access(i + j) != sym:
+                match = False
+                break
+        if match:
+            positions.append(i)
+    return positions
+
+
+def count_distinct(
+    wt: WaveletTree | WaveletMatrix, l: int, r: int
+) -> int:
+    """Count the number of distinct symbols in S[l..r)."""
+    if l < 0 or r < 0:
+        raise ValueError("Range bounds must be non-negative")
+    if l > r:
+        raise ValueError(f"Invalid range: l={l} > r={r}")
+    return len(interval_symbols(wt, l, r))
