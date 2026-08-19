@@ -5,9 +5,10 @@ from __future__ import annotations
 from typing import Any
 
 from .bitvector import BitVector, BlockedBitVector
+from .base import WaveletBase
 
 
-class WaveletMatrix:
+class WaveletMatrix(WaveletBase):
     """Wavelet Matrix: a level-ordered wavelet tree.
 
     Instead of a tree structure, the wavelet matrix stores one bitvector per

@@ -10,3 +10,5 @@ dist/
 .coverage
 htmlcov/
 *.json.bak
+.venv/
+venv/

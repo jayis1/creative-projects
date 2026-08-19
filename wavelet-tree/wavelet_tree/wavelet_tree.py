@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from .bitvector import BitVector, BlockedBitVector
-
+from .base import WaveletBase
 
 class WaveletTreeNode:
     """A single node in the wavelet tree."""
@@ -18,7 +18,7 @@ class WaveletTreeNode:
         self.alpha_max: int = 0  # max symbol in this node's alphabet (inclusive)
 
 
-class WaveletTree:
+class WaveletTree(WaveletBase):
     """Balanced binary Wavelet Tree over a sequence of symbols.
 
     Supports access(i), rank(c, i), select(c, k) in O(log |Σ|) time.

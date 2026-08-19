@@ -248,3 +248,112 @@ def count_distinct(
     if l > r:
         raise ValueError(f"Invalid range: l={l} > r={r}")
     return len(interval_symbols(wt, l, r))
+
+
+def range_report(
+    wt: WaveletTree | WaveletMatrix, l: int, r: int
+) -> list[tuple[Any, int]]:
+    """Report all distinct symbols in S[l..r) with their counts.
+
+    Similar to interval_symbols but returns a sorted list of (symbol, count)
+    pairs instead of a dict.
+
+    Args:
+        wt: A wavelet tree/matrix.
+        l: Start of range (inclusive).
+        r: End of range (exclusive).
+
+    Returns:
+        A list of (symbol, count) tuples sorted by symbol.
+    """
+    if l < 0 or r < 0:
+        raise ValueError("Range bounds must be non-negative")
+    if l > r:
+        raise ValueError(f"Invalid range: l={l} > r={r}")
+    result = interval_symbols(wt, l, r)
+    return sorted(result.items())
+
+
+def range_report_all(
+    wt: WaveletTree | WaveletMatrix, l: int, r: int
+) -> list[Any]:
+    """Report all symbols in S[l..r) in sorted order.
+
+    This is equivalent to sorting S[l..r) and returning the sorted list.
+    Uses range_quantile to extract symbols one by one.
+
+    Args:
+        wt: A wavelet tree/matrix.
+        l: Start of range (inclusive).
+        r: End of range (exclusive).
+
+    Returns:
+        A sorted list of all symbols in the range.
+    """
+    if l < 0 or r < 0:
+        raise ValueError("Range bounds must be non-negative")
+    if l > r:
+        raise ValueError(f"Invalid range: l={l} > r={r}")
+    if l == r:
+        return []
+
+    result: list[Any] = []
+    for k in range(r - l):
+        result.append(range_quantile(wt, l, r, k))
+    return result
+
+
+def range_top_k(
+    wt: WaveletTree | WaveletMatrix, l: int, r: int, k: int
+) -> list[tuple[Any, int]]:
+    """Find the k most frequent symbols in S[l..r).
+
+    Args:
+        wt: A wavelet tree/matrix.
+        l: Start of range (inclusive).
+        r: End of range (exclusive).
+        k: Number of top symbols to return.
+
+    Returns:
+        A list of (symbol, count) tuples sorted by count (descending),
+        then by symbol (ascending) for ties. At most k entries.
+    """
+    if l < 0 or r < 0:
+        raise ValueError("Range bounds must be non-negative")
+    if l > r:
+        raise ValueError(f"Invalid range: l={l} > r={r}")
+    if k <= 0:
+        return []
+
+    syms = interval_symbols(wt, l, r)
+    # Sort by count descending, then symbol ascending
+    sorted_items = sorted(syms.items(), key=lambda x: (-x[1], x[0]))
+    return sorted_items[:k]
+
+
+def range_bottom_k(
+    wt: WaveletTree | WaveletMatrix, l: int, r: int, k: int
+) -> list[tuple[Any, int]]:
+    """Find the k least frequent symbols in S[l..r).
+
+    Args:
+        wt: A wavelet tree/matrix.
+        l: Start of range (inclusive).
+        r: End of range (exclusive).
+        k: Number of bottom symbols to return.
+
+    Returns:
+        A list of (symbol, count) tuples sorted by count (ascending),
+        then by symbol (ascending) for ties. At most k entries.
+    """
+    if l < 0 or r < 0:
+        raise ValueError("Range bounds must be non-negative")
+    if l > r:
+        raise ValueError(f"Invalid range: l={l} > r={r}")
+    if k <= 0:
+        return []
+
+    syms = interval_symbols(wt, l, r)
+    # Sort by count ascending, then symbol ascending
+    sorted_items = sorted(syms.items(), key=lambda x: (x[1], x[0]))
+    return sorted_items[:k]

@@ -26,9 +26,18 @@ jobs:
       - name: Install
         run: |
           cd wavelet-tree
-          pip install -e .
+          pip install -e ".[dev]"
 
       - name: Run tests
         run: |
           cd wavelet-tree
           python -m pytest tests/ -v
+
+      - name: Run examples
+        run: |
+          cd wavelet-tree
+          python examples/basic_operations.py
+          python examples/compare_structures.py
+          python examples/dna_analysis.py
+          python examples/fm_index_search.py
+          python examples/benchmark_stats.py

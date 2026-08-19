@@ -4,21 +4,42 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "wavelet-tree"
-version = "1.0.0"
-description = "Succinct data structure library: Wavelet Trees and Matrices with rank/select/access"
+version = "3.0.0"
+description = "Succinct data structure library: Wavelet Trees, Matrices, RRR BitVectors, and FM-Index with rank/select/access and pattern matching"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
 authors = [{name = "Creative Projects"}]
-keywords = ["wavelet-tree", "succinct", "rank", "select", "data-structure"]
+keywords = [
+    "wavelet-tree",
+    "wavelet-matrix",
+    "succinct",
+    "rank",
+    "select",
+    "fm-index",
+    "bwt",
+    "pattern-matching",
+    "data-structure",
+    "rrr",
+    "huffman",
+]
 classifiers = [
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "License :: OSI Approved :: MIT License",
     "Topic :: Software Development :: Libraries",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Scientific/Engineering :: Information Analysis",
 ]
 
 [project.scripts]
 wavelet-tree = "wavelet_tree.cli:main"
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "pytest-cov"]
 
 [tool.setuptools.packages.find]
 include = ["wavelet_tree*"]

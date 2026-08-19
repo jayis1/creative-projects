@@ -210,10 +210,20 @@ def cmd_info(args):
     print("  - HuffmanWaveletTree (Huffman-shaped)")
     print("  - HuffmanWaveletMatrix (Huffman + matrix)")
     print()
+    print("BitVector implementations:")
+    print("  - BitVector (naive O(n) rank/select)")
+    print("  - BlockedBitVector (O(1) rank, O(log n) select)")
+    print("  - RRRBitVector (two-level index, O(1) rank)")
+    print()
     print("Operations: access, rank, select, range_quantile, range_count,")
     print("            range_min, range_max, range_next_value, range_prev_value,")
     print("            interval_symbols, range_intersection, prefix_search,")
-    print("            count_distinct")
+    print("            count_distinct, range_report, range_report_all,")
+    print("            range_top_k, range_bottom_k")
+    print()
+    print("FM-Index: backward search pattern matching via wavelet trees")
+    print()
+    print("Subcommands: build, load, compare, info, config, benchmark, stats, search")
 
 
 def cmd_config(args):
@@ -230,6 +240,82 @@ def cmd_config(args):
         config.validate()
         config.save(args.output)
         print(f"Config saved to {args.output}")
+
+
+def cmd_benchmark(args):
+    """Benchmark wavelet tree structures on a sequence."""
+    from .stats import benchmark, benchmark_report
+
+    structures = args.structures.split(",") if args.structures else None
+    results = benchmark(
+        args.sequence,
+        structures=structures,
+        num_rank_queries=args.num_queries,
+        num_access_queries=args.num_queries,
+        num_select_queries=args.num_queries,
+    )
+    print(benchmark_report(results))
+
+
+def cmd_stats(args):
+    """Show space and structural statistics for a sequence."""
+    from .stats import space_stats, tree_stats
+    from .wavelet_tree import WaveletTree
+    from .wavelet_matrix import WaveletMatrix
+    from .huffman import HuffmanWaveletTree, HuffmanWaveletMatrix
+
+    seq = list(args.sequence)
+    structures = {
+        "WaveletTree": WaveletTree(seq),
+        "WaveletMatrix": WaveletMatrix(seq),
+        "HuffmanWaveletTree": HuffmanWaveletTree(seq),
+        "HuffmanWaveletMatrix": HuffmanWaveletMatrix(seq),
+    }
+
+    print(f"Sequence: '{args.sequence}' (length={len(seq)})")
+    print(f"Alphabet: {sorted(set(seq))} (σ={len(set(seq))})")
+    print()
+
+    print("=== Space Statistics ===")
+    print(f"{'Structure':<25} {'Total Bits':>12} {'Bytes':>8} {'Bits/Sym':>10} {'H₀':>8}")
+    print("-" * 70)
+    for name, wt in structures.items():
+        ss = space_stats(wt)
+        print(
+            f"{name:<25} {ss.total_bits:>12} {ss.total_bytes:>8} "
+            f"{ss.bits_per_symbol:>10.2f} {ss.h0:>8.4f}"
+        )
+
+    print()
+    print("=== Structural Statistics ===")
+    for name, wt in structures.items():
+        ts = tree_stats(wt)
+        print(ts)
+        print()
+
+
+def cmd_search(args):
+    """Pattern search using FM-index backward search."""
+    from .fm_index import FMIndex
+
+    structure = args.structure or "matrix"
+    fm = FMIndex(args.text, structure=structure)
+
+    if args.count:
+        count = fm.count(args.pattern)
+        print(f"Pattern '{args.pattern}' occurs {count} time(s)")
+
+    if args.locate:
+        positions = fm.locate(args.pattern)
+        print(f"Pattern '{args.pattern}' found at positions: {positions}")
+
+    if not args.count and not args.locate:
+        # Default: both
+        count = fm.count(args.pattern)
+        positions = fm.locate(args.pattern)
+        print(f"Pattern '{args.pattern}': {count} occurrence(s)")
+        if positions:
+            print(f"  Positions: {positions}")
 
 
 def _add_query_args(parser):
@@ -296,6 +382,28 @@ def build_parser() -> argparse.ArgumentParser:
     p_config.add_argument("--structure", choices=["tree", "matrix", "huffman-tree", "huffman-matrix"], help="Structure type")
     p_config.add_argument("--log-level", choices=["DEBUG", "INFO", "WARNING", "ERROR"], help="Log level")
     p_config.set_defaults(func=cmd_config)
+
+    # benchmark
+    p_bench = subparsers.add_parser("benchmark", help="Benchmark structures on a sequence")
+    p_bench.add_argument("sequence", help="The input sequence")
+    p_bench.add_argument("--structures", metavar="LIST", help="Comma-separated structure names (default: all)")
+    p_bench.add_argument("--num-queries", type=int, default=1000, help="Number of queries per operation (default: 1000)")
+    p_bench.set_defaults(func=cmd_benchmark)
+
+    # stats
+    p_stats = subparsers.add_parser("stats", help="Show space and structural statistics")
+    p_stats.add_argument("sequence", help="The input sequence")
+    p_stats.set_defaults(func=cmd_stats)
+
+    # search (FM-index pattern matching)
+    p_search = subparsers.add_parser("search", help="Pattern search using FM-index backward search")
+    p_search.add_argument("text", help="The text to search in")
+    p_search.add_argument("pattern", help="The pattern to search for")
+    p_search.add_argument("--structure", choices=["tree", "matrix", "huffman-tree", "huffman-matrix"],
+                          default=None, help="Wavelet structure for the BWT index")
+    p_search.add_argument("--count", action="store_true", help="Only count occurrences")
+    p_search.add_argument("--locate", action="store_true", help="Only locate occurrences")
+    p_search.set_defaults(func=cmd_search)
 
     return parser
 

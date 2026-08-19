@@ -10,6 +10,7 @@ import heapq
 from typing import Any
 
 from .bitvector import BitVector, BlockedBitVector
+from .base import WaveletBase
 
 
 def build_huffman_code(freqs: dict[Any, int]) -> dict[Any, str]:
@@ -71,7 +72,7 @@ class _HuffmanNode:
         self.symbol: Any = None  # Only set for leaf nodes
 
 
-class HuffmanWaveletTree:
+class HuffmanWaveletTree(WaveletBase):
     """Huffman-shaped Wavelet Tree.
 
     The tree shape follows the Huffman code of the sequence, so frequent
@@ -254,7 +255,7 @@ class HuffmanWaveletTree:
         return f"HuffmanWaveletTree(len={self._n}, sigma={len(self._alphabet)})"
 
 
-class HuffmanWaveletMatrix:
+class HuffmanWaveletMatrix(WaveletBase):
     """Huffman-shaped Wavelet Matrix.
 
     Combines Huffman-optimal shape with the level-ordered matrix layout.
