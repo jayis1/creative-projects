@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "wavelet-tree"
+version = "1.0.0"
+description = "Succinct data structure library: Wavelet Trees and Matrices with rank/select/access"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [{name = "Creative Projects"}]
+keywords = ["wavelet-tree", "succinct", "rank", "select", "data-structure"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: Software Development :: Libraries",
+]
+
+[project.scripts]
+wavelet-tree = "wavelet_tree.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["wavelet_tree*"]
