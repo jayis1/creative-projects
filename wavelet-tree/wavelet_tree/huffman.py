@@ -205,6 +205,11 @@ class HuffmanWaveletTree:
         if c not in self._codes:
             return -1
 
+        # Check if k is within the valid range for this symbol
+        total = self.rank(c, self._n)
+        if k >= total:
+            return -1
+
         code = self._codes[c]
         node = self._root
         if node is None:

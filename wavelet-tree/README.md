@@ -161,3 +161,19 @@ pip install -e .
 ## License
 
 MIT
+
+## Known Issues (Resolved)
+
+The following bugs were found during the Phase 3 bug hunt and have been fixed:
+
+1. **BlockedBitVector rank/select incorrect for larger bitvectors** — The original two-level super-block/block structure had an off-by-one error in block index computation when the query position crossed super-block boundaries (affected sequences with >25 symbols). Fixed by replacing the two-level structure with a simpler one-level prefix-sum array that is both correct and easier to verify. (Fixed)
+
+2. **WaveletTree.select returns wrong result for out-of-range k with single-symbol alphabet** — When the alphabet has only one symbol, the tree root is a leaf (no bitvector), so the select method skipped the climb-back-up loop and returned `k` directly, even when `k >= n`. Fixed by adding an explicit range check using `rank(c, n)` before descending. (Fixed)
+
+3. **HuffmanWaveletTree.select same out-of-range issue** — Same root cause as #2: the select method didn't check if `k` was within the valid range before proceeding. Fixed by adding the same range check. (Fixed)
+
+4. **Serialization roundtrip broken for non-character symbols** — The original `_symbol_to_str`/`_str_to_symbol` functions used `repr()` for non-string symbols, which converted integers to strings (e.g., `1` → `'1'`) and couldn't reverse the conversion. Fixed by replacing with a typed JSON encoding that wraps non-character symbols in `{"type": "int"/"float"/"bool"/"str", "value": ...}` objects. (Fixed)
+
+5. **Config.from_dict doesn't coerce string booleans from fallback parsers** — The simple TOML/YAML fallback parsers return string `"true"`/`"false"` instead of Python booleans, causing `Config.validate()` to reject them. Fixed by adding type coercion in `Config.from_dict` that converts string boolean values to actual `bool` types. (Fixed)
+
+6. **dna_analysis.py example had incorrect range_count call** — Line 42 called `range_count(wt, "C", i + window, i + window)` (an empty range) before the correct call on the next line. The redundant line was removed. (Fixed)

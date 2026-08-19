@@ -51,7 +51,6 @@ print()
 print("=== GC content in windows of 10 ===")
 window = 10
 for i in range(0, len(dna) - window + 1, 5):
-    gc = range_count(wt, "G", i, i + window) + range_count(wt, "C", i + window, i + window)
     gc = range_count(wt, "G", i, i + window) + range_count(wt, "C", i, i + window)
     total = window
     print(f"  [{i}, {i+window}): GC={gc}/{total} ({100*gc/total:.0f}%)")

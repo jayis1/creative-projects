@@ -73,8 +73,20 @@ class Config:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Config":
-        """Create a Config from a dictionary."""
-        return cls(**{**cls.DEFAULTS, **data})
+        """Create a Config from a dictionary.
+
+        Coerces string values from simple TOML/YAML parsers to the
+        correct types (e.g. "true" → True for booleans).
+        """
+        coerced = {**cls.DEFAULTS, **data}
+        # Coerce use_blocked if it came as a string from a fallback parser
+        if isinstance(coerced.get("use_blocked"), str):
+            val = coerced["use_blocked"].strip().lower()
+            if val in ("true", "1", "yes"):
+                coerced["use_blocked"] = True
+            elif val in ("false", "0", "no"):
+                coerced["use_blocked"] = False
+        return cls(**coerced)
 
     @classmethod
     def from_file(cls, path: str) -> "Config":

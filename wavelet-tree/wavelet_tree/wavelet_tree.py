@@ -150,6 +150,11 @@ class WaveletTree:
         if c not in self._symbol_to_code:
             return -1
 
+        # Check if k is within the valid range for this symbol
+        total = self.rank(c, len(self._sequence))
+        if k >= total:
+            return -1
+
         code = self._symbol_to_code[c]
         node = self._root
         if node is None:
