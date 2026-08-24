@@ -3,8 +3,9 @@ import subprocess
 import sys
 import unittest
 
-from convolutional_codec.channels import BinarySymmetricChannel
-from convolutional_codec.codec import ConvolutionalCodec, Trellis
+from convolutional_codec.channels import AWGNChannel, BinarySymmetricChannel, bpsk_modulate, hard_decide
+from convolutional_codec.codec import BlockInterleaver, ConvolutionalCodec, Trellis
+from convolutional_codec.crc import CRC
 
 
 class CodecTests(unittest.TestCase):
@@ -33,6 +34,49 @@ class CodecTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             BinarySymmetricChannel(1.1)
 
+    def test_awgn_channel_emits_soft_values(self):
+        samples = AWGNChannel(6.0, seed=3).transmit([0, 1, 0, 1])
+        self.assertEqual(len(samples), 4)
+        self.assertTrue(any(not float(sample).is_integer() for sample in samples))
+
+    def test_soft_decode_round_trip_without_noise(self):
+        payload = [1, 0, 0, 1, 1]
+        encoded = self.codec.encode(payload)
+        samples = bpsk_modulate(encoded)
+        decoded = self.codec.decode_soft(samples)
+        self.assertEqual(decoded.bits, payload)
+
+    def test_punctured_codec_round_trip(self):
+        codec = ConvolutionalCodec(Trellis(3, (0o7, 0o5)), puncture_pattern=(1, 1, 0, 1))
+        payload = [1, 0, 1, 1, 0, 1]
+        encoded = codec.encode(payload)
+        decoded = codec.decode(encoded)
+        self.assertEqual(decoded.bits, payload)
+
+    def test_crc_frame_round_trip(self):
+        crc = CRC(0b10011, width=4)
+        payload = [1, 0, 1, 1, 0, 1, 0, 0]
+        encoded = self.codec.encode_frame(payload, crc=crc)
+        decoded = self.codec.decode_frame(encoded, crc=crc)
+        self.assertEqual(decoded["payload_bits"], payload)
+        self.assertTrue(decoded["crc_ok"])
+
+    def test_block_interleaver_round_trip(self):
+        interleaver = BlockInterleaver(2, 3)
+        payload = [0, 1, 1, 0, 1, 0, 1, 1, 0, 0, 0, 1]
+        self.assertEqual(interleaver.deinterleave(interleaver.interleave(payload)), payload)
+
+    def test_simulate_bsc_with_interleaver_and_crc(self):
+        crc = CRC(0b10011, width=4)
+        interleaver = BlockInterleaver(2, 14)
+        payload = [1, 0, 1, 1, 0, 1, 0, 0]
+        result = self.codec.simulate_bsc(payload, 0.0, seed=9, crc=crc, interleaver=interleaver)
+        self.assertEqual(result["decoded_bits"], payload)
+        self.assertTrue(result["crc_ok"])
+
+    def test_hard_decision_helper(self):
+        self.assertEqual(hard_decide([1.5, -0.1, 0.0, -2.0]), [0, 1, 0, 1])
+
     def test_cli_encode(self):
         completed = subprocess.run(
             [sys.executable, "-m", "convolutional_codec", "encode", "1011"],
@@ -53,6 +97,17 @@ class CodecTests(unittest.TestCase):
         )
         payload = json.loads(completed.stdout)
         self.assertEqual(payload["bits"], [1, 0, 1, 1])
+
+    def test_cli_decode_soft(self):
+        completed = subprocess.run(
+            [sys.executable, "-m", "convolutional_codec", "decode-soft", "--", "-1.0,1.0,-1.0,1.0,1.0,-1.0,1.0,-1.0,1.0,1.0"],
+            cwd="/root/projects/creative-projects/convolutional-codec",
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        payload = json.loads(completed.stdout)
+        self.assertIn("bits", payload)
 
 
 if __name__ == "__main__":

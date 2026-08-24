@@ -1,12 +1,20 @@
-"""Convolutional encoder and Viterbi decoder."""
+"""Convolutional encoder/decoder, puncturing, and frame helpers."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import inf
 from typing import Iterable, List, Sequence, Tuple
 
+from .channels import AWGNChannel, BinarySymmetricChannel, hard_decide
+from .crc import CRC
 
-def _validate_bit_sequence(bits: Iterable[int]) -> List[int]:
+
+BitList = List[int]
+MetricList = Sequence[float]
+
+
+def _validate_bit_sequence(bits: Iterable[int]) -> BitList:
     validated = list(bits)
     for bit in validated:
         if bit not in (0, 1):
@@ -24,7 +32,7 @@ class Trellis:
 
     Parameters are given in octal, matching common coding-theory notation.
     For example, ``constraint_length=3`` and generators ``(0o7, 0o5)`` define
-    the standard rate-1/2 code with free distance 5.
+    the classic NASA/CCSDS-style rate-1/2 code.
     """
 
     constraint_length: int
@@ -69,52 +77,158 @@ class Trellis:
 
 @dataclass(slots=True)
 class DecodingResult:
-    bits: List[int]
-    path_metric: int
-    corrected_codeword: List[int]
+    bits: BitList
+    path_metric: float
+    corrected_codeword: BitList
+    final_state: int
+
+
+class BlockInterleaver:
+    """Simple rectangular block interleaver."""
+
+    def __init__(self, rows: int, columns: int) -> None:
+        if rows <= 0 or columns <= 0:
+            raise ValueError("rows and columns must be positive")
+        self.rows = rows
+        self.columns = columns
+        self.block_size = rows * columns
+
+    def interleave(self, bits: Iterable[int]) -> BitList:
+        payload = _validate_bit_sequence(bits)
+        if len(payload) % self.block_size != 0:
+            raise ValueError("input length must be a multiple of rows * columns")
+        output: BitList = []
+        for offset in range(0, len(payload), self.block_size):
+            block = payload[offset : offset + self.block_size]
+            for col in range(self.columns):
+                for row in range(self.rows):
+                    output.append(block[row * self.columns + col])
+        return output
+
+    def deinterleave(self, bits: Iterable[int]) -> BitList:
+        payload = _validate_bit_sequence(bits)
+        if len(payload) % self.block_size != 0:
+            raise ValueError("input length must be a multiple of rows * columns")
+        output: BitList = []
+        for offset in range(0, len(payload), self.block_size):
+            block = payload[offset : offset + self.block_size]
+            restored = [0] * self.block_size
+            index = 0
+            for col in range(self.columns):
+                for row in range(self.rows):
+                    restored[row * self.columns + col] = block[index]
+                    index += 1
+            output.extend(restored)
+        return output
 
 
 class ConvolutionalCodec:
-    """Convolutional encoder/decoder using hard-decision Viterbi decoding."""
+    """Convolutional encoder/decoder with hard and soft Viterbi decoding."""
 
-    def __init__(self, trellis: Trellis) -> None:
+    def __init__(self, trellis: Trellis, *, puncture_pattern: Sequence[int] | None = None) -> None:
         self.trellis = trellis
+        self.puncture_pattern = self._normalize_puncture_pattern(puncture_pattern)
 
-    def encode(self, bits: Iterable[int], *, terminate: bool = True) -> List[int]:
+    def _normalize_puncture_pattern(self, pattern: Sequence[int] | None) -> Tuple[int, ...] | None:
+        if pattern is None:
+            return None
+        normalized = tuple(pattern)
+        if not normalized:
+            raise ValueError("puncture_pattern cannot be empty")
+        if len(normalized) % self.trellis.rate_denominator != 0:
+            raise ValueError("puncture_pattern length must be divisible by the number of generators")
+        if any(bit not in (0, 1) for bit in normalized):
+            raise ValueError("puncture_pattern must contain only 0 and 1")
+        if all(bit == 0 for bit in normalized):
+            raise ValueError("puncture_pattern cannot delete every symbol")
+        return normalized
+
+    def encode(self, bits: Iterable[int], *, terminate: bool = True) -> BitList:
         payload = _validate_bit_sequence(bits)
         work = payload + ([0] * self.trellis.memory if terminate else [])
         state = 0
-        encoded: List[int] = []
+        encoded: BitList = []
         for bit in work:
             encoded.extend(self.trellis.branch_output(state, bit))
             state = self.trellis.next_state(state, bit)
-        return encoded
+        return self.apply_puncturing(encoded)
+
+    def apply_puncturing(self, encoded_bits: Sequence[int]) -> BitList:
+        payload = _validate_bit_sequence(encoded_bits)
+        if self.puncture_pattern is None:
+            return payload
+        output: BitList = []
+        for index, bit in enumerate(payload):
+            if self.puncture_pattern[index % len(self.puncture_pattern)]:
+                output.append(bit)
+        return output
+
+    def depuncture(self, received: Sequence[float | int], *, erased_value: float = 0.0) -> List[float]:
+        if self.puncture_pattern is None:
+            return [float(x) for x in received]
+        output: List[float] = []
+        source_index = 0
+        while source_index < len(received):
+            for keep in self.puncture_pattern:
+                if keep:
+                    if source_index >= len(received):
+                        break
+                    output.append(float(received[source_index]))
+                    source_index += 1
+                else:
+                    output.append(erased_value)
+        if source_index != len(received):
+            raise ValueError("received punctured sequence could not be aligned with puncture pattern")
+        return output
 
     def decode(self, received: Sequence[int], *, assume_terminated: bool = True) -> DecodingResult:
-        codeword = _validate_bit_sequence(received)
-        n = self.trellis.rate_denominator
-        if len(codeword) % n != 0:
-            raise ValueError(
-                f"received codeword length {len(codeword)} is not divisible by rate denominator {n}"
-            )
+        samples = self.depuncture(received, erased_value=0.5)
+        hard_bits = [0 if value < 0.5 else 1 for value in samples]
+        return self._viterbi_decode(
+            hard_bits,
+            metric_type="hard",
+            assume_terminated=assume_terminated,
+        )
 
-        step_count = len(codeword) // n
-        inf = 10 ** 12
+    def decode_soft(self, received: Sequence[float], *, assume_terminated: bool = True) -> DecodingResult:
+        samples = self.depuncture(received, erased_value=0.0)
+        return self._viterbi_decode(
+            samples,
+            metric_type="soft",
+            assume_terminated=assume_terminated,
+        )
+
+    def _viterbi_decode(
+        self,
+        received: Sequence[float],
+        *,
+        metric_type: str,
+        assume_terminated: bool,
+    ) -> DecodingResult:
+        n = self.trellis.rate_denominator
+        if len(received) % n != 0:
+            raise ValueError(
+                f"received codeword length {len(received)} is not divisible by rate denominator {n}"
+            )
+        step_count = len(received) // n
+        if step_count == 0:
+            return DecodingResult([], 0.0, [], 0)
+
         path_metrics = [inf] * self.trellis.state_count
-        path_metrics[0] = 0
+        path_metrics[0] = 0.0
         predecessors: List[List[Tuple[int, int]]] = []
 
         for step in range(step_count):
-            symbol = tuple(codeword[step * n : (step + 1) * n])
+            symbol = received[step * n : (step + 1) * n]
             new_metrics = [inf] * self.trellis.state_count
             decisions: List[Tuple[int, int]] = [(-1, -1)] * self.trellis.state_count
             for state, metric in enumerate(path_metrics):
-                if metric >= inf:
+                if metric == inf:
                     continue
                 for input_bit in (0, 1):
                     next_state = self.trellis.next_state(state, input_bit)
                     expected = self.trellis.branch_output(state, input_bit)
-                    branch_metric = sum(a ^ b for a, b in zip(symbol, expected))
+                    branch_metric = self._branch_metric(symbol, expected, metric_type=metric_type)
                     candidate = metric + branch_metric
                     if candidate < new_metrics[next_state]:
                         new_metrics[next_state] = candidate
@@ -125,8 +239,9 @@ class ConvolutionalCodec:
         final_state = 0 if assume_terminated else min(
             range(self.trellis.state_count), key=lambda s: path_metrics[s]
         )
-        decoded: List[int] = []
-        corrected: List[int] = []
+        terminal_metric = path_metrics[final_state]
+        decoded: BitList = []
+        corrected: BitList = []
         for step in range(step_count - 1, -1, -1):
             prev_state, input_bit = predecessors[step][final_state]
             if prev_state < 0:
@@ -139,7 +254,51 @@ class ConvolutionalCodec:
         corrected.reverse()
         if assume_terminated and self.trellis.memory:
             decoded = decoded[: -self.trellis.memory]
-        return DecodingResult(decoded, path_metrics[0], corrected)
+        return DecodingResult(decoded, terminal_metric, corrected, 0 if assume_terminated else final_state)
+
+    def _branch_metric(
+        self,
+        received_symbol: Sequence[float],
+        expected_symbol: Sequence[int],
+        *,
+        metric_type: str,
+    ) -> float:
+        if metric_type == "hard":
+            if any(sample not in (0, 1) for sample in received_symbol):
+                raise ValueError("hard-decision decoding expects binary samples")
+            return float(sum(int(sample) ^ expected for sample, expected in zip(received_symbol, expected_symbol)))
+        if metric_type == "soft":
+            expected_bpsk = [1.0 if bit == 0 else -1.0 for bit in expected_symbol]
+            return sum((sample - target) ** 2 for sample, target in zip(received_symbol, expected_bpsk))
+        raise ValueError(f"unknown metric_type {metric_type!r}")
+
+    def encode_frame(self, bits: Iterable[int], *, crc: CRC | None = None, terminate: bool = True) -> BitList:
+        payload = _validate_bit_sequence(bits)
+        if crc is not None:
+            payload = crc.append(payload)
+        return self.encode(payload, terminate=terminate)
+
+    def decode_frame(
+        self,
+        received: Sequence[int] | Sequence[float],
+        *,
+        crc: CRC | None = None,
+        terminate: bool = True,
+        soft: bool = False,
+    ) -> dict:
+        result = self.decode_soft(received, assume_terminated=terminate) if soft else self.decode(received, assume_terminated=terminate)
+        frame_bits = result.bits
+        crc_ok = None
+        payload = frame_bits
+        if crc is not None:
+            crc_ok = crc.verify(frame_bits)
+            payload = frame_bits[:-crc.width] if len(frame_bits) >= crc.width else []
+        return {
+            "payload_bits": payload,
+            "frame_bits": frame_bits,
+            "crc_ok": crc_ok,
+            "path_metric": result.path_metric,
+        }
 
     def simulate_bsc(
         self,
@@ -148,20 +307,60 @@ class ConvolutionalCodec:
         *,
         terminate: bool = True,
         seed: int | None = None,
+        crc: CRC | None = None,
+        interleaver: BlockInterleaver | None = None,
     ) -> dict:
-        from .channels import BinarySymmetricChannel
-
         payload = _validate_bit_sequence(bits)
-        encoded = self.encode(payload, terminate=terminate)
+        encoded = self.encode_frame(payload, crc=crc, terminate=terminate)
+        tx_bits = interleaver.interleave(encoded) if interleaver else encoded
         channel = BinarySymmetricChannel(crossover_probability, seed=seed)
-        received = channel.transmit(encoded)
-        decoded = self.decode(received, assume_terminated=terminate)
-        bit_errors = sum(a ^ b for a, b in zip(payload, decoded.bits))
+        rx_bits = channel.transmit(tx_bits)
+        deinterleaved = interleaver.deinterleave(rx_bits) if interleaver else rx_bits
+        decoded = self.decode_frame(deinterleaved, crc=crc, terminate=terminate)
+        payload_bits = decoded["payload_bits"]
+        bit_errors = sum(a ^ b for a, b in zip(payload, payload_bits)) + abs(len(payload) - len(payload_bits))
         return {
             "input_bits": payload,
             "encoded_bits": encoded,
-            "received_bits": received,
-            "decoded_bits": decoded.bits,
+            "transmitted_bits": tx_bits,
+            "received_bits": rx_bits,
+            "decoded_bits": payload_bits,
+            "frame_bits": decoded["frame_bits"],
+            "crc_ok": decoded["crc_ok"],
             "bit_errors": bit_errors,
-            "path_metric": decoded.path_metric,
+            "path_metric": decoded["path_metric"],
+        }
+
+    def simulate_awgn(
+        self,
+        bits: Iterable[int],
+        snr_db: float,
+        *,
+        terminate: bool = True,
+        seed: int | None = None,
+        crc: CRC | None = None,
+        interleaver: BlockInterleaver | None = None,
+    ) -> dict:
+        payload = _validate_bit_sequence(bits)
+        encoded = self.encode_frame(payload, crc=crc, terminate=terminate)
+        tx_bits = interleaver.interleave(encoded) if interleaver else encoded
+        channel = AWGNChannel(snr_db, seed=seed)
+        samples = channel.transmit(tx_bits)
+        deinterleaved_samples = samples
+        if interleaver is not None:
+            hard_bits = interleaver.deinterleave(hard_decide(samples))
+            deinterleaved_samples = [1.0 if bit == 0 else -1.0 for bit in hard_bits]
+        decoded = self.decode_frame(deinterleaved_samples, crc=crc, terminate=terminate, soft=True)
+        payload_bits = decoded["payload_bits"]
+        bit_errors = sum(a ^ b for a, b in zip(payload, payload_bits)) + abs(len(payload) - len(payload_bits))
+        return {
+            "input_bits": payload,
+            "encoded_bits": encoded,
+            "transmitted_bits": tx_bits,
+            "received_samples": samples,
+            "decoded_bits": payload_bits,
+            "frame_bits": decoded["frame_bits"],
+            "crc_ok": decoded["crc_ok"],
+            "bit_errors": bit_errors,
+            "path_metric": decoded["path_metric"],
         }
