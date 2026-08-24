@@ -5,12 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable, List
 
-
-def _validate_bits(bits: Iterable[int]) -> List[int]:
-    out = list(bits)
-    if any(bit not in (0, 1) for bit in out):
-        raise ValueError("CRC bitstreams must contain only 0 and 1")
-    return out
+from .utils import validate_bit_sequence
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,7 +31,7 @@ class CRC:
             raise ValueError("xor_out is out of range for CRC width")
 
     def compute(self, bits: Iterable[int]) -> List[int]:
-        payload = _validate_bits(bits)
+        payload = validate_bit_sequence(bits, name="CRC payload")
         register = self.init
         mask = (1 << self.width) - 1
         poly = self.polynomial & mask
@@ -49,11 +44,11 @@ class CRC:
         return [(register >> shift) & 1 for shift in range(self.width - 1, -1, -1)]
 
     def append(self, bits: Iterable[int]) -> List[int]:
-        payload = _validate_bits(bits)
+        payload = validate_bit_sequence(bits, name="CRC payload")
         return payload + self.compute(payload)
 
     def verify(self, frame: Iterable[int]) -> bool:
-        data = _validate_bits(frame)
+        data = validate_bit_sequence(frame, name="CRC frame")
         if len(data) < self.width:
             return False
         payload = data[:-self.width]

@@ -1,40 +1,23 @@
-"""Convolutional encoder/decoder, puncturing, and frame helpers."""
+"""Convolutional encoder/decoder primitives."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from math import inf
-from typing import Iterable, List, Sequence, Tuple, TypeVar
+from typing import Iterable, List, Sequence, Tuple
 
-from .channels import AWGNChannel, BinarySymmetricChannel
+from .channels import AWGNChannel, BinarySymmetricChannel, GilbertElliottChannel
 from .crc import CRC
+from .interleaver import BlockInterleaver
+from .utils import BitList, parity, validate_bit_sequence
 
 
-BitList = List[int]
 MetricList = Sequence[float]
-T = TypeVar("T")
-
-
-def _validate_bit_sequence(bits: Iterable[int]) -> BitList:
-    validated = list(bits)
-    for bit in validated:
-        if bit not in (0, 1):
-            raise ValueError(f"expected binary symbols, got {bit!r}")
-    return validated
-
-
-def _parity(value: int) -> int:
-    return value.bit_count() & 1
 
 
 @dataclass(frozen=True, slots=True)
 class Trellis:
-    """Convolutional-code trellis specification.
-
-    Parameters are given in octal, matching common coding-theory notation.
-    For example, ``constraint_length=3`` and generators ``(0o7, 0o5)`` define
-    the classic NASA/CCSDS-style rate-1/2 code.
-    """
+    """Convolutional-code trellis specification."""
 
     constraint_length: int
     generators: Tuple[int, ...]
@@ -70,7 +53,7 @@ class Trellis:
 
     def branch_output(self, state: int, input_bit: int) -> Tuple[int, ...]:
         register = (input_bit << self.memory) | state
-        return tuple(_parity(register & generator) for generator in self.generators)
+        return tuple(parity(register & generator) for generator in self.generators)
 
     def next_state(self, state: int, input_bit: int) -> int:
         return ((input_bit << (self.memory - 1)) | (state >> 1)) if self.memory else 0
@@ -82,45 +65,6 @@ class DecodingResult:
     path_metric: float
     corrected_codeword: BitList
     final_state: int
-
-
-class BlockInterleaver:
-    """Simple rectangular block interleaver."""
-
-    def __init__(self, rows: int, columns: int) -> None:
-        if rows <= 0 or columns <= 0:
-            raise ValueError("rows and columns must be positive")
-        self.rows = rows
-        self.columns = columns
-        self.block_size = rows * columns
-
-    def interleave(self, values: Sequence[T] | Iterable[T]) -> List[T]:
-        payload = list(values)
-        if len(payload) % self.block_size != 0:
-            raise ValueError("input length must be a multiple of rows * columns")
-        output: List[T] = []
-        for offset in range(0, len(payload), self.block_size):
-            block = payload[offset : offset + self.block_size]
-            for col in range(self.columns):
-                for row in range(self.rows):
-                    output.append(block[row * self.columns + col])
-        return output
-
-    def deinterleave(self, values: Sequence[T] | Iterable[T]) -> List[T]:
-        payload = list(values)
-        if len(payload) % self.block_size != 0:
-            raise ValueError("input length must be a multiple of rows * columns")
-        output: List[T] = []
-        for offset in range(0, len(payload), self.block_size):
-            block = payload[offset : offset + self.block_size]
-            restored: List[T | None] = [None] * self.block_size
-            index = 0
-            for col in range(self.columns):
-                for row in range(self.rows):
-                    restored[row * self.columns + col] = block[index]
-                    index += 1
-            output.extend(item for item in restored if item is not None)
-        return output
 
 
 class ConvolutionalCodec:
@@ -144,8 +88,19 @@ class ConvolutionalCodec:
             raise ValueError("puncture_pattern cannot delete every symbol")
         return normalized
 
+    @property
+    def nominal_rate(self) -> str:
+        return f"1/{self.trellis.rate_denominator}"
+
+    @property
+    def effective_rate(self) -> float:
+        if self.puncture_pattern is None:
+            return 1.0 / self.trellis.rate_denominator
+        kept = sum(self.puncture_pattern)
+        return len(self.puncture_pattern) / (self.trellis.rate_denominator * kept)
+
     def encode(self, bits: Iterable[int], *, terminate: bool = True) -> BitList:
-        payload = _validate_bit_sequence(bits)
+        payload = validate_bit_sequence(bits)
         work = payload + ([0] * self.trellis.memory if terminate else [])
         state = 0
         encoded: BitList = []
@@ -155,7 +110,7 @@ class ConvolutionalCodec:
         return self.apply_puncturing(encoded)
 
     def apply_puncturing(self, encoded_bits: Sequence[int]) -> BitList:
-        payload = _validate_bit_sequence(encoded_bits)
+        payload = validate_bit_sequence(encoded_bits)
         if self.puncture_pattern is None:
             return payload
         output: BitList = []
@@ -184,10 +139,6 @@ class ConvolutionalCodec:
                 else:
                     output.append(erased_value)
             block_length = len(output) - block_start
-            # Truncated final puncturing blocks are legal near frame boundaries,
-            # but Viterbi decoding still consumes full trellis output symbols.
-            # Trim any incomplete symbol that appears when the last puncture cycle
-            # ends partway through the pattern.
             remainder = block_length % self.trellis.rate_denominator
             if remainder:
                 del output[-remainder:]
@@ -199,23 +150,15 @@ class ConvolutionalCodec:
 
     def decode(self, received: Sequence[int], *, assume_terminated: bool = True) -> DecodingResult:
         samples = self.depuncture(received, erased_value=0.5)
-        return self._viterbi_decode(
-            samples,
-            metric_type="hard",
-            assume_terminated=assume_terminated,
-        )
+        return self._viterbi_decode(samples, metric_type="hard", assume_terminated=assume_terminated)
 
     def decode_soft(self, received: Sequence[float], *, assume_terminated: bool = True) -> DecodingResult:
         samples = self.depuncture(received, erased_value=0.0)
-        return self._viterbi_decode(
-            samples,
-            metric_type="soft",
-            assume_terminated=assume_terminated,
-        )
+        return self._viterbi_decode(samples, metric_type="soft", assume_terminated=assume_terminated)
 
     def _viterbi_decode(
         self,
-        received: Sequence[float],
+        received: MetricList,
         *,
         metric_type: str,
         assume_terminated: bool,
@@ -251,25 +194,26 @@ class ConvolutionalCodec:
             predecessors.append(decisions)
             path_metrics = new_metrics
 
-        final_state = 0 if assume_terminated else min(
-            range(self.trellis.state_count), key=lambda s: path_metrics[s]
+        terminal_state = 0 if assume_terminated else min(
+            range(self.trellis.state_count), key=lambda state: path_metrics[state]
         )
-        terminal_metric = path_metrics[final_state]
+        terminal_metric = path_metrics[terminal_state]
+        traceback_state = terminal_state
         decoded: BitList = []
         corrected: BitList = []
         for step in range(step_count - 1, -1, -1):
-            prev_state, input_bit = predecessors[step][final_state]
+            prev_state, input_bit = predecessors[step][traceback_state]
             if prev_state < 0:
                 raise ValueError("trellis traceback failed; received sequence may be invalid")
             decoded.append(input_bit)
             corrected.extend(reversed(self.trellis.branch_output(prev_state, input_bit)))
-            final_state = prev_state
+            traceback_state = prev_state
 
         decoded.reverse()
         corrected.reverse()
         if assume_terminated and self.trellis.memory:
             decoded = decoded[: -self.trellis.memory]
-        return DecodingResult(decoded, terminal_metric, corrected, 0 if assume_terminated else final_state)
+        return DecodingResult(decoded, terminal_metric, corrected, terminal_state)
 
     def _branch_metric(
         self,
@@ -281,8 +225,6 @@ class ConvolutionalCodec:
         if metric_type == "hard":
             if any(sample not in (0.0, 0.5, 1.0) for sample in received_symbol):
                 raise ValueError("hard-decision decoding expects binary samples or 0.5 erasures")
-            # A punctured bit is represented as 0.5 so both hypotheses pay the
-            # same 0.5 cost; observed 0/1 samples reduce to ordinary Hamming distance.
             return sum(abs(float(sample) - expected) for sample, expected in zip(received_symbol, expected_symbol))
         if metric_type == "soft":
             expected_bpsk = [1.0 if bit == 0 else -1.0 for bit in expected_symbol]
@@ -290,7 +232,7 @@ class ConvolutionalCodec:
         raise ValueError(f"unknown metric_type {metric_type!r}")
 
     def encode_frame(self, bits: Iterable[int], *, crc: CRC | None = None, terminate: bool = True) -> BitList:
-        payload = _validate_bit_sequence(bits)
+        payload = validate_bit_sequence(bits)
         if crc is not None:
             payload = crc.append(payload)
         return self.encode(payload, terminate=terminate)
@@ -315,6 +257,7 @@ class ConvolutionalCodec:
             "frame_bits": frame_bits,
             "crc_ok": crc_ok,
             "path_metric": result.path_metric,
+            "final_state": result.final_state,
         }
 
     def simulate_bsc(
@@ -325,9 +268,9 @@ class ConvolutionalCodec:
         terminate: bool = True,
         seed: int | None = None,
         crc: CRC | None = None,
-        interleaver: BlockInterleaver | None = None,
+        interleaver: BlockInterleaver[int] | None = None,
     ) -> dict:
-        payload = _validate_bit_sequence(bits)
+        payload = validate_bit_sequence(bits)
         encoded = self.encode_frame(payload, crc=crc, terminate=terminate)
         tx_bits = interleaver.interleave(encoded) if interleaver else encoded
         channel = BinarySymmetricChannel(crossover_probability, seed=seed)
@@ -337,6 +280,48 @@ class ConvolutionalCodec:
         payload_bits = decoded["payload_bits"]
         bit_errors = sum(a ^ b for a, b in zip(payload, payload_bits)) + abs(len(payload) - len(payload_bits))
         return {
+            "channel": "bsc",
+            "input_bits": payload,
+            "encoded_bits": encoded,
+            "transmitted_bits": tx_bits,
+            "received_bits": rx_bits,
+            "decoded_bits": payload_bits,
+            "frame_bits": decoded["frame_bits"],
+            "crc_ok": decoded["crc_ok"],
+            "bit_errors": bit_errors,
+            "path_metric": decoded["path_metric"],
+        }
+
+    def simulate_burst(
+        self,
+        bits: Iterable[int],
+        *,
+        p_good_to_bad: float,
+        p_bad_to_good: float,
+        good_error_probability: float = 0.001,
+        bad_error_probability: float = 0.2,
+        terminate: bool = True,
+        seed: int | None = None,
+        crc: CRC | None = None,
+        interleaver: BlockInterleaver[int] | None = None,
+    ) -> dict:
+        payload = validate_bit_sequence(bits)
+        encoded = self.encode_frame(payload, crc=crc, terminate=terminate)
+        tx_bits = interleaver.interleave(encoded) if interleaver else encoded
+        channel = GilbertElliottChannel(
+            p_good_to_bad=p_good_to_bad,
+            p_bad_to_good=p_bad_to_good,
+            good_error_probability=good_error_probability,
+            bad_error_probability=bad_error_probability,
+            seed=seed,
+        )
+        rx_bits = channel.transmit(tx_bits)
+        deinterleaved = interleaver.deinterleave(rx_bits) if interleaver else rx_bits
+        decoded = self.decode_frame(deinterleaved, crc=crc, terminate=terminate)
+        payload_bits = decoded["payload_bits"]
+        bit_errors = sum(a ^ b for a, b in zip(payload, payload_bits)) + abs(len(payload) - len(payload_bits))
+        return {
+            "channel": "gilbert-elliott",
             "input_bits": payload,
             "encoded_bits": encoded,
             "transmitted_bits": tx_bits,
@@ -356,9 +341,9 @@ class ConvolutionalCodec:
         terminate: bool = True,
         seed: int | None = None,
         crc: CRC | None = None,
-        interleaver: BlockInterleaver | None = None,
+        interleaver: BlockInterleaver[float] | None = None,
     ) -> dict:
-        payload = _validate_bit_sequence(bits)
+        payload = validate_bit_sequence(bits)
         encoded = self.encode_frame(payload, crc=crc, terminate=terminate)
         tx_bits = interleaver.interleave(encoded) if interleaver else encoded
         channel = AWGNChannel(snr_db, seed=seed)
@@ -368,6 +353,7 @@ class ConvolutionalCodec:
         payload_bits = decoded["payload_bits"]
         bit_errors = sum(a ^ b for a, b in zip(payload, payload_bits)) + abs(len(payload) - len(payload_bits))
         return {
+            "channel": "awgn",
             "input_bits": payload,
             "encoded_bits": encoded,
             "transmitted_bits": tx_bits,

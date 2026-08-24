@@ -1,0 +1,26 @@
+log_level = "INFO"
+pretty = true
+
+[codec]
+constraint_length = 3
+generators = ["7", "5"]
+puncture_pattern = "1101"
+
+[crc]
+polynomial = "0b10011"
+width = 4
+
+[interleaver]
+rows = 3
+columns = 7
+
+[command]
+name = "benchmark-burst"
+bits = "10110100"
+bad_error_prob = [0.08, 0.14, 0.22]
+p_good_to_bad = 0.05
+p_bad_to_good = 0.3
+good_error_prob = 0.002
+trials = 10
+seed = 7
+frame = true
