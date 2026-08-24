@@ -4,14 +4,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import inf
-from typing import Iterable, List, Sequence, Tuple
+from typing import Iterable, List, Sequence, Tuple, TypeVar
 
-from .channels import AWGNChannel, BinarySymmetricChannel, hard_decide
+from .channels import AWGNChannel, BinarySymmetricChannel
 from .crc import CRC
 
 
 BitList = List[int]
 MetricList = Sequence[float]
+T = TypeVar("T")
 
 
 def _validate_bit_sequence(bits: Iterable[int]) -> BitList:
@@ -93,11 +94,11 @@ class BlockInterleaver:
         self.columns = columns
         self.block_size = rows * columns
 
-    def interleave(self, bits: Iterable[int]) -> BitList:
-        payload = _validate_bit_sequence(bits)
+    def interleave(self, values: Sequence[T] | Iterable[T]) -> List[T]:
+        payload = list(values)
         if len(payload) % self.block_size != 0:
             raise ValueError("input length must be a multiple of rows * columns")
-        output: BitList = []
+        output: List[T] = []
         for offset in range(0, len(payload), self.block_size):
             block = payload[offset : offset + self.block_size]
             for col in range(self.columns):
@@ -105,20 +106,20 @@ class BlockInterleaver:
                     output.append(block[row * self.columns + col])
         return output
 
-    def deinterleave(self, bits: Iterable[int]) -> BitList:
-        payload = _validate_bit_sequence(bits)
+    def deinterleave(self, values: Sequence[T] | Iterable[T]) -> List[T]:
+        payload = list(values)
         if len(payload) % self.block_size != 0:
             raise ValueError("input length must be a multiple of rows * columns")
-        output: BitList = []
+        output: List[T] = []
         for offset in range(0, len(payload), self.block_size):
             block = payload[offset : offset + self.block_size]
-            restored = [0] * self.block_size
+            restored: List[T | None] = [None] * self.block_size
             index = 0
             for col in range(self.columns):
                 for row in range(self.rows):
                     restored[row * self.columns + col] = block[index]
                     index += 1
-            output.extend(restored)
+            output.extend(item for item in restored if item is not None)
         return output
 
 
@@ -158,9 +159,12 @@ class ConvolutionalCodec:
         if self.puncture_pattern is None:
             return payload
         output: BitList = []
-        for index, bit in enumerate(payload):
-            if self.puncture_pattern[index % len(self.puncture_pattern)]:
-                output.append(bit)
+        pattern_width = len(self.puncture_pattern)
+        for offset in range(0, len(payload), pattern_width):
+            block = payload[offset : offset + pattern_width]
+            for bit, keep in zip(block, self.puncture_pattern):
+                if keep:
+                    output.append(bit)
         return output
 
     def depuncture(self, received: Sequence[float | int], *, erased_value: float = 0.0) -> List[float]:
@@ -168,7 +172,9 @@ class ConvolutionalCodec:
             return [float(x) for x in received]
         output: List[float] = []
         source_index = 0
+        pattern_width = len(self.puncture_pattern)
         while source_index < len(received):
+            block_start = len(output)
             for keep in self.puncture_pattern:
                 if keep:
                     if source_index >= len(received):
@@ -177,15 +183,24 @@ class ConvolutionalCodec:
                     source_index += 1
                 else:
                     output.append(erased_value)
+            block_length = len(output) - block_start
+            # Truncated final puncturing blocks are legal near frame boundaries,
+            # but Viterbi decoding still consumes full trellis output symbols.
+            # Trim any incomplete symbol that appears when the last puncture cycle
+            # ends partway through the pattern.
+            remainder = block_length % self.trellis.rate_denominator
+            if remainder:
+                del output[-remainder:]
+            if block_length < pattern_width:
+                break
         if source_index != len(received):
             raise ValueError("received punctured sequence could not be aligned with puncture pattern")
         return output
 
     def decode(self, received: Sequence[int], *, assume_terminated: bool = True) -> DecodingResult:
         samples = self.depuncture(received, erased_value=0.5)
-        hard_bits = [0 if value < 0.5 else 1 for value in samples]
         return self._viterbi_decode(
-            hard_bits,
+            samples,
             metric_type="hard",
             assume_terminated=assume_terminated,
         )
@@ -264,9 +279,11 @@ class ConvolutionalCodec:
         metric_type: str,
     ) -> float:
         if metric_type == "hard":
-            if any(sample not in (0, 1) for sample in received_symbol):
-                raise ValueError("hard-decision decoding expects binary samples")
-            return float(sum(int(sample) ^ expected for sample, expected in zip(received_symbol, expected_symbol)))
+            if any(sample not in (0.0, 0.5, 1.0) for sample in received_symbol):
+                raise ValueError("hard-decision decoding expects binary samples or 0.5 erasures")
+            # A punctured bit is represented as 0.5 so both hypotheses pay the
+            # same 0.5 cost; observed 0/1 samples reduce to ordinary Hamming distance.
+            return sum(abs(float(sample) - expected) for sample, expected in zip(received_symbol, expected_symbol))
         if metric_type == "soft":
             expected_bpsk = [1.0 if bit == 0 else -1.0 for bit in expected_symbol]
             return sum((sample - target) ** 2 for sample, target in zip(received_symbol, expected_bpsk))
@@ -346,10 +363,7 @@ class ConvolutionalCodec:
         tx_bits = interleaver.interleave(encoded) if interleaver else encoded
         channel = AWGNChannel(snr_db, seed=seed)
         samples = channel.transmit(tx_bits)
-        deinterleaved_samples = samples
-        if interleaver is not None:
-            hard_bits = interleaver.deinterleave(hard_decide(samples))
-            deinterleaved_samples = [1.0 if bit == 0 else -1.0 for bit in hard_bits]
+        deinterleaved_samples = interleaver.deinterleave(samples) if interleaver is not None else samples
         decoded = self.decode_frame(deinterleaved_samples, crc=crc, terminate=terminate, soft=True)
         payload_bits = decoded["payload_bits"]
         bit_errors = sum(a ^ b for a, b in zip(payload, payload_bits)) + abs(len(payload) - len(payload_bits))

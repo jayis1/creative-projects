@@ -1,9 +1,11 @@
+import argparse
 import json
 import subprocess
 import sys
 import unittest
 
 from convolutional_codec.channels import AWGNChannel, BinarySymmetricChannel, bpsk_modulate, hard_decide
+from convolutional_codec.cli import _parse_float_list
 from convolutional_codec.codec import BlockInterleaver, ConvolutionalCodec, Trellis
 from convolutional_codec.crc import CRC
 
@@ -53,6 +55,19 @@ class CodecTests(unittest.TestCase):
         decoded = codec.decode(encoded)
         self.assertEqual(decoded.bits, payload)
 
+    def test_punctured_hard_decode_matches_soft_decode_without_noise(self):
+        codec = ConvolutionalCodec(Trellis(3, (0o7, 0o5)), puncture_pattern=(1, 1, 0, 1))
+        for payload in (
+            [0, 0, 0, 0, 0],
+            [1, 0, 0, 1, 1],
+            [1, 1, 1, 0, 1],
+            [0, 1, 0, 1, 0],
+        ):
+            encoded = codec.encode(payload)
+            hard = codec.decode(encoded)
+            soft = codec.decode_soft(bpsk_modulate(encoded))
+            self.assertEqual(hard.bits, soft.bits)
+
     def test_crc_frame_round_trip(self):
         crc = CRC(0b10011, width=4)
         payload = [1, 0, 1, 1, 0, 1, 0, 0]
@@ -66,6 +81,11 @@ class CodecTests(unittest.TestCase):
         payload = [0, 1, 1, 0, 1, 0, 1, 1, 0, 0, 0, 1]
         self.assertEqual(interleaver.deinterleave(interleaver.interleave(payload)), payload)
 
+    def test_block_interleaver_supports_real_valued_samples(self):
+        interleaver = BlockInterleaver(2, 3)
+        samples = [1.0, -0.2, 0.5, 0.7, -1.3, 0.1]
+        self.assertEqual(interleaver.deinterleave(interleaver.interleave(samples)), samples)
+
     def test_simulate_bsc_with_interleaver_and_crc(self):
         crc = CRC(0b10011, width=4)
         interleaver = BlockInterleaver(2, 14)
@@ -76,6 +96,10 @@ class CodecTests(unittest.TestCase):
 
     def test_hard_decision_helper(self):
         self.assertEqual(hard_decide([1.5, -0.1, 0.0, -2.0]), [0, 1, 0, 1])
+
+    def test_parse_float_list_rejects_empty_fields(self):
+        with self.assertRaises(argparse.ArgumentTypeError):
+            _parse_float_list("1.0,,2.0")
 
     def test_cli_encode(self):
         completed = subprocess.run(

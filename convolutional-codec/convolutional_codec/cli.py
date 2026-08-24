@@ -32,7 +32,14 @@ def _parse_puncture_pattern(value: str | None) -> tuple[int, ...] | None:
 
 
 def _parse_float_list(value: str) -> List[float]:
-    return [float(chunk) for chunk in value.split(",") if chunk]
+    chunks = value.split(",")
+    if not chunks or any(chunk.strip() == "" for chunk in chunks):
+        raise argparse.ArgumentTypeError("samples must be a comma-separated list of finite floats")
+    try:
+        values = [float(chunk) for chunk in chunks]
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("samples must be a comma-separated list of finite floats") from exc
+    return values
 
 
 def _build_crc(args: argparse.Namespace) -> CRC | None:

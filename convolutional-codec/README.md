@@ -42,7 +42,7 @@ codec = ConvolutionalCodec(
     puncture_pattern=(1, 1, 0, 1),
 )
 crc = CRC(0b10011, width=4)
-interleaver = BlockInterleaver(2, 6)
+interleaver = BlockInterleaver(2, 14)
 
 payload = [1, 0, 1, 1, 0, 1, 0, 0]
 encoded = codec.encode_frame(payload, crc=crc)
@@ -56,10 +56,10 @@ print(decoded["payload_bits"], decoded["crc_ok"])
 ```bash
 python3 -m convolutional_codec encode 101101
 python3 -m convolutional_codec decode 111000010111011101
-python3 -m convolutional_codec decode-soft "1.0,0.8,-0.9,-1.2,0.7,-0.6"
+python3 -m convolutional_codec decode-soft -- "1.0,0.8,-0.9,-1.2,0.7,-0.6"
 python3 -m convolutional_codec --puncture-pattern 1101 simulate-bsc 101101 --p 0.05 --seed 7
 python3 -m convolutional_codec --crc-poly 0b10011 --crc-width 4 simulate-awgn 10110100 --snr-db 4.0 --seed 7 --frame
-python3 -m convolutional_codec --crc-poly 0b10011 --crc-width 4 --interleave-rows 2 --interleave-cols 6 simulate-bsc 10110100 --p 0.02 --frame
+python3 -m convolutional_codec --crc-poly 0b10011 --crc-width 4 --interleave-rows 2 --interleave-cols 14 simulate-bsc 10110100 --p 0.02 --frame
 ```
 
 ## Design notes
@@ -80,3 +80,9 @@ python3 -m unittest discover -s tests -v
 ```bash
 python3 examples/basic_demo.py
 ```
+
+## Known Issues (Resolved)
+
+- **Punctured hard-decision decode could mis-handle truncated final puncturing cycles.** Fixed by depuncturing at trellis-symbol granularity and trimming incomplete final symbols safely.
+- **AWGN + interleaver simulation discarded soft information during deinterleaving.** Fixed by allowing the block interleaver to round-trip real-valued samples directly.
+- **`decode-soft` CLI accepted malformed comma lists like `1.0,,2.0`.** Fixed by stricter input validation.
