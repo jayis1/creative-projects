@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "shape-grammar-city"
+version = "0.1.0"
+description = "Procedural city generator with shape-grammar-inspired road growth"
+requires-python = ">=3.11"
+
+[tool.setuptools]
+package-dir = {"" = "."}
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["citygen*"]
