@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import random
 from dataclasses import dataclass, field
 from enum import Enum
@@ -108,8 +109,13 @@ class CityMap:
             seed=payload.get("seed"),
             mode=payload.get("mode", "grid"),
         )
+        rows = payload["grid"]
+        if len(rows) != city.height:
+            raise ValueError("grid height does not match declared city height")
+        if any(len(row) != city.width for row in rows):
+            raise ValueError("grid width does not match declared city width")
         city.metadata = payload.get("metadata", {})
-        city.grid = [[Tile(tile) for tile in row] for row in payload["grid"]]
+        city.grid = [[Tile(tile) for tile in row] for row in rows]
         return city
 
 
@@ -133,6 +139,8 @@ def _normalise_zone_weights(zone_weights: dict[str, float] | None) -> dict[Tile,
         tile = Tile(name)
         if tile in {Tile.EMPTY, Tile.ROAD}:
             raise ValueError(f"zone weight {name!r} is not a land-use tile")
+        if not math.isfinite(value):
+            raise ValueError(f"zone weight {name!r} must be finite")
         if value < 0:
             raise ValueError(f"zone weight {name!r} cannot be negative")
         parsed[tile] = float(value)

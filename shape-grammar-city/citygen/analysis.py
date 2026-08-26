@@ -80,7 +80,9 @@ def validate_city(city: CityMap) -> list[str]:
     empties = city.tile_points(Tile.EMPTY)
     if empties:
         issues.append(f"city still contains {len(empties)} empty cells")
-    if city.metadata.get("landmarks") and len(city.metadata["landmarks"]) == 0:
+    # Keep this explicit instead of relying on truthiness: an empty list is
+    # exactly the malformed state we want to report.
+    if "landmarks" in city.metadata and len(city.metadata["landmarks"]) == 0:
         issues.append("landmark metadata exists but is empty")
     return issues
 

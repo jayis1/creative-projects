@@ -73,12 +73,8 @@ python3 -m citygen route --input city.json --start 10,12 --goal 30,12 --format a
 - `@` civic landmark
 - `*` highlighted path segment
 
-## Enhancements added in Phase 2
+## Known Issues (Resolved)
 
-- Added `radial` street grammar with ring roads and spokes
-- Added weighted zoning overrides via CLI
-- Added civic landmark placement and visualization
-- Added route-finding and path overlays
-- Added city validation and richer statistics
-- Refactored CLI into subcommands and improved input validation
-- Added docstrings and broader test coverage
+- Fixed malformed JSON import handling: `CityMap.from_dict()` now rejects grids whose dimensions do not match the declared width/height.
+- Fixed unsafe zone-weight handling: non-finite overrides such as `NaN` are now rejected instead of silently corrupting weighted selection.
+- Fixed landmark metadata validation: empty `landmarks` metadata is now correctly reported during validation instead of being skipped by a truthiness check.
