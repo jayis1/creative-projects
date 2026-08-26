@@ -4,9 +4,28 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "shape-grammar-city"
-version = "0.1.0"
-description = "Procedural city generator with shape-grammar-inspired road growth"
+version = "0.2.0"
+description = "Procedural city generator with shape-grammar-inspired road growth, district analysis, and HTML reports"
+readme = "README.md"
 requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Creative Coder Pipeline" }]
+keywords = ["procedural-generation", "city", "ascii", "svg", "simulation"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: Artistic Software",
+  "Topic :: Games/Entertainment :: Simulation",
+]
+
+[project.scripts]
+citygen = "citygen.cli:main"
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
 
 [tool.setuptools]
 package-dir = {"" = "."}
@@ -14,3 +33,7 @@ package-dir = {"" = "."}
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["citygen*"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]

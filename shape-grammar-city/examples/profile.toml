@@ -1,0 +1,17 @@
+title = "Waterfront Showcase"
+width = 31
+height = 21
+seed = 13
+mode = "radial"
+iterations = 28
+landmarks = 5
+cell_size = 12
+seeds = [13, 21, 34]
+
+[zone_weights]
+commercial = 0.28
+park = 0.18
+residential = 0.34
+industrial = 0.12
+water = 0.05
+civic = 0.03

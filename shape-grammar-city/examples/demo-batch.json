@@ -1,0 +1,128 @@
+{
+  "mode": "organic",
+  "size": [
+    31,
+    21
+  ],
+  "metric": "road_cells",
+  "runs": [
+    {
+      "width": 31,
+      "height": 21,
+      "seed": 3,
+      "mode": "organic",
+      "counts": {
+        "empty": 0,
+        "road": 23,
+        "residential": 241,
+        "commercial": 94,
+        "industrial": 87,
+        "park": 136,
+        "water": 58,
+        "civic": 12
+      },
+      "coverage": {
+        "empty": 0.0,
+        "road": 0.0353,
+        "residential": 0.3702,
+        "commercial": 0.1444,
+        "industrial": 0.1336,
+        "park": 0.2089,
+        "water": 0.0891,
+        "civic": 0.0184
+      },
+      "road_cells": 23,
+      "road_degree_histogram": {
+        "1": 5,
+        "2": 4,
+        "3": 5,
+        "4": 9
+      },
+      "road_components": 1,
+      "largest_component": 23,
+      "landmark_count": 4,
+      "issues": [],
+      "district_count": 11
+    },
+    {
+      "width": 31,
+      "height": 21,
+      "seed": 7,
+      "mode": "organic",
+      "counts": {
+        "empty": 0,
+        "road": 28,
+        "residential": 251,
+        "commercial": 104,
+        "industrial": 78,
+        "park": 129,
+        "water": 43,
+        "civic": 18
+      },
+      "coverage": {
+        "empty": 0.0,
+        "road": 0.043,
+        "residential": 0.3856,
+        "commercial": 0.1598,
+        "industrial": 0.1198,
+        "park": 0.1982,
+        "water": 0.0661,
+        "civic": 0.0276
+      },
+      "road_cells": 28,
+      "road_degree_histogram": {
+        "1": 3,
+        "2": 8,
+        "3": 9,
+        "4": 8
+      },
+      "road_components": 1,
+      "largest_component": 28,
+      "landmark_count": 4,
+      "issues": [],
+      "district_count": 15
+    },
+    {
+      "width": 31,
+      "height": 21,
+      "seed": 11,
+      "mode": "organic",
+      "counts": {
+        "empty": 0,
+        "road": 34,
+        "residential": 215,
+        "commercial": 99,
+        "industrial": 87,
+        "park": 141,
+        "water": 54,
+        "civic": 21
+      },
+      "coverage": {
+        "empty": 0.0,
+        "road": 0.0522,
+        "residential": 0.3303,
+        "commercial": 0.1521,
+        "industrial": 0.1336,
+        "park": 0.2166,
+        "water": 0.0829,
+        "civic": 0.0323
+      },
+      "road_cells": 34,
+      "road_degree_histogram": {
+        "1": 3,
+        "2": 6,
+        "3": 13,
+        "4": 12
+      },
+      "road_components": 1,
+      "largest_component": 34,
+      "landmark_count": 4,
+      "issues": [],
+      "district_count": 14
+    }
+  ],
+  "best_seed": 11,
+  "best_value": 34,
+  "average_road_cells": 28.33,
+  "average_landmarks": 4.0
+}

@@ -1,0 +1,27 @@
+name: shape-grammar-city
+
+on:
+  push:
+    paths:
+      - "shape-grammar-city/**"
+      - ".github/workflows/shape-grammar-city.yml"
+  pull_request:
+    paths:
+      - "shape-grammar-city/**"
+      - ".github/workflows/shape-grammar-city.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: shape-grammar-city
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e .[dev]
+      - run: pytest
+      - run: python -m citygen report --config examples/profile.toml --output /tmp/shape-grammar-city-report.html

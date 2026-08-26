@@ -1,0 +1,37 @@
+{
+  "width": 31,
+  "height": 21,
+  "seed": 13,
+  "mode": "radial",
+  "counts": {
+    "empty": 0,
+    "road": 69,
+    "residential": 169,
+    "commercial": 138,
+    "industrial": 74,
+    "park": 133,
+    "water": 49,
+    "civic": 19
+  },
+  "coverage": {
+    "empty": 0.0,
+    "road": 0.106,
+    "residential": 0.2596,
+    "commercial": 0.212,
+    "industrial": 0.1137,
+    "park": 0.2043,
+    "water": 0.0753,
+    "civic": 0.0292
+  },
+  "road_cells": 69,
+  "road_degree_histogram": {
+    "1": 5,
+    "2": 52,
+    "3": 9,
+    "4": 3
+  },
+  "road_components": 1,
+  "largest_component": 69,
+  "landmark_count": 5,
+  "issues": []
+}
