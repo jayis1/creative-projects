@@ -29,8 +29,7 @@ def parse_level(text: str, *, title: str = "untitled") -> Board:
     player: Coord | None = None
 
     for r, line in enumerate(lines):
-        padded = line.ljust(width)
-        for c, ch in enumerate(padded):
+        for c, ch in enumerate(line):
             if ch not in VALID_TILES:
                 raise ValueError(f"invalid tile {ch!r} at {(r, c)}")
             pos = (r, c)

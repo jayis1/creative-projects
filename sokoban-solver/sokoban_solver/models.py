@@ -54,7 +54,8 @@ class Board:
                     chars.append(" ")
                 else:
                     chars.append(" ")
-            rows.append("".join(chars).rstrip())
+            # Preserve rectangular board width so replays and diffs stay aligned.
+            rows.append("".join(chars))
         return "\n".join(rows)
 
     def is_solved(self, boxes: frozenset[Coord] | None = None) -> bool:

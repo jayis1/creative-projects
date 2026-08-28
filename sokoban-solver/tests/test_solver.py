@@ -1,4 +1,4 @@
-from sokoban_solver import SokobanSolver, get_level, list_levels, parse_level
+from sokoban_solver import Board, SokobanSolver, get_level, list_levels, parse_level
 
 SIMPLE = """
 #####
@@ -59,3 +59,23 @@ def test_replay_contains_initial_and_final_frames():
     frames = solver.replay(result)
     assert frames[0].startswith("#####")
     assert "*" in frames[-1]
+
+
+def test_ragged_level_does_not_create_phantom_floor_tiles():
+    board = parse_level("#####\n#@$.#\n###")
+    assert (2, 3) not in board.floor
+    assert (2, 4) not in board.floor
+
+
+def test_render_preserves_rectangular_width():
+    board = Board(
+        width=4,
+        height=2,
+        walls=frozenset({(0, 0)}),
+        goals=frozenset(),
+        boxes=frozenset(),
+        player=(1, 1),
+        floor=frozenset({(0, 1), (0, 2), (0, 3), (1, 0), (1, 1), (1, 2), (1, 3)}),
+    )
+    lines = board.render().splitlines()
+    assert all(len(line) == board.width for line in lines)

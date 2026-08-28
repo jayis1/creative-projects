@@ -110,6 +110,11 @@ Expected solution: `R`.
 - Extra parser validation for unreachable boxes and goals
 - Expanded tests and docs
 
+## Known Issues (Resolved)
+
+- **Ragged ASCII maps created phantom floor tiles**: the parser used right-padding as real traversable space. It now treats omitted cells as void outside the map.
+- **Rendered boards could lose rectangular alignment**: the renderer stripped trailing spaces, which broke frame-by-frame diffs and replay layout. It now preserves full board width.
+
 ## Limitations
 
 The solver is still geared toward small and medium handcrafted levels. It does not yet include advanced pattern databases, macro moves, or canonical tunnel compression.
