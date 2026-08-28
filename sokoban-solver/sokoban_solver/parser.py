@@ -68,6 +68,7 @@ def parse_level(text: str, *, title: str = "untitled") -> Board:
 
 def _topology_issues(board: Board) -> list[str]:
     """Catch disconnected or obviously malformed traversable regions."""
+
     issues: list[str] = []
     seen = {board.player}
     queue = deque([board.player])
@@ -87,4 +88,16 @@ def _topology_issues(board: Board) -> list[str]:
         issues.append(f"unreachable boxes from player start: {unreachable_boxes}")
     if unreachable_goals:
         issues.append(f"unreachable goals from player start: {unreachable_goals}")
+
+    open_edges = _count_open_edges(board)
+    if open_edges > 0:
+        issues.append(f"board has {open_edges} traversable edge tile(s); levels should usually be walled in")
     return issues
+
+
+def _count_open_edges(board: Board) -> int:
+    edge_count = 0
+    for r, c in board.floor | board.goals:
+        if r in {0, board.height - 1} or c in {0, board.width - 1}:
+            edge_count += 1
+    return edge_count

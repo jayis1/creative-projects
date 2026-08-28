@@ -1,0 +1,36 @@
+name: sokoban-solver
+
+on:
+  push:
+    paths:
+      - '.github/workflows/sokoban-solver.yml'
+      - 'sokoban-solver/**'
+  pull_request:
+    paths:
+      - '.github/workflows/sokoban-solver.yml'
+      - 'sokoban-solver/**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.11', '3.12', '3.13']
+    defaults:
+      run:
+        working-directory: sokoban-solver
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install package
+        run: python -m pip install -e .[dev]
+      - name: Run tests
+        run: pytest
+      - name: CLI smoke test
+        run: |
+          python -m sokoban_solver version
+          python -m sokoban_solver benchmark --json
+          python -m sokoban_solver solve-pack --file examples/tutorial-pack.txt --json

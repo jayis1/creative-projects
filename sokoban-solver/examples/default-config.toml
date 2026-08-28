@@ -1,0 +1,9 @@
+[solver]
+max_states = 50000
+
+[output]
+json = true
+show_frames = false
+
+[logging]
+level = "INFO"

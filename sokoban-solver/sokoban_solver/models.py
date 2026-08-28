@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable
+from typing import Iterable, Mapping
 
 Coord = tuple[int, int]
 
@@ -30,11 +30,17 @@ class Board:
         player: Coord | None = None,
         boxes: Iterable[Coord] | None = None,
         path_cells: frozenset[Coord] | None = None,
+        overlay: Mapping[Coord, str] | None = None,
     ) -> str:
-        """Render the board to an ASCII string."""
+        """Render the board to an ASCII string.
+
+        `overlay` can annotate empty floor cells for explain/debug views.
+        """
+
         player = self.player if player is None else player
         boxes_set = self.boxes if boxes is None else frozenset(boxes)
         path_cells = frozenset() if path_cells is None else path_cells
+        overlay = {} if overlay is None else overlay
         rows: list[str] = []
         for r in range(self.height):
             chars: list[str] = []
@@ -46,15 +52,16 @@ class Board:
                     chars.append("+" if pos in self.goals else "@")
                 elif pos in boxes_set:
                     chars.append("*" if pos in self.goals else "$")
-                elif pos in path_cells:
-                    chars.append("·")
                 elif pos in self.goals:
                     chars.append(".")
+                elif pos in overlay:
+                    chars.append(overlay[pos])
+                elif pos in path_cells:
+                    chars.append("·")
                 elif pos in self.floor:
                     chars.append(" ")
                 else:
                     chars.append(" ")
-            # Preserve rectangular board width so replays and diffs stay aligned.
             rows.append("".join(chars))
         return "\n".join(rows)
 
@@ -64,6 +71,8 @@ class Board:
 
     def validate(self) -> list[str]:
         issues: list[str] = []
+        if self.width <= 0 or self.height <= 0:
+            issues.append("board dimensions must be positive")
         if not self.goals:
             issues.append("board has no goals")
         if len(self.goals) != len(self.boxes):
