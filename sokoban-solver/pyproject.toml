@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sokoban-solver"
+version = "0.1.0"
+description = "Sokoban parser, analyzer, and A* solver with deadlock checks"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Creative Coder Pipeline" }]
+keywords = ["sokoban", "search", "astar", "puzzle", "solver"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: Games/Entertainment :: Puzzle Games",
+]
+
+[project.scripts]
+sokoban-solver = "sokoban_solver.cli:main"
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.setuptools]
+package-dir = {"" = "."}
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["sokoban_solver*"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
