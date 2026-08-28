@@ -2,24 +2,15 @@
 
 from __future__ import annotations
 
+from collections import deque
+
 from .models import Board, Coord
 
 VALID_TILES = {"#", " ", ".", "$", "*", "@", "+"}
 
 
 def parse_level(text: str, *, title: str = "untitled") -> Board:
-    """Parse a Sokoban level from an ASCII map.
-
-    Supported symbols follow the de facto convention:
-
-    - `#`: wall
-    - ` `: floor
-    - `.`: goal
-    - `$`: box on floor
-    - `*`: box on goal
-    - `@`: player on floor
-    - `+`: player on goal
-    """
+    """Parse a Sokoban level from an ASCII map."""
 
     lines = [line.rstrip("\n") for line in text.splitlines()]
     while lines and not lines[0].strip():
@@ -46,8 +37,7 @@ def parse_level(text: str, *, title: str = "untitled") -> Board:
             if ch == "#":
                 walls.add(pos)
                 continue
-            if ch in {" ", ".", "$", "*", "@", "+"}:
-                floor.add(pos)
+            floor.add(pos)
             if ch in {".", "*", "+"}:
                 goals.add(pos)
             if ch in {"$", "*"}:
@@ -71,6 +61,31 @@ def parse_level(text: str, *, title: str = "untitled") -> Board:
         title=title,
     )
     issues = board.validate()
+    issues.extend(_topology_issues(board))
     if issues:
         raise ValueError("; ".join(issues))
     return board
+
+
+def _topology_issues(board: Board) -> list[str]:
+    """Catch disconnected or obviously malformed traversable regions."""
+    issues: list[str] = []
+    seen = {board.player}
+    queue = deque([board.player])
+    walkable = board.floor | board.goals
+    while queue:
+        r, c = queue.popleft()
+        for dr, dc in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+            nxt = (r + dr, c + dc)
+            if nxt in seen or nxt not in walkable or nxt in board.walls:
+                continue
+            seen.add(nxt)
+            queue.append(nxt)
+
+    unreachable_boxes = sorted(box for box in board.boxes if box not in seen)
+    unreachable_goals = sorted(goal for goal in board.goals if goal not in seen)
+    if unreachable_boxes:
+        issues.append(f"unreachable boxes from player start: {unreachable_boxes}")
+    if unreachable_goals:
+        issues.append(f"unreachable goals from player start: {unreachable_goals}")
+    return issues

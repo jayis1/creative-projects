@@ -1,4 +1,4 @@
-from sokoban_solver import SokobanSolver, parse_level
+from sokoban_solver import SokobanSolver, get_level, list_levels, parse_level
 
 SIMPLE = """
 #####
@@ -26,6 +26,7 @@ def test_solver_solves_simple_level():
     result = SokobanSolver(board).solve()
     assert result.solved is True
     assert result.move_sequence == "R"
+    assert result.push_sequence == "R"
     assert result.pushes == 1
 
 
@@ -36,8 +37,25 @@ def test_unsolvable_corner_level_reports_failure():
     assert result.reason in {"no solution found", "search limit reached (2000)"}
 
 
-def test_analyze_reports_corner_deadlocks():
+def test_analyze_reports_dead_square_information():
     board = parse_level(UNSOLVABLE)
     analysis = SokobanSolver(board).analyze()
     assert analysis["boxes"] == 1
     assert isinstance(analysis["corner_deadlocks"], list)
+    assert isinstance(analysis["dead_squares"], list)
+
+
+def test_builtin_levels_are_available_and_solvable():
+    assert "tiny-one" in list_levels()
+    board = parse_level(get_level("tiny-one"), title="tiny-one")
+    result = SokobanSolver(board).solve()
+    assert result.solved is True
+
+
+def test_replay_contains_initial_and_final_frames():
+    board = parse_level(SIMPLE)
+    solver = SokobanSolver(board)
+    result = solver.solve()
+    frames = solver.replay(result)
+    assert frames[0].startswith("#####")
+    assert "*" in frames[-1]

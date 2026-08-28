@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sokoban-solver"
-version = "0.1.0"
-description = "Sokoban parser, analyzer, and A* solver with deadlock checks"
+version = "0.2.0"
+description = "Sokoban parser, analyzer, benchmarker, and A* solver with replay and dead-square pruning"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }

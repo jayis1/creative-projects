@@ -89,12 +89,15 @@ class Stats:
     deadlocks_pruned: int
     repeated_states: int
     frontier_max: int
+    solved_depth: int
 
 
 @dataclass(frozen=True)
 class SolutionStep:
     move: str
-    player: Coord
+    walk_path: str
+    player_before: Coord
+    player_after: Coord
     boxes: frozenset[Coord]
     pushed_box_from: Coord | None = None
     pushed_box_to: Coord | None = None
@@ -104,6 +107,7 @@ class SolutionStep:
 class SolveResult:
     solved: bool
     move_sequence: str
+    push_sequence: str
     steps: tuple[SolutionStep, ...]
     stats: Stats
     reason: str
