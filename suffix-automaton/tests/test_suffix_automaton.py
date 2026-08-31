@@ -6,7 +6,11 @@ import sys
 
 import pytest
 
-from suffix_automaton.core import SuffixAutomaton, longest_common_substring
+from suffix_automaton.core import (
+    SuffixAutomaton,
+    longest_common_substring,
+    longest_common_substring_by_pairs,
+)
 
 
 @pytest.fixture
@@ -16,6 +20,7 @@ def banana() -> SuffixAutomaton:
 
 def test_contains_and_occurrences(banana: SuffixAutomaton) -> None:
     assert banana.contains("ana")
+    assert banana.contains("")
     assert not banana.contains("apple")
     assert banana.occurrence_count("ana") == 2
     assert banana.occurrence_count("na") == 2
@@ -50,8 +55,57 @@ def test_analysis() -> None:
     assert result.longest_repeated_count == 2
 
 
+def test_kth_distinct_substring(banana: SuffixAutomaton) -> None:
+    expected = [
+        "a",
+        "an",
+        "ana",
+        "anan",
+        "anana",
+        "b",
+        "ba",
+        "ban",
+        "bana",
+        "banan",
+        "banana",
+        "n",
+        "na",
+        "nan",
+        "nana",
+    ]
+    assert [banana.kth_distinct_substring(index) for index in range(1, 16)] == expected
+
+
+def test_shortest_absent_substring() -> None:
+    automaton = SuffixAutomaton("banana")
+    assert automaton.shortest_absent_substring() == "aa"
+    assert automaton.shortest_absent_substring(alphabet="ab") == "aa"
+
+
+def test_top_repeated_substrings() -> None:
+    repeated = SuffixAutomaton("banana").top_repeated_substrings(limit=3, min_length=2)
+    assert [(item.substring, item.occurrences) for item in repeated] == [
+        ("ana", 2),
+        ("an", 2),
+        ("na", 2),
+    ]
+
+
+def test_graphviz_export_contains_edges() -> None:
+    dot = SuffixAutomaton("aba").to_graphviz()
+    assert "digraph suffix_automaton" in dot
+    assert "label=\"a\"" in dot
+    assert "style=dashed" in dot
+
+
 def test_lcs_helper() -> None:
-    assert longest_common_substring(["abracadabra", "cadabrac", "dabracad"]) == "dabra"
+    assert longest_common_substring(["abracadabra", "cadabrac", "dabracad"]) == "abrac"
+
+
+def test_pairwise_lcs_helper() -> None:
+    result = longest_common_substring_by_pairs(["banana", "bandana", "anagram"])
+    assert result[(0, 1)] == "ana"
+    assert result[(0, 2)] == "ana"
 
 
 def test_invalid_queries() -> None:
@@ -62,9 +116,11 @@ def test_invalid_queries() -> None:
         automaton.locate("", limit=1)
     with pytest.raises(ValueError):
         automaton.locate("a", limit=0)
+    with pytest.raises(ValueError):
+        automaton.kth_distinct_substring(0)
 
 
-def test_cli_analyze_json(tmp_path) -> None:
+def test_cli_analyze_json() -> None:
     completed = subprocess.run(
         [
             sys.executable,
@@ -88,6 +144,8 @@ def test_cli_analyze_json(tmp_path) -> None:
     [
         (["contains", "--text", "banana", "ana"], "yes"),
         (["count", "--text", "banana", "ana"], "2"),
+        (["kth", "--text", "banana", "3"], "ana"),
+        (["absent", "--text", "banana"], "aa"),
     ],
 )
 def test_cli_commands(command: list[str], expected: str) -> None:
@@ -98,3 +156,24 @@ def test_cli_commands(command: list[str], expected: str) -> None:
         text=True,
     )
     assert completed.stdout.strip() == expected
+
+
+def test_cli_repeats_json() -> None:
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "suffix_automaton",
+            "repeats",
+            "--text",
+            "banana",
+            "--limit",
+            "2",
+            "--json",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    payload = json.loads(completed.stdout)
+    assert payload[0]["substring"] == "ana"

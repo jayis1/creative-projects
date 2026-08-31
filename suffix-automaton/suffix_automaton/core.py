@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import deque
 from dataclasses import asdict, dataclass, field
 import json
-from typing import Iterable
+from typing import Iterable, Sequence
 
 
 @dataclass(slots=True)
@@ -14,6 +14,15 @@ class MatchLocation:
 
     start: int
     end: int
+
+
+@dataclass(slots=True)
+class RepeatedSubstring:
+    """Repeated substring summary."""
+
+    substring: str
+    occurrences: int
+    length: int
 
 
 @dataclass(slots=True)
@@ -54,6 +63,7 @@ class SuffixAutomaton:
             StateSummary(length=0, link=-1, next={}, first_pos=-1, is_clone=False)
         ]
         self.last = 0
+        self._substring_count_cache: list[int] | None = None
         if text:
             self.build(text)
 
@@ -65,6 +75,7 @@ class SuffixAutomaton:
             StateSummary(length=0, link=-1, next={}, first_pos=-1, is_clone=False)
         ]
         self.last = 0
+        self._substring_count_cache = None
         for character in text:
             self.extend(character)
         self._propagate_occurrence_counts()
@@ -85,6 +96,8 @@ class SuffixAutomaton:
                 occ_count=1,
             )
         )
+        self._substring_count_cache = None
+
         parent = self.last
         while parent >= 0 and character not in self.states[parent].next:
             self.states[parent].next[character] = current
@@ -117,19 +130,12 @@ class SuffixAutomaton:
 
     def contains(self, substring: str) -> bool:
         """Return True if *substring* occurs in the source text."""
-        self._require_built()
         self._validate_query(substring)
-        state = 0
-        for character in substring:
-            next_state = self.states[state].next.get(character)
-            if next_state is None:
-                return False
-            state = next_state
-        return True
+        state = self.follow(substring)
+        return state is not None
 
     def follow(self, substring: str) -> int | None:
         """Return the state index reached by *substring*, or None."""
-        self._require_built()
         self._validate_query(substring)
         state = 0
         for character in substring:
@@ -141,15 +147,13 @@ class SuffixAutomaton:
 
     def count_distinct_substrings(self) -> int:
         """Count distinct substrings of the source text."""
-        self._require_built()
         total = 0
-        for index, state in enumerate(self.states[1:], start=1):
+        for state in self.states[1:]:
             total += state.length - self.states[state.link].length
         return total
 
     def occurrence_count(self, substring: str) -> int:
         """Count how many times *substring* occurs."""
-        self._require_built()
         self._validate_non_empty_query(substring)
         state = self.follow(substring)
         if state is None:
@@ -158,7 +162,6 @@ class SuffixAutomaton:
 
     def longest_repeated_substring(self) -> tuple[str, int]:
         """Return the longest substring that appears at least twice."""
-        self._require_built()
         best_state = None
         best_length = 0
         for index, state in enumerate(self.states[1:], start=1):
@@ -172,15 +175,91 @@ class SuffixAutomaton:
         start = end - best_length
         return self.text[start:end], state.occ_count
 
+    def kth_distinct_substring(self, k: int) -> str:
+        """Return the k-th distinct substring in lexicographic order."""
+        if not isinstance(k, int):
+            raise TypeError("k must be an integer")
+        if k <= 0:
+            raise ValueError("k must be positive")
+        counts = self._distinct_path_counts()
+        if k > counts[0] - 1:
+            raise ValueError("k exceeds the number of distinct substrings")
+
+        state = 0
+        prefix: list[str] = []
+        while k > 0:
+            for character, target in sorted(self.states[state].next.items()):
+                subtree = counts[target]
+                if k == 1:
+                    prefix.append(character)
+                    return "".join(prefix)
+                if k <= subtree:
+                    prefix.append(character)
+                    state = target
+                    k -= 1
+                    break
+                k -= subtree
+            else:
+                raise RuntimeError("failed to resolve k-th substring")
+        return "".join(prefix)
+
+    def shortest_absent_substring(self, alphabet: Iterable[str] | None = None) -> str:
+        """Return a shortest string over *alphabet* missing from the text."""
+        if alphabet is None:
+            symbols = sorted(set(self.text))
+        else:
+            symbols = sorted(dict.fromkeys(alphabet))
+        if not symbols:
+            return ""
+        for symbol in symbols:
+            if not isinstance(symbol, str) or len(symbol) != 1:
+                raise ValueError("alphabet must contain single-character strings")
+
+        queue: deque[str] = deque(symbols)
+        while queue:
+            candidate = queue.popleft()
+            if not self.contains(candidate):
+                return candidate
+            for symbol in symbols:
+                queue.append(candidate + symbol)
+        raise RuntimeError("failed to find an absent substring")
+
+    def top_repeated_substrings(self, *, limit: int = 10, min_length: int = 1) -> list[RepeatedSubstring]:
+        """Return top repeated substrings ranked by length, frequency, then text."""
+        if not isinstance(limit, int) or limit <= 0:
+            raise ValueError("limit must be a positive integer")
+        if not isinstance(min_length, int) or min_length <= 0:
+            raise ValueError("min_length must be a positive integer")
+
+        # Enumerate the distinct substrings once through the automaton's
+        # lexicographic ordering. This is more expensive than state-level
+        # summaries, but it returns actual distinct substrings rather than only
+        # end-position classes, which makes the report easier to interpret.
+        best_by_text: dict[str, RepeatedSubstring] = {}
+        total = self.count_distinct_substrings()
+        for rank in range(1, total + 1):
+            substring = self.kth_distinct_substring(rank)
+            if len(substring) < min_length:
+                continue
+            occurrences = self.occurrence_count(substring)
+            if occurrences < 2:
+                continue
+            best_by_text[substring] = RepeatedSubstring(substring, occurrences, len(substring))
+
+        ranked = sorted(
+            best_by_text.values(),
+            key=lambda item: (-item.length, -item.occurrences, item.substring),
+        )
+        return ranked[:limit]
+
     def locate(self, substring: str, limit: int | None = None) -> list[MatchLocation]:
         """Find substring locations in the text.
 
-        This uses Python's fast substring search after the automaton validates
+        This uses Python's substring search after the automaton validates
         membership. The automaton remains the index used for the existence check.
         """
-        self._require_built()
         self._validate_non_empty_query(substring)
-        if limit is not None and limit <= 0:
+        if limit is not None and (not isinstance(limit, int) or limit <= 0):
             raise ValueError("limit must be positive when provided")
         if not self.contains(substring):
             return []
@@ -196,9 +275,23 @@ class SuffixAutomaton:
             start = found + 1
         return results
 
+    def to_graphviz(self) -> str:
+        """Export the automaton as Graphviz DOT."""
+        lines = ["digraph suffix_automaton {", "  rankdir=LR;", '  node [shape=circle];']
+        for index, state in enumerate(self.states):
+            suffix = f" / occ={state.occ_count}" if index != 0 else ""
+            label = f"{index}: len={state.length}{suffix}"
+            lines.append(f'  {index} [label="{label}"];')
+            if state.link >= 0:
+                lines.append(f"  {index} -> {state.link} [style=dashed, color=gray, label=\"link\"];")
+            for character, target in sorted(state.next.items()):
+                escaped = character.replace('\\', '\\\\').replace('"', '\\"')
+                lines.append(f'  {index} -> {target} [label="{escaped}"];')
+        lines.append("}")
+        return "\n".join(lines)
+
     def analysis(self) -> AnalysisResult:
         """Compute aggregate statistics for the source text."""
-        self._require_built()
         repeated, count = self.longest_repeated_substring()
         return AnalysisResult(
             text_length=len(self.text),
@@ -211,7 +304,6 @@ class SuffixAutomaton:
 
     def to_dict(self) -> dict[str, object]:
         """Serialize the automaton."""
-        self._require_built()
         return {
             "text": self.text,
             "last": self.last,
@@ -236,10 +328,12 @@ class SuffixAutomaton:
             raise TypeError("payload['last'] must be an integer")
         if not isinstance(raw_states, list) or not raw_states:
             raise TypeError("payload['states'] must be a non-empty list")
+
         instance = cls()
         instance.text = text
         instance.last = last
         instance.states = []
+        instance._substring_count_cache = None
         for entry in raw_states:
             if not isinstance(entry, dict):
                 raise TypeError("each state must be a dictionary")
@@ -253,7 +347,7 @@ class SuffixAutomaton:
                 StateSummary(
                     length=cls._coerce_int(entry.get("length"), "state.length"),
                     link=cls._coerce_int(entry.get("link"), "state.link"),
-                    next=transitions,
+                    next=dict(transitions),
                     first_pos=cls._coerce_int(entry.get("first_pos"), "state.first_pos"),
                     is_clone=bool(entry.get("is_clone")),
                     occ_count=cls._coerce_int(entry.get("occ_count", 0), "state.occ_count"),
@@ -276,6 +370,25 @@ class SuffixAutomaton:
             if link >= 0:
                 self.states[link].occ_count += self.states[index].occ_count
 
+    def _distinct_path_counts(self) -> list[int]:
+        if self._substring_count_cache is not None:
+            return self._substring_count_cache
+
+        counts = [0] * len(self.states)
+
+        def visit(state_index: int) -> int:
+            if counts[state_index] != 0:
+                return counts[state_index]
+            total = 1
+            for target in self.states[state_index].next.values():
+                total += visit(target)
+            counts[state_index] = total
+            return total
+
+        visit(0)
+        self._substring_count_cache = counts
+        return counts
+
     def _validate_internal_structure(self) -> None:
         if self.last < 0 or self.last >= len(self.states):
             raise ValueError("serialized automaton has invalid last state")
@@ -284,7 +397,7 @@ class SuffixAutomaton:
         for index, state in enumerate(self.states):
             if state.length < 0:
                 raise ValueError(f"state {index} has negative length")
-            if state.link >= len(self.states):
+            if state.link < -1 or state.link >= len(self.states):
                 raise ValueError(f"state {index} has invalid suffix link")
             for target in state.next.values():
                 if target < 0 or target >= len(self.states):
@@ -313,29 +426,72 @@ class SuffixAutomaton:
         if substring == "":
             raise ValueError("substring must not be empty")
 
-    def _require_built(self) -> None:
-        if self.text == "" and len(self.states) == 1:
-            return
-
 
 def longest_common_substring(strings: Iterable[str]) -> str:
-    """Simple helper retained for future expansion."""
+    """Return the longest common substring across two or more strings.
+
+    This builds a suffix automaton for the shortest string, then scans each other
+    string to maintain the best match length per state. The final answer is
+    reconstructed from the best state.
+    """
     items = list(strings)
     if not items:
         raise ValueError("expected at least one string")
     if any(not isinstance(item, str) for item in items):
         raise TypeError("all items must be strings")
+    if len(items) == 1:
+        return items[0]
+
     base = min(items, key=len)
-    others = [item for item in items if item is not base]
-    if not others:
-        return base
-    for size in range(len(base), 0, -1):
-        seen = set()
-        for start in range(0, len(base) - size + 1):
-            candidate = base[start : start + size]
-            if candidate in seen:
-                continue
-            seen.add(candidate)
-            if all(candidate in other for other in others):
-                return candidate
-    return ""
+    automaton = SuffixAutomaton(base)
+    best_per_state = [state.length for state in automaton.states]
+
+    for text in items:
+        if text == base:
+            continue
+        current_state = 0
+        current_length = 0
+        seen = [0] * len(automaton.states)
+
+        for character in text:
+            while current_state != 0 and character not in automaton.states[current_state].next:
+                current_state = automaton.states[current_state].link
+                current_length = automaton.states[current_state].length
+            if character in automaton.states[current_state].next:
+                current_state = automaton.states[current_state].next[character]
+                current_length += 1
+            else:
+                current_state = 0
+                current_length = 0
+
+            if current_length > seen[current_state]:
+                seen[current_state] = current_length
+
+        for state_index in sorted(range(len(automaton.states)), key=lambda idx: automaton.states[idx].length, reverse=True):
+            link = automaton.states[state_index].link
+            if link >= 0:
+                seen[link] = max(seen[link], min(seen[state_index], automaton.states[link].length))
+
+        best_per_state = [min(previous, current) for previous, current in zip(best_per_state, seen)]
+
+    best_state = max(
+        range(len(automaton.states)),
+        key=lambda index: (best_per_state[index], automaton.states[index].first_pos),
+    )
+    best_length = best_per_state[best_state]
+    if best_length == 0:
+        return ""
+    end = automaton.states[best_state].first_pos + 1
+    start = end - best_length
+    return base[start:end]
+
+
+def longest_common_substring_by_pairs(strings: Sequence[str]) -> dict[tuple[int, int], str]:
+    """Compute pairwise longest common substrings for reporting."""
+    if any(not isinstance(item, str) for item in strings):
+        raise TypeError("all items must be strings")
+    results: dict[tuple[int, int], str] = {}
+    for left in range(len(strings)):
+        for right in range(left + 1, len(strings)):
+            results[(left, right)] = longest_common_substring([strings[left], strings[right]])
+    return results

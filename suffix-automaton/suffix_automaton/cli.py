@@ -8,7 +8,11 @@ import json
 from pathlib import Path
 from typing import Sequence
 
-from .core import SuffixAutomaton, longest_common_substring
+from .core import (
+    SuffixAutomaton,
+    longest_common_substring,
+    longest_common_substring_by_pairs,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -39,8 +43,27 @@ def build_parser() -> argparse.ArgumentParser:
     _add_text_argument(export)
     export.add_argument("--output", type=Path)
 
+    dot = subparsers.add_parser("dot", help="export automaton Graphviz DOT")
+    _add_text_argument(dot)
+    dot.add_argument("--output", type=Path)
+
+    kth = subparsers.add_parser("kth", help="k-th lexicographic distinct substring")
+    _add_text_argument(kth)
+    kth.add_argument("k", type=int)
+
+    absent = subparsers.add_parser("absent", help="shortest absent substring")
+    _add_text_argument(absent)
+    absent.add_argument("--alphabet", help="alphabet to search over; defaults to text alphabet")
+
+    repeats = subparsers.add_parser("repeats", help="top repeated substrings")
+    _add_text_argument(repeats)
+    repeats.add_argument("--limit", type=int, default=10)
+    repeats.add_argument("--min-length", type=int, default=1)
+    repeats.add_argument("--json", action="store_true", help="emit JSON")
+
     lcs = subparsers.add_parser("lcs", help="longest common substring")
     lcs.add_argument("strings", nargs="+", help="two or more strings")
+    lcs.add_argument("--pairwise", action="store_true", help="also emit pairwise matches as JSON")
 
     return parser
 
@@ -54,7 +77,16 @@ def _add_text_argument(parser: argparse.ArgumentParser) -> None:
 def _resolve_text(args: argparse.Namespace) -> str:
     if args.text is not None:
         return args.text
+    if args.file is None:
+        raise ValueError("expected either --text or --file")
     return args.file.read_text(encoding="utf-8")
+
+
+def _write_or_print(payload: str, output: Path | None) -> None:
+    if output is None:
+        print(payload)
+    else:
+        output.write_text(payload, encoding="utf-8")
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -62,8 +94,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.command == "lcs":
-        value = longest_common_substring(args.strings)
-        print(value)
+        lcs_result: dict[str, object] = {"longest_common_substring": longest_common_substring(args.strings)}
+        if args.pairwise:
+            pairs = {
+                f"{left}-{right}": value
+                for (left, right), value in longest_common_substring_by_pairs(args.strings).items()
+            }
+            lcs_result["pairwise"] = pairs
+            print(json.dumps(lcs_result, ensure_ascii=False, indent=2))
+        else:
+            print(lcs_result["longest_common_substring"])
         return 0
 
     text = _resolve_text(args)
@@ -96,11 +136,29 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
 
     if args.command == "export":
-        payload = automaton.to_json()
-        if args.output is None:
-            print(payload)
+        _write_or_print(automaton.to_json(), args.output)
+        return 0
+
+    if args.command == "dot":
+        _write_or_print(automaton.to_graphviz(), args.output)
+        return 0
+
+    if args.command == "kth":
+        print(automaton.kth_distinct_substring(args.k))
+        return 0
+
+    if args.command == "absent":
+        alphabet = None if args.alphabet is None else list(args.alphabet)
+        print(automaton.shortest_absent_substring(alphabet=alphabet))
+        return 0
+
+    if args.command == "repeats":
+        repeated = automaton.top_repeated_substrings(limit=args.limit, min_length=args.min_length)
+        if args.json:
+            print(json.dumps([asdict(item) for item in repeated], ensure_ascii=False, indent=2))
         else:
-            args.output.write_text(payload, encoding="utf-8")
+            for item in repeated:
+                print(f"{item.substring}\tlen={item.length}\tcount={item.occurrences}")
         return 0
 
     parser.error(f"unsupported command: {args.command}")
