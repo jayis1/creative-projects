@@ -119,3 +119,9 @@ Example pairwise JSON output:
 - `banana`: repeated substring `ana`, shortest absent substring over `abn` is `aa`
 - `mississippi`: useful for repeated-substring rankings and overlap-heavy location queries
 - `abracadabra`, `cadabrac`, `dabracad`: generalized LCS result is `abrac`
+
+## Known Issues (Resolved)
+
+- Fixed incremental-build correctness: `extend()` now updates the tracked source text and recomputes occurrence counts from terminal states, so online appends stay query-safe.
+- Fixed Graphviz export for control characters: transition labels now escape newlines and other non-printable characters instead of emitting raw DOT-breaking bytes.
+- Fixed deserialization validation: `from_dict()` now requires `is_clone` to be an actual boolean and reconstructs terminal-state metadata for safe post-load extensions.

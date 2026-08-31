@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from typing import cast
 
 import pytest
 
@@ -96,6 +97,28 @@ def test_graphviz_export_contains_edges() -> None:
     assert "digraph suffix_automaton" in dot
     assert "label=\"a\"" in dot
     assert "style=dashed" in dot
+
+
+def test_extend_updates_text_and_counts() -> None:
+    automaton = SuffixAutomaton("ban")
+    automaton.extend("a")
+    automaton.extend("n")
+    automaton.extend("a")
+    assert automaton.text == "banana"
+    assert automaton.occurrence_count("ana") == 2
+
+
+def test_graphviz_escapes_control_characters() -> None:
+    dot = SuffixAutomaton("a\n").to_graphviz()
+    assert "label=\"\\n\"" in dot
+
+
+def test_from_dict_rejects_non_boolean_is_clone() -> None:
+    payload = SuffixAutomaton("ab").to_dict()
+    states = cast(list[dict[str, object]], payload["states"])
+    states[0]["is_clone"] = "false"
+    with pytest.raises(TypeError):
+        SuffixAutomaton.from_dict(payload)
 
 
 def test_lcs_helper() -> None:

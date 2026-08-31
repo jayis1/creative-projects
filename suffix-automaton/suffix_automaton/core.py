@@ -63,6 +63,7 @@ class SuffixAutomaton:
             StateSummary(length=0, link=-1, next={}, first_pos=-1, is_clone=False)
         ]
         self.last = 0
+        self._terminal_states: list[int] = []
         self._substring_count_cache: list[int] | None = None
         if text:
             self.build(text)
@@ -70,15 +71,15 @@ class SuffixAutomaton:
     def build(self, text: str) -> "SuffixAutomaton":
         """Reset and build the automaton for *text*."""
         self._validate_text(text)
-        self.text = text
+        self.text = ""
         self.states = [
             StateSummary(length=0, link=-1, next={}, first_pos=-1, is_clone=False)
         ]
         self.last = 0
+        self._terminal_states = []
         self._substring_count_cache = None
         for character in text:
             self.extend(character)
-        self._propagate_occurrence_counts()
         return self
 
     def extend(self, character: str) -> None:
@@ -97,6 +98,7 @@ class SuffixAutomaton:
             )
         )
         self._substring_count_cache = None
+        self.text += character
 
         parent = self.last
         while parent >= 0 and character not in self.states[parent].next:
@@ -127,6 +129,8 @@ class SuffixAutomaton:
                 self.states[candidate].link = clone
                 self.states[current].link = clone
         self.last = current
+        self._terminal_states.append(current)
+        self._recompute_occurrence_counts()
 
     def contains(self, substring: str) -> bool:
         """Return True if *substring* occurs in the source text."""
@@ -285,7 +289,7 @@ class SuffixAutomaton:
             if state.link >= 0:
                 lines.append(f"  {index} -> {state.link} [style=dashed, color=gray, label=\"link\"];")
             for character, target in sorted(state.next.items()):
-                escaped = character.replace('\\', '\\\\').replace('"', '\\"')
+                escaped = self._escape_graphviz_label(character)
                 lines.append(f'  {index} -> {target} [label="{escaped}"];')
         lines.append("}")
         return "\n".join(lines)
@@ -333,6 +337,7 @@ class SuffixAutomaton:
         instance.text = text
         instance.last = last
         instance.states = []
+        instance._terminal_states = []
         instance._substring_count_cache = None
         for entry in raw_states:
             if not isinstance(entry, dict):
@@ -349,11 +354,12 @@ class SuffixAutomaton:
                     link=cls._coerce_int(entry.get("link"), "state.link"),
                     next=dict(transitions),
                     first_pos=cls._coerce_int(entry.get("first_pos"), "state.first_pos"),
-                    is_clone=bool(entry.get("is_clone")),
+                    is_clone=cls._coerce_bool(entry.get("is_clone"), "state.is_clone"),
                     occ_count=cls._coerce_int(entry.get("occ_count", 0), "state.occ_count"),
                 )
             )
         instance._validate_internal_structure()
+        instance._rebuild_terminal_states_from_text()
         return instance
 
     @classmethod
@@ -369,6 +375,23 @@ class SuffixAutomaton:
             link = self.states[index].link
             if link >= 0:
                 self.states[link].occ_count += self.states[index].occ_count
+
+    def _recompute_occurrence_counts(self) -> None:
+        for state in self.states:
+            state.occ_count = 0
+        for terminal_state in self._terminal_states:
+            self.states[terminal_state].occ_count += 1
+        self._propagate_occurrence_counts()
+
+    def _rebuild_terminal_states_from_text(self) -> None:
+        self._terminal_states = []
+        state = 0
+        for character in self.text:
+            next_state = self.states[state].next.get(character)
+            if next_state is None:
+                raise ValueError("serialized automaton is inconsistent with its text")
+            state = next_state
+            self._terminal_states.append(state)
 
     def _distinct_path_counts(self) -> list[int]:
         if self._substring_count_cache is not None:
@@ -408,6 +431,16 @@ class SuffixAutomaton:
         if not isinstance(value, int):
             raise TypeError(f"{field_name} must be an integer")
         return value
+
+    @staticmethod
+    def _coerce_bool(value: object, field_name: str) -> bool:
+        if not isinstance(value, bool):
+            raise TypeError(f"{field_name} must be a boolean")
+        return value
+
+    @staticmethod
+    def _escape_graphviz_label(value: str) -> str:
+        return value.encode("unicode_escape").decode("ascii").replace('"', '\\"')
 
     @staticmethod
     def _validate_text(text: str) -> None:
