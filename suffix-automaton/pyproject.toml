@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "suffix-automaton"
+version = "0.1.0"
+description = "Suffix automaton toolkit for substring analytics"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{name = "Hermes Agent"}]
+dependencies = []
+
+[project.scripts]
+suffix-automaton = "suffix_automaton.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
