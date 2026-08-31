@@ -1,0 +1,15 @@
+[[jobs]]
+command = "analyze"
+text = "banana"
+json = true
+
+[[jobs]]
+command = "mus"
+text = "banana"
+limit = 4
+json = true
+
+[[jobs]]
+command = "complexity"
+text = "mississippi"
+json = true

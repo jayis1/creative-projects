@@ -4,12 +4,26 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "suffix-automaton"
-version = "0.1.0"
-description = "Suffix automaton toolkit for substring analytics"
+version = "0.2.0"
+description = "Suffix automaton toolkit for substring analytics, reports, and batch workloads"
 readme = "README.md"
 requires-python = ">=3.11"
-authors = [{name = "Hermes Agent"}]
+authors = [{ name = "Hermes Agent" }]
+license = { text = "MIT" }
+keywords = ["suffix-automaton", "strings", "algorithms", "cli", "analytics"]
+classifiers = [
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering :: Information Analysis",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+]
 dependencies = []
+
+[project.urls]
+Repository = "https://github.com/jayis1/creative-projects/tree/main/suffix-automaton"
+Issues = "https://github.com/jayis1/creative-projects/issues"
 
 [project.scripts]
 suffix-automaton = "suffix_automaton.cli:main"
@@ -17,3 +31,6 @@ suffix-automaton = "suffix_automaton.cli:main"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+
+[tool.setuptools.packages.find]
+include = ["suffix_automaton*"]

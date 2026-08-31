@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import asdict, dataclass, field
 import json
-from typing import Iterable, Sequence
+from typing import Iterable, Iterator, Sequence
 
 
 @dataclass(slots=True)
@@ -23,6 +23,15 @@ class RepeatedSubstring:
     substring: str
     occurrences: int
     length: int
+
+
+@dataclass(slots=True)
+class MinimalUniqueSubstring:
+    """Shortest substring starting at a position that occurs exactly once."""
+
+    start: int
+    end: int
+    substring: str
 
 
 @dataclass(slots=True)
@@ -229,32 +238,32 @@ class SuffixAutomaton:
         raise RuntimeError("failed to find an absent substring")
 
     def top_repeated_substrings(self, *, limit: int = 10, min_length: int = 1) -> list[RepeatedSubstring]:
-        """Return top repeated substrings ranked by length, frequency, then text."""
+        """Return top repeated substrings ranked by length, frequency, then text.
+
+        This implementation walks the automaton's substring DAG directly instead
+        of resolving each distinct substring through repeated rank queries.
+        """
         if not isinstance(limit, int) or limit <= 0:
             raise ValueError("limit must be a positive integer")
         if not isinstance(min_length, int) or min_length <= 0:
             raise ValueError("min_length must be a positive integer")
 
-        # Enumerate the distinct substrings once through the automaton's
-        # lexicographic ordering. This is more expensive than state-level
-        # summaries, but it returns actual distinct substrings rather than only
-        # end-position classes, which makes the report easier to interpret.
-        best_by_text: dict[str, RepeatedSubstring] = {}
-        total = self.count_distinct_substrings()
-        for rank in range(1, total + 1):
-            substring = self.kth_distinct_substring(rank)
+        repeated: list[RepeatedSubstring] = []
+        for substring, state_index in self.iter_distinct_substrings():
             if len(substring) < min_length:
                 continue
-            occurrences = self.occurrence_count(substring)
+            occurrences = self.states[state_index].occ_count
             if occurrences < 2:
                 continue
-            best_by_text[substring] = RepeatedSubstring(substring, occurrences, len(substring))
-
-        ranked = sorted(
-            best_by_text.values(),
-            key=lambda item: (-item.length, -item.occurrences, item.substring),
-        )
-        return ranked[:limit]
+            repeated.append(
+                RepeatedSubstring(
+                    substring=substring,
+                    occurrences=occurrences,
+                    length=len(substring),
+                )
+            )
+        repeated.sort(key=lambda item: (-item.length, -item.occurrences, item.substring))
+        return repeated[:limit]
 
     def locate(self, substring: str, limit: int | None = None) -> list[MatchLocation]:
         """Find substring locations in the text.
@@ -278,6 +287,64 @@ class SuffixAutomaton:
                 break
             start = found + 1
         return results
+
+    def substring_complexity_by_length(self) -> dict[int, int]:
+        """Return the number of distinct substrings for each length."""
+        text_length = len(self.text)
+        if text_length == 0:
+            return {}
+        difference = [0] * (text_length + 2)
+        for state in self.states[1:]:
+            lower = self.states[state.link].length + 1
+            upper = state.length
+            difference[lower] += 1
+            difference[upper + 1] -= 1
+        counts: dict[int, int] = {}
+        running = 0
+        for length in range(1, text_length + 1):
+            running += difference[length]
+            counts[length] = running
+        return counts
+
+    def minimal_unique_substrings(self) -> list[MinimalUniqueSubstring]:
+        """Return minimal unique substrings for positions where one exists.
+
+        Some starts cannot be distinguished by any in-text continuation alone.
+        For example, the final ``a`` in ``banana`` never becomes unique without
+        adding an external end marker. Those positions are skipped.
+        """
+        results: list[MinimalUniqueSubstring] = []
+        for start in range(len(self.text)):
+            state = 0
+            for end in range(start, len(self.text)):
+                character = self.text[end]
+                next_state = self.states[state].next.get(character)
+                if next_state is None:
+                    raise RuntimeError("automaton is inconsistent with source text")
+                state = next_state
+                if self.states[state].occ_count == 1:
+                    results.append(
+                        MinimalUniqueSubstring(
+                            start=start,
+                            end=end + 1,
+                            substring=self.text[start : end + 1],
+                        )
+                    )
+                    break
+            else:
+                continue
+        return results
+
+    def iter_distinct_substrings(self) -> Iterator[tuple[str, int]]:
+        """Yield distinct substrings in lexicographic order with state indices."""
+
+        def walk(state_index: int, prefix: str) -> Iterator[tuple[str, int]]:
+            for character, target in sorted(self.states[state_index].next.items()):
+                substring = prefix + character
+                yield substring, target
+                yield from walk(target, substring)
+
+        yield from walk(0, "")
 
     def to_graphviz(self) -> str:
         """Export the automaton as Graphviz DOT."""

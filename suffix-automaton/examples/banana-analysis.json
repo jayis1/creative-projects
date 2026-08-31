@@ -1,0 +1,37 @@
+{
+  "text_length": 6,
+  "state_count": 10,
+  "distinct_substrings": 15,
+  "longest_repeated_substring": "ana",
+  "longest_repeated_count": 2,
+  "alphabet": [
+    "a",
+    "b",
+    "n"
+  ],
+  "substring_complexity_by_length": {
+    "1": 3,
+    "2": 3,
+    "3": 3,
+    "4": 3,
+    "5": 2,
+    "6": 1
+  },
+  "minimal_unique_substrings": [
+    {
+      "start": 0,
+      "end": 1,
+      "substring": "b"
+    },
+    {
+      "start": 1,
+      "end": 5,
+      "substring": "anan"
+    },
+    {
+      "start": 2,
+      "end": 5,
+      "substring": "nan"
+    }
+  ]
+}

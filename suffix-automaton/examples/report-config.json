@@ -1,0 +1,23 @@
+{
+  "jobs": [
+    {
+      "command": "analyze",
+      "text": "banana",
+      "json": true,
+      "output": "examples/banana-analysis.json"
+    },
+    {
+      "command": "repeats",
+      "text": "mississippi",
+      "limit": 5,
+      "min_length": 2,
+      "json": true
+    },
+    {
+      "command": "lcs",
+      "strings": ["abracadabra", "cadabrac", "dabracad"],
+      "pairwise": true,
+      "json": true
+    }
+  ]
+}
