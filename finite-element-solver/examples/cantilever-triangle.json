@@ -1,16 +1,27 @@
 {
+  "metadata": {"title": "Cantilever triangle"},
+  "materials": [
+    {"id": "steel", "E": 210000000000.0, "density": 7850.0, "yield_strength": 250000000.0}
+  ],
+  "sections": [
+    {"id": "rod", "A": 0.003}
+  ],
   "nodes": [
     {"id": "A", "x": 0.0, "y": 0.0},
     {"id": "B", "x": 1.0, "y": 0.0},
-    {"id": "C", "x": 1.0, "y": 1.0, "load": [0.0, -1000.0]}
+    {"id": "C", "x": 1.0, "y": 1.0}
   ],
   "elements": [
-    {"id": "AB", "start": "A", "end": "B", "E": 210000000000.0, "A": 0.003},
-    {"id": "BC", "start": "B", "end": "C", "E": 210000000000.0, "A": 0.003},
-    {"id": "AC", "start": "A", "end": "C", "E": 210000000000.0, "A": 0.003}
+    {"id": "AB", "start": "A", "end": "B", "material": "steel", "section": "rod"},
+    {"id": "BC", "start": "B", "end": "C", "material": "steel", "section": "rod"},
+    {"id": "AC", "start": "A", "end": "C", "material": "steel", "section": "rod"}
   ],
   "supports": [
     {"node": "A", "fix": [true, true]},
     {"node": "B", "fix": [false, true]}
+  ],
+  "load_cases": [
+    {"name": "service", "node_loads": [{"node": "C", "load": [0.0, -1000.0]}]},
+    {"name": "gravity", "gravity": [0.0, -9.81], "include_self_weight": true}
   ]
 }

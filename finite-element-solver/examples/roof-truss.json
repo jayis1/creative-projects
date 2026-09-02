@@ -1,22 +1,43 @@
 {
+  "metadata": {"title": "Roof truss"},
+  "materials": [
+    {"id": "steel", "E": 200000000000.0, "density": 7850.0, "yield_strength": 250000000.0}
+  ],
+  "sections": [
+    {"id": "chord", "A": 0.004}
+  ],
   "nodes": [
     {"id": "A", "x": 0.0, "y": 0.0},
     {"id": "B", "x": 2.0, "y": 0.0},
     {"id": "C", "x": 4.0, "y": 0.0},
-    {"id": "D", "x": 1.0, "y": 1.0, "load": [0.0, -6000.0]},
-    {"id": "E", "x": 3.0, "y": 1.0, "load": [0.0, -6000.0]}
+    {"id": "D", "x": 1.0, "y": 1.0},
+    {"id": "E", "x": 3.0, "y": 1.0}
   ],
   "elements": [
-    {"id": "AB", "start": "A", "end": "B", "E": 200000000000.0, "A": 0.004},
-    {"id": "BC", "start": "B", "end": "C", "E": 200000000000.0, "A": 0.004},
-    {"id": "AD", "start": "A", "end": "D", "E": 200000000000.0, "A": 0.004},
-    {"id": "DB", "start": "D", "end": "B", "E": 200000000000.0, "A": 0.004},
-    {"id": "BE", "start": "B", "end": "E", "E": 200000000000.0, "A": 0.004},
-    {"id": "EC", "start": "E", "end": "C", "E": 200000000000.0, "A": 0.004},
-    {"id": "DE", "start": "D", "end": "E", "E": 200000000000.0, "A": 0.004}
+    {"id": "AB", "start": "A", "end": "B", "material": "steel", "section": "chord"},
+    {"id": "BC", "start": "B", "end": "C", "material": "steel", "section": "chord"},
+    {"id": "AD", "start": "A", "end": "D", "material": "steel", "section": "chord"},
+    {"id": "DB", "start": "D", "end": "B", "material": "steel", "section": "chord"},
+    {"id": "BE", "start": "B", "end": "E", "material": "steel", "section": "chord"},
+    {"id": "EC", "start": "E", "end": "C", "material": "steel", "section": "chord"},
+    {"id": "DE", "start": "D", "end": "E", "material": "steel", "section": "chord"}
   ],
   "supports": [
     {"node": "A", "fix": [true, true]},
     {"node": "C", "fix": [false, true]}
+  ],
+  "load_cases": [
+    {
+      "name": "snow",
+      "node_loads": [
+        {"node": "D", "load": [0.0, -6000.0]},
+        {"node": "E", "load": [0.0, -6000.0]}
+      ]
+    },
+    {
+      "name": "self-weight",
+      "gravity": [0.0, -9.81],
+      "include_self_weight": true
+    }
   ]
 }
