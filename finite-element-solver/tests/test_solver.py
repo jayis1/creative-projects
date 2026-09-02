@@ -168,6 +168,96 @@ def test_serialized_result_contains_utilization_field():
     assert "utilization" in payload["elements"][0]
 
 
+def test_duplicate_material_ids_are_rejected():
+    bad = {
+        "materials": [
+            {"id": "steel", "E": 200000000000.0},
+            {"id": "steel", "E": 210000000000.0},
+        ],
+        "nodes": [
+            {"id": "A", "x": 0.0, "y": 0.0},
+            {"id": "B", "x": 1.0, "y": 0.0},
+            {"id": "C", "x": 1.0, "y": 1.0},
+        ],
+        "elements": [
+            {"id": "AB", "start": "A", "end": "B", "material": "steel", "A": 0.003},
+            {"id": "BC", "start": "B", "end": "C", "material": "steel", "A": 0.003},
+            {"id": "AC", "start": "A", "end": "C", "material": "steel", "A": 0.003},
+        ],
+        "supports": [{"node": "A", "fix": [True, True]}, {"node": "B", "fix": [False, True]}],
+    }
+    with pytest.raises(ValidationError):
+        TrussModel.from_dict(bad)
+
+
+def test_duplicate_section_ids_are_rejected():
+    bad = {
+        "sections": [
+            {"id": "rod", "A": 0.003},
+            {"id": "rod", "A": 0.004},
+        ],
+        "nodes": [
+            {"id": "A", "x": 0.0, "y": 0.0},
+            {"id": "B", "x": 1.0, "y": 0.0},
+            {"id": "C", "x": 1.0, "y": 1.0},
+        ],
+        "elements": [
+            {"id": "AB", "start": "A", "end": "B", "E": 210000000000.0, "section": "rod"},
+            {"id": "BC", "start": "B", "end": "C", "E": 210000000000.0, "section": "rod"},
+            {"id": "AC", "start": "A", "end": "C", "E": 210000000000.0, "section": "rod"},
+        ],
+        "supports": [{"node": "A", "fix": [True, True]}, {"node": "B", "fix": [False, True]}],
+    }
+    with pytest.raises(ValidationError):
+        TrussModel.from_dict(bad)
+
+
+def test_duplicate_node_load_entries_are_combined():
+    model_data = {
+        "nodes": [
+            {"id": "A", "x": 0.0, "y": 0.0},
+            {"id": "B", "x": 1.0, "y": 0.0},
+            {"id": "C", "x": 1.0, "y": 1.0},
+        ],
+        "elements": [
+            {"id": "AB", "start": "A", "end": "B", "E": 210000000000.0, "A": 0.003},
+            {"id": "BC", "start": "B", "end": "C", "E": 210000000000.0, "A": 0.003},
+            {"id": "AC", "start": "A", "end": "C", "E": 210000000000.0, "A": 0.003},
+        ],
+        "supports": [{"node": "A", "fix": [True, True]}, {"node": "B", "fix": [False, True]}],
+        "load_cases": [
+            {
+                "name": "combo",
+                "node_loads": [
+                    {"node": "C", "load": [100.0, -1000.0]},
+                    {"node": "C", "load": [50.0, -200.0]},
+                ],
+            }
+        ],
+    }
+    model = TrussModel.from_dict(model_data)
+    result = TrussSolver(model).solve("combo")
+    assert sum(rx for rx, _ in result.reactions.values()) == pytest.approx(-150.0)
+    assert sum(ry for _, ry in result.reactions.values()) == pytest.approx(1200.0)
+
+
+def test_write_example_supports_toml_output():
+    output_path = ROOT / "tests" / "tmp_example.toml"
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-m", "finite_element_solver", "write-example", str(output_path), "--preset", "triangle"],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        assert "wrote triangle example model" in proc.stdout
+        parsed = load_model(output_path)
+        assert parsed["metadata"]["title"] == "Cantilever triangle"
+    finally:
+        output_path.unlink(missing_ok=True)
+
+
 def test_singular_structure_raises_validation_error():
     unstable = {
         "nodes": [

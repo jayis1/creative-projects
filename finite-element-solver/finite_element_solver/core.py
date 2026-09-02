@@ -105,6 +105,9 @@ class TrussModel:
 
     @classmethod
     def from_dict(cls, data: dict) -> "TrussModel":
+        _ensure_unique_records(data.get("materials", []), "materials")
+        _ensure_unique_records(data.get("sections", []), "sections")
+
         materials = {
             str(item["id"]): Material(
                 id=str(item["id"]),
@@ -177,7 +180,12 @@ class TrussModel:
     def _load_case_from_dict(data: dict) -> LoadCase:
         node_loads: dict[str, tuple[float, float]] = {}
         for item in data.get("node_loads", []):
-            node_loads[str(item["node"])] = _coerce_pair(item.get("load", [0.0, 0.0]))
+            node_id = str(item["node"])
+            load_x, load_y = _coerce_pair(item.get("load", [0.0, 0.0]))
+            # Multiple load contributors on the same node are common in manual models.
+            # Sum them instead of letting later entries silently overwrite earlier ones.
+            previous_x, previous_y = node_loads.get(node_id, (0.0, 0.0))
+            node_loads[node_id] = (previous_x + load_x, previous_y + load_y)
         gravity = _coerce_pair(data.get("gravity", [0.0, 0.0]))
         return LoadCase(
             name=str(data["name"]),
@@ -448,6 +456,19 @@ def _coerce_pair(value: object) -> tuple[float, float]:
     if not isinstance(value, (list, tuple)) or len(value) != 2:
         raise ValidationError("expected a two-value vector like [x, y]")
     return float(value[0]), float(value[1])
+
+
+def _ensure_unique_records(records: object, label: str) -> None:
+    if not isinstance(records, list):
+        raise ValidationError(f"{label} must be a list")
+    ids: list[str] = []
+    for record in records:
+        if not isinstance(record, dict) or "id" not in record:
+            raise ValidationError(f"every entry in {label} must be a mapping with an id")
+        ids.append(str(record["id"]))
+    duplicates = sorted({item for item in ids if ids.count(item) > 1})
+    if duplicates:
+        raise ValidationError(f"duplicate {label} ids: {duplicates}")
 
 
 def _bfs(seeds: set[str], adjacency: dict[str, set[str]]) -> set[str]:

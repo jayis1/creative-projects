@@ -124,3 +124,10 @@ Max displacement magnitude: 2.244783e-06 m
 - Added utilization and mass reporting per member
 - Added model summary and load-case listing commands
 - Added TOML parsing and broader test coverage
+
+## Known Issues (Resolved)
+
+- Fixed silent overwriting of duplicate material definitions; models now fail fast.
+- Fixed silent overwriting of duplicate section definitions; models now fail fast.
+- Fixed duplicate load entries within one load case being overwritten; they are now summed.
+- Fixed `write-example` rejecting TOML destinations; it now writes valid TOML as well as JSON.
