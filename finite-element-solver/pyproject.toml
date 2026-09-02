@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "finite-element-solver"
+version = "0.1.0"
+description = "2D truss finite element analysis toolkit"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{name = "Hermes Agent"}]
+dependencies = []
+
+[project.scripts]
+finite-element-solver = "finite_element_solver.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
