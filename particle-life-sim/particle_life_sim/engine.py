@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from math import hypot
+from math import ceil, hypot
 from pathlib import Path
 import random
 from statistics import fmean
@@ -138,6 +138,18 @@ class SpatialHash:
     def bucket_key(self, x: float, y: float) -> tuple[int, int]:
         return (int(x // self.cell_size), int(y // self.cell_size))
 
+    def grid_shape(self) -> tuple[int, int]:
+        """Return the number of wrapped buckets in each dimension.
+
+        `ceil` avoids adding a phantom empty column/row when the world size is an
+        exact multiple of `cell_size`.
+        """
+
+        return (
+            max(1, ceil(self.width / self.cell_size)),
+            max(1, ceil(self.height / self.cell_size)),
+        )
+
     def build(self, particles: Iterable[Particle]) -> dict[tuple[int, int], list[int]]:
         buckets: dict[tuple[int, int], list[int]] = {}
         for index, particle in enumerate(particles):
@@ -146,12 +158,15 @@ class SpatialHash:
 
     def neighbor_indices(self, particle: Particle, buckets: dict[tuple[int, int], list[int]]) -> list[int]:
         origin_x, origin_y = self.bucket_key(particle.x, particle.y)
-        max_x = max(1, int(self.width // self.cell_size) + 1)
-        max_y = max(1, int(self.height // self.cell_size) + 1)
+        max_x, max_y = self.grid_shape()
+        seen_keys: set[tuple[int, int]] = set()
         result: list[int] = []
         for dy in (-1, 0, 1):
             for dx in (-1, 0, 1):
                 key = ((origin_x + dx) % max_x, (origin_y + dy) % max_y)
+                if key in seen_keys:
+                    continue
+                seen_keys.add(key)
                 result.extend(buckets.get(key, ()))
         return result
 
@@ -164,6 +179,7 @@ class ParticleLifeSimulation:
         self.random = random.Random(config.seed)
         self.particles = self._spawn_particles()
         self.step_count = 0
+        self.microstep_count = 0
         self._spatial_hash = SpatialHash(config.interaction_radius, config.width, config.height)
         self.last_neighbor_checks = 0
 
@@ -177,6 +193,7 @@ class ParticleLifeSimulation:
         sim = cls(SimulationConfig.from_dict(data["config"]))
         sim.particles = [Particle(**row) for row in data["particles"]]
         sim.step_count = int(data.get("step", 0))
+        sim.microstep_count = int(data.get("microstep", sim.step_count))
         return sim
 
     def _spawn_particles(self) -> list[Particle]:
@@ -205,7 +222,8 @@ class ParticleLifeSimulation:
                 self.particles = self._advance_midpoint(self.particles, slice_dt)
             else:
                 self.particles = self._advance_euler(self.particles, slice_dt)
-            self.step_count += 1
+            self.microstep_count += 1
+        self.step_count += 1
 
     def run(self, steps: int, dt: float = 1.0, substeps: int = 1) -> None:
         if steps < 0:
@@ -226,6 +244,7 @@ class ParticleLifeSimulation:
     def snapshot(self) -> dict[str, Any]:
         return {
             "step": self.step_count,
+            "microstep": self.microstep_count,
             "config": self.config.to_dict(),
             "particles": [
                 {"x": p.x, "y": p.y, "vx": p.vx, "vy": p.vy, "species": p.species}

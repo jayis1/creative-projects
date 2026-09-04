@@ -89,6 +89,7 @@ interaction_radius = 8
 repulsion_radius = 2
 max_speed = 5
 integrator = \"euler\"
+interactions = [[0.5, -0.3], [-0.2, 0.4]]
 
 [[species]]
 name = \"a\"
@@ -99,13 +100,13 @@ count = 2
 name = \"b\"
 color = \"#445566\"
 count = 2
-
-interactions = [[0.5, -0.3], [-0.2, 0.4]]
 """.strip()
     )
     data = load_mapping(path)
     assert data["width"] == 40
     assert len(data["species"]) == 2
+    config = SimulationConfig.from_dict(data)
+    assert config.particle_count == 4
 
 
 def test_cli_export_preset_writes_json(tmp_path) -> None:
@@ -132,3 +133,50 @@ def test_config_validation_rejects_duplicate_species_names() -> None:
         assert "unique" in str(exc)
     else:  # pragma: no cover
         raise AssertionError("expected duplicate species validation error")
+
+
+def test_substeps_do_not_change_reported_step_number() -> None:
+    sim = ParticleLifeSimulation(SimulationConfig.from_dict(get_preset("aurora"), seed=8))
+    sim.run(steps=3, dt=0.1, substeps=4)
+    assert sim.step_count == 3
+
+
+def test_spatial_hash_does_not_duplicate_neighbors_in_single_bucket_world() -> None:
+    config = SimulationConfig.from_dict(
+        {
+            "width": 5,
+            "height": 5,
+            "drag": 0.0,
+            "force_scale": 1.0,
+            "interaction_radius": 10.0,
+            "repulsion_radius": 1.0,
+            "max_speed": 100.0,
+            "species": [{"name": "solo", "color": "#112233", "count": 2}],
+            "interactions": [[0.5]],
+        },
+        seed=0,
+    )
+    sim = ParticleLifeSimulation(config)
+    sim.particles = [
+        sim.particles[0].__class__(x=1.0, y=2.5, vx=0.0, vy=0.0, species=0),
+        sim.particles[0].__class__(x=4.0, y=2.5, vx=0.0, vy=0.0, species=0),
+    ]
+    sim.step(dt=1.0)
+    assert sim.last_neighbor_checks == 2
+
+
+def test_cli_render_creates_parent_directories(tmp_path) -> None:
+    output = tmp_path / "nested" / "frame.svg"
+    exit_code = main([
+        "render",
+        "--preset",
+        "aurora",
+        "--steps",
+        "1",
+        "--dt",
+        "0.1",
+        "--output",
+        str(output),
+    ])
+    assert exit_code == 0
+    assert output.exists()

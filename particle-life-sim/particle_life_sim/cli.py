@@ -75,6 +75,7 @@ def _handle_presets(args: argparse.Namespace) -> int:
 
 
 def _handle_export_preset(args: argparse.Namespace) -> int:
+    Path(args.output).parent.mkdir(parents=True, exist_ok=True)
     dump_json(args.output, built_in_presets()[args.name])
     print(str(args.output))
     return 0
@@ -103,6 +104,7 @@ def _handle_render(args: argparse.Namespace) -> int:
     simulation = _simulation_from_args(args)
     simulation.run(args.steps, dt=args.dt, substeps=args.substeps)
     output = Path(args.output)
+    output.parent.mkdir(parents=True, exist_ok=True)
     if args.format == "ascii":
         content = render_ascii(
             simulation.particles,
@@ -136,6 +138,7 @@ def _handle_render(args: argparse.Namespace) -> int:
 def _handle_snapshot(args: argparse.Namespace) -> int:
     simulation = _simulation_from_args(args)
     simulation.run(args.steps, dt=args.dt, substeps=args.substeps)
+    Path(args.output).parent.mkdir(parents=True, exist_ok=True)
     simulation.save_snapshot(args.output)
     print(str(args.output))
     return 0

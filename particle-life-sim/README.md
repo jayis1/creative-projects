@@ -130,6 +130,7 @@ interaction_radius = 18
 repulsion_radius = 3
 max_speed = 9
 integrator = "euler"
+interactions = [[0.7, -0.8], [-0.8, 0.7]]
 
 [[species]]
 name = "a"
@@ -140,8 +141,6 @@ count = 20
 name = "b"
 color = "#55ddff"
 count = 20
-
-interactions = [[0.7, -0.8], [-0.8, 0.7]]
 ```
 
 Then run:
@@ -163,3 +162,9 @@ Typical metrics include:
 - `nearest_neighbor`
 
 These are useful when tuning interaction matrices for desired emergent behavior.
+
+## Known Issues (Resolved)
+
+- **Substep accounting mismatch**: `step_count` used to advance once per microstep, so runs with `--substeps > 1` reported inflated step numbers in timelines and snapshots. `step` now tracks public steps and stores internal microsteps separately.
+- **Spatial-hash duplicate neighbors**: very small or tightly wrapped worlds could map multiple offset lookups onto the same bucket, causing repeated force application and inflated `neighbor_checks`. Neighbor buckets are now deduplicated and grid dimensions use `ceil` instead of an extra phantom bucket.
+- **CLI output path failures**: `render`, `snapshot`, and `export-preset` used to fail when the destination directory did not already exist. The CLI now creates parent directories automatically.
