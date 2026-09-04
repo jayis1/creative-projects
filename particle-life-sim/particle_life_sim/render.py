@@ -16,7 +16,11 @@ def render_ascii(
     columns: int = 60,
     rows: int = 24,
 ) -> str:
-    """Render particles to an ASCII grid."""
+    """Render particles to an ASCII grid with a legend.
+
+    Species indices are mapped to `1..9A..Z`. Later particles overwrite earlier
+    ones in the same cell, which is fine for a preview renderer.
+    """
 
     columns = max(4, columns)
     rows = max(4, rows)
@@ -95,4 +99,8 @@ def _hex_to_rgb(color: str) -> tuple[int, int, int]:
     color = color.lstrip("#")
     if len(color) != 6:
         raise ValueError(f"expected #RRGGBB color, got {color!r}")
-    return tuple(int(color[index : index + 2], 16) for index in (0, 2, 4))
+    return (
+        int(color[0:2], 16),
+        int(color[2:4], 16),
+        int(color[4:6], 16),
+    )

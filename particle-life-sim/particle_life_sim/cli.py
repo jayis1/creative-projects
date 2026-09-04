@@ -5,10 +5,10 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-from typing import Any
 
 from .engine import ParticleLifeSimulation, SimulationConfig
-from .presets import get_preset, preset_names
+from .io import dump_json, load_mapping
+from .presets import built_in_presets, get_preset, preset_names
 from .render import render_ascii, render_ppm, render_svg
 
 
@@ -19,9 +19,19 @@ def build_parser() -> argparse.ArgumentParser:
     presets_parser = subparsers.add_parser("presets", help="List bundled presets")
     presets_parser.set_defaults(handler=_handle_presets)
 
+    export_parser = subparsers.add_parser("export-preset", help="Write a preset to JSON")
+    export_parser.add_argument("name", choices=preset_names())
+    export_parser.add_argument("--output", required=True)
+    export_parser.set_defaults(handler=_handle_export_preset)
+
     run_parser = subparsers.add_parser("run", help="Run a simulation and print metrics")
     _add_common_run_args(run_parser)
     run_parser.set_defaults(handler=_handle_run)
+
+    timeline_parser = subparsers.add_parser("timeline", help="Run and emit a sampled metrics timeline")
+    _add_common_run_args(timeline_parser)
+    timeline_parser.add_argument("--sample-every", type=int, default=10)
+    timeline_parser.set_defaults(handler=_handle_timeline)
 
     render_parser = subparsers.add_parser("render", help="Run a simulation and write an image")
     _add_common_run_args(render_parser)
@@ -45,39 +55,53 @@ def _add_common_run_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--config")
     parser.add_argument("--steps", type=int, default=120)
     parser.add_argument("--dt", type=float, default=0.1)
+    parser.add_argument("--substeps", type=int, default=1)
     parser.add_argument("--seed", type=int)
 
 
 def _simulation_from_args(args: argparse.Namespace) -> ParticleLifeSimulation:
     if args.config:
-        config = SimulationConfig.from_dict(_load_config(Path(args.config)), seed=args.seed)
+        config = SimulationConfig.from_dict(load_mapping(Path(args.config)), seed=args.seed)
     else:
         config = SimulationConfig.from_dict(get_preset(args.preset), seed=args.seed)
     return ParticleLifeSimulation(config)
 
 
-def _load_config(path: Path) -> dict[str, Any]:
-    if path.suffix.lower() != ".json":
-        raise ValueError("only JSON config files are supported in v0.1")
-    return json.loads(path.read_text())
-
-
 def _handle_presets(args: argparse.Namespace) -> int:
+    del args
     for name in preset_names():
         print(name)
     return 0
 
 
+def _handle_export_preset(args: argparse.Namespace) -> int:
+    dump_json(args.output, built_in_presets()[args.name])
+    print(str(args.output))
+    return 0
+
+
 def _handle_run(args: argparse.Namespace) -> int:
     simulation = _simulation_from_args(args)
-    simulation.run(args.steps, dt=args.dt)
+    simulation.run(args.steps, dt=args.dt, substeps=args.substeps)
     print(json.dumps(simulation.metrics(), indent=2, sort_keys=True))
+    return 0
+
+
+def _handle_timeline(args: argparse.Namespace) -> int:
+    simulation = _simulation_from_args(args)
+    timeline = simulation.timeline(
+        args.steps,
+        dt=args.dt,
+        substeps=args.substeps,
+        sample_every=args.sample_every,
+    )
+    print(json.dumps(timeline, indent=2, sort_keys=True))
     return 0
 
 
 def _handle_render(args: argparse.Namespace) -> int:
     simulation = _simulation_from_args(args)
-    simulation.run(args.steps, dt=args.dt)
+    simulation.run(args.steps, dt=args.dt, substeps=args.substeps)
     output = Path(args.output)
     if args.format == "ascii":
         content = render_ascii(
@@ -111,10 +135,9 @@ def _handle_render(args: argparse.Namespace) -> int:
 
 def _handle_snapshot(args: argparse.Namespace) -> int:
     simulation = _simulation_from_args(args)
-    simulation.run(args.steps, dt=args.dt)
-    output = Path(args.output)
-    output.write_text(json.dumps(simulation.snapshot(), indent=2, sort_keys=True))
-    print(str(output))
+    simulation.run(args.steps, dt=args.dt, substeps=args.substeps)
+    simulation.save_snapshot(args.output)
+    print(str(args.output))
     return 0
 
 
