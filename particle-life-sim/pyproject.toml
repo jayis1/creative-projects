@@ -4,17 +4,25 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "particle-life-sim"
-version = "0.1.0"
-description = "Particle Life simulator with toroidal forces, presets, ASCII/SVG/PPM rendering, and CLI tools."
+version = "0.2.0"
+description = "Particle Life simulator with toroidal forces, analysis tools, parameter sweeps, snapshots, and CLI renderers."
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{ name = "Hermes Agent" }]
 license = { text = "MIT" }
-keywords = ["particle-life", "simulation", "generative-art", "physics"]
+keywords = ["particle-life", "simulation", "generative-art", "physics", "cli"]
 classifiers = [
   "Programming Language :: Python :: 3",
   "License :: OSI Approved :: MIT License",
   "Operating System :: OS Independent",
+]
+dependencies = [
+  "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
 ]
 
 [project.scripts]

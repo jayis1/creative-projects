@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from math import ceil, hypot
+from math import atan2, ceil, cos, hypot, pi, sin
 from pathlib import Path
 import random
 from statistics import fmean
@@ -192,6 +192,9 @@ class ParticleLifeSimulation:
     def from_snapshot(cls, data: dict[str, Any]) -> "ParticleLifeSimulation":
         sim = cls(SimulationConfig.from_dict(data["config"]))
         sim.particles = [Particle(**row) for row in data["particles"]]
+        for particle in sim.particles:
+            if not 0 <= particle.species < sim.config.species_count:
+                raise ValueError(f"snapshot particle species {particle.species} out of range")
         sim.step_count = int(data.get("step", 0))
         sim.microstep_count = int(data.get("microstep", sim.step_count))
         return sim
@@ -264,8 +267,8 @@ class ParticleLifeSimulation:
             members = [particle for particle in self.particles if particle.species == index]
             species_energy[style.name] = sum(0.5 * particle.speed() ** 2 for particle in members)
             species_centers[style.name] = (
-                fmean([particle.x for particle in members]),
-                fmean([particle.y for particle in members]),
+                _circular_mean([particle.x for particle in members], self.config.width),
+                _circular_mean([particle.y for particle in members], self.config.height),
             )
             nearest_neighbor[style.name] = self._mean_nearest_neighbor(members)
         return {
@@ -379,3 +382,15 @@ def _validate_hex_color(color: str) -> None:
     if not color.startswith("#") or len(color) != 7:
         raise ValueError(f"invalid color {color!r}; expected #RRGGBB")
     int(color[1:], 16)
+
+
+def _circular_mean(values: list[float], size: float) -> float:
+    if not values:
+        return 0.0
+    angles = [2.0 * pi * (value % size) / size for value in values]
+    mean_sin = fmean(sin(angle) for angle in angles)
+    mean_cos = fmean(cos(angle) for angle in angles)
+    angle = atan2(mean_sin, mean_cos)
+    if angle < 0.0:
+        angle += 2.0 * pi
+    return (angle * size) / (2.0 * pi)

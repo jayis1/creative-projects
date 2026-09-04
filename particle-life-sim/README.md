@@ -1,170 +1,247 @@
 # particle-life-sim
 
-Particle Life is a generative artificial-life simulator where colored particle species attract and repel one another according to an interaction matrix. The system turns simple local rules into swarming bands, orbiting clusters, predator-prey chases, and soft cellular-looking textures.
+![Python](https://img.shields.io/badge/python-3.11%2B-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+![Tests](https://img.shields.io/badge/tests-pytest-informational)
+
+A reusable Particle Life toolkit for simulating, analyzing, resuming, rendering, and tuning emergent multi-species motion in a toroidal 2D world.
+
+## Table of contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Installation](#installation)
+- [Quick start](#quick-start)
+- [CLI reference](#cli-reference)
+- [Configuration](#configuration)
+- [Architecture](#architecture)
+- [Examples and docs](#examples-and-docs)
+- [Recent improvements](#recent-improvements)
+- [Known issues (resolved)](#known-issues-resolved)
+- [Roadmap](#roadmap)
+- [Contributing](#contributing)
+- [License](#license)
+
+## Overview
+
+Particle Life uses a species-to-species interaction matrix to turn local attraction and repulsion rules into large-scale behavior: swarms, rotating lanes, predator-prey loops, and clustered textures. This project started as a simulation and now includes experiment-management tools around it.
+
+```text
+..........1....22........
+......1.............2....
+...1.......3.............
+........33......2........
+1=cyan 2=violet 3=gold
+```
 
 ## Features
 
-- Toroidal 2D world with species-to-species interaction matrix
+- Toroidal simulation space with wrapped neighbor lookups
 - Deterministic seeding for reproducible runs
-- Two integrators: `euler` and `midpoint`
-- Spatial-hash acceleration for local neighbor lookups
-- Bundled presets: `aurora`, `petri`, `binary-star`
-- JSON and TOML config loading
-- Metrics output as JSON, including nearest-neighbor and neighborhood statistics
-- Timeline sampling for long runs
-- Renderers: ASCII, SVG, and text PPM
-- Snapshot export and snapshot restore API
-- Packaged CLI via `python3 -m particle_life_sim` or `particle-life-sim`
-
-## How it works
-
-Each particle belongs to a species. On every step the simulator:
-
-1. Uses a spatial hash to find nearby candidate particles instead of scanning the full population blindly.
-2. Computes wrapped displacement in a toroidal world.
-3. Looks up an attraction/repulsion coefficient from the interaction matrix.
-4. Adds a short-range repulsion term to prevent collapse.
-5. Integrates velocity and position with drag and speed clamping.
-6. Wraps positions back into the domain.
-
-The `midpoint` integrator samples the force field twice per step for smoother motion than basic Euler updates.
-
-## Project layout
-
-- `particle_life_sim/engine.py` — config validation, spatial hash, simulator, metrics
-- `particle_life_sim/render.py` — ASCII, SVG, PPM renderers
-- `particle_life_sim/presets.py` — bundled preset definitions
-- `particle_life_sim/io.py` — JSON/TOML loading and JSON writing helpers
-- `particle_life_sim/cli.py` — command-line interface
-- `tests/test_particle_life.py` — regression and behavior tests
+- Euler and midpoint integration modes
+- Spatial-hash acceleration for local force evaluation
+- JSON, TOML, YAML, and snapshot loading
+- ASCII, SVG, and PPM rendering
+- Snapshot export and resume workflow
+- Advanced analysis metrics: occupancy entropy, wrapped pairwise distance, momentum, species spread, speed deviation
+- Parameter sweep command for scanning seeds, force scales, and drags
+- JSON and CSV report output for automation
+- Installable package with console entry point
+- Examples, architecture notes, contribution guide, and license
 
 ## Installation
+
+### Editable install
 
 ```bash
 cd particle-life-sim
 python3 -m venv .venv
 . .venv/bin/activate
-pip install -e .
-pip install pytest
+pip install --upgrade pip
+pip install -e .[dev]
 ```
 
-## Usage
+### Verify the install
+
+```bash
+particle-life-sim presets
+pytest
+```
+
+## Quick start
 
 List presets:
 
 ```bash
-python3 -m particle_life_sim presets
+particle-life-sim presets
 ```
 
-Export a bundled preset to edit it:
+Export a preset to YAML, edit it, then run it:
 
 ```bash
-python3 -m particle_life_sim export-preset aurora --output aurora.json
+particle-life-sim export-preset aurora --output aurora.yaml
+particle-life-sim run --config aurora.yaml --steps 150 --dt 0.1 --seed 7
 ```
 
-Run a preset and print final metrics:
+Render an SVG preview:
 
 ```bash
-python3 -m particle_life_sim run --preset aurora --steps 200 --dt 0.1 --substeps 2 --seed 7
+particle-life-sim render --preset petri --steps 250 --dt 0.08 --format svg --output out/petri.svg
 ```
 
-Emit a sampled metrics timeline:
+Write a metrics timeline as CSV:
 
 ```bash
-python3 -m particle_life_sim timeline --preset petri --steps 100 --dt 0.08 --sample-every 20
+particle-life-sim timeline --preset aurora --steps 120 --dt 0.1 --sample-every 20 --output out/timeline.csv
 ```
 
-Render SVG output:
+Run advanced analysis:
 
 ```bash
-python3 -m particle_life_sim render --preset petri --steps 250 --dt 0.08 --format svg --output petri.svg
+particle-life-sim analyze --preset binary-star --steps 180 --dt 0.1 --bins 10
 ```
 
-Render ASCII output:
+Resume from a saved snapshot:
 
 ```bash
-python3 -m particle_life_sim render --preset binary-star --steps 80 --dt 0.1 --format ascii --output binary-star.txt
+particle-life-sim snapshot --preset aurora --steps 50 --dt 0.1 --output out/snap.json
+particle-life-sim resume out/snap.json --steps 50 --dt 0.1 --save-snapshot out/snap-100.json
 ```
 
-Save a snapshot:
+Search for interesting parameter combinations:
 
 ```bash
-python3 -m particle_life_sim snapshot --preset aurora --steps 120 --dt 0.1 --output snapshot.json
+particle-life-sim sweep \
+  --preset aurora \
+  --steps 90 \
+  --dt 0.1 \
+  --seeds 1 2 3 \
+  --force-scales 32 40 48 \
+  --drags 0.03 0.05 0.08 \
+  --output out/sweep.json
 ```
 
-## Config format
+## CLI reference
 
-The CLI accepts `.json` and `.toml` configs.
+### `presets`
+Print bundled preset names.
 
-### JSON example
+### `export-preset`
+Export a bundled preset to `.json`, `.yaml`, or `.yml`.
 
-```json
-{
-  "width": 120,
-  "height": 80,
-  "drag": 0.05,
-  "force_scale": 42,
-  "interaction_radius": 18,
-  "repulsion_radius": 3,
-  "max_speed": 9,
-  "integrator": "midpoint",
-  "species": [
-    {"name": "a", "color": "#ff5577", "count": 20},
-    {"name": "b", "color": "#55ddff", "count": 20}
-  ],
-  "interactions": [
-    [0.7, -0.8],
-    [-0.8, 0.7]
-  ]
-}
+### `run`
+Run a simulation and emit final metrics. Optional `--output` writes JSON.
+
+### `timeline`
+Run a simulation and emit sampled metrics over time. `--output` supports `.json` or `.csv`.
+
+### `render`
+Render ASCII, SVG, or PPM output after a run.
+
+### `snapshot`
+Save the current simulation state as JSON for later replay.
+
+### `resume`
+Load a snapshot, continue simulating, optionally save a new snapshot.
+
+### `analyze`
+Emit higher-level emergent-behavior metrics on top of the engine’s base metrics.
+
+### `sweep`
+Batch-run combinations of seeds, drag values, and force scales, then rank results by a novelty heuristic.
+
+## Configuration
+
+The CLI accepts `.json`, `.toml`, `.yaml`, and `.yml` configs.
+
+### YAML example
+
+```yaml
+width: 120
+height: 80
+drag: 0.04
+force_scale: 46
+interaction_radius: 18
+repulsion_radius: 3
+max_speed: 9
+integrator: midpoint
+species:
+  - name: cyan
+    color: "#3ad5ff"
+    count: 24
+  - name: violet
+    color: "#9d5cff"
+    count: 22
+  - name: gold
+    color: "#ffd166"
+    count: 18
+interactions:
+  - [0.7, -0.9, 0.6]
+  - [0.8, 0.4, -0.8]
+  - [-0.7, 0.9, 0.2]
 ```
 
-### TOML example
+### Analysis output fields
 
-```toml
-width = 120
-height = 80
-drag = 0.05
-force_scale = 42
-interaction_radius = 18
-repulsion_radius = 3
-max_speed = 9
-integrator = "euler"
-interactions = [[0.7, -0.8], [-0.8, 0.7]]
+Beyond the core metrics, `analyze` adds:
 
-[[species]]
-name = "a"
-color = "#ff5577"
-count = 20
+- `occupancy_entropy` — how evenly particles fill the coarse grid
+- `pairwise_mean_distance` — wrapped average spacing across all particle pairs
+- `speed_stddev` — velocity dispersion
+- `momentum` — net motion vector and magnitude
+- `species_spread` — wrapped average spread around each species centroid
+- `microsteps` — total internal integrator updates
 
-[[species]]
-name = "b"
-color = "#55ddff"
-count = 20
-```
+## Architecture
 
-Then run:
+The project is split into focused modules:
 
-```bash
-python3 -m particle_life_sim run --config my-config.toml --steps 180 --dt 0.1
-```
+- `particle_life_sim.engine` — config validation, particle stepping, snapshots, base metrics
+- `particle_life_sim.analysis` — experiment metrics and parameter sweeps
+- `particle_life_sim.render` — ASCII, SVG, and PPM renderers
+- `particle_life_sim.io` — JSON/TOML/YAML/CSV helpers
+- `particle_life_sim.cli` — user-facing command entry points
 
-## Output metrics
+More detail lives in [`docs/architecture.md`](docs/architecture.md).
 
-Typical metrics include:
+## Examples and docs
 
-- `mean_speed`
-- `max_speed`
-- `mean_radius`
-- `neighbor_checks`
-- `species_energy`
-- `species_centers`
-- `nearest_neighbor`
+- [`examples/aurora-variant.yaml`](examples/aurora-variant.yaml) — editable YAML preset example
+- [`examples/resume-demo.sh`](examples/resume-demo.sh) — snapshot, resume, and analyze workflow
+- [`docs/architecture.md`](docs/architecture.md) — package structure and data flow
+- [`docs/github-actions.yml.example`](docs/github-actions.yml.example) — workflow example scoped to this project folder
 
-These are useful when tuning interaction matrices for desired emergent behavior.
+## Recent improvements
 
-## Known Issues (Resolved)
+- Added YAML config and preset export support
+- Added `analyze`, `resume`, and `sweep` CLI commands
+- Added JSON and CSV report output paths for automation
+- Added wrapped-centroid calculations so boundary-crossing clusters are measured correctly
+- Added snapshot validation for out-of-range species ids
+- Added advanced analysis metrics and experiment-ranking heuristics
+- Added examples, architecture docs, contribution guide, and MIT license
+- Expanded the pytest suite to cover new commands and edge cases
 
-- **Substep accounting mismatch**: `step_count` used to advance once per microstep, so runs with `--substeps > 1` reported inflated step numbers in timelines and snapshots. `step` now tracks public steps and stores internal microsteps separately.
-- **Spatial-hash duplicate neighbors**: very small or tightly wrapped worlds could map multiple offset lookups onto the same bucket, causing repeated force application and inflated `neighbor_checks`. Neighbor buckets are now deduplicated and grid dimensions use `ceil` instead of an extra phantom bucket.
-- **CLI output path failures**: `render`, `snapshot`, and `export-preset` used to fail when the destination directory did not already exist. The CLI now creates parent directories automatically.
+## Known issues (resolved)
+
+- **Substep accounting mismatch**: `step_count` no longer inflates when `substeps > 1`.
+- **Spatial-hash duplicate neighbors**: wrapped bucket scans no longer double count in tiny worlds.
+- **CLI output path failures**: render, snapshot, and preset export commands now create parent directories.
+- **Wrapped centroid drift**: species centered near both edges of the torus no longer report a false midpoint through the world center.
+- **Unsafe snapshot species ids**: snapshot resume now rejects particles with invalid species indices.
+
+## Roadmap
+
+- Add animation export for frame sequences or GIF/MP4 pipelines
+- Add richer preset-generation tools for procedural exploration
+- Add alternate force laws and boundary modes
+- Add browser-based visualization for live parameter tuning
+- Add benchmarking commands for larger populations
+
+## Contributing
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md). For a ready-to-adapt workflow file, see [`docs/github-actions.yml.example`](docs/github-actions.yml.example).
+
+## License
+
+MIT. See [`LICENSE`](LICENSE).

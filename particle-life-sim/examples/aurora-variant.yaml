@@ -1,0 +1,22 @@
+width: 120
+height: 80
+drag: 0.04
+force_scale: 46
+interaction_radius: 18
+repulsion_radius: 3
+max_speed: 9
+integrator: midpoint
+species:
+  - name: cyan
+    color: "#3ad5ff"
+    count: 24
+  - name: violet
+    color: "#9d5cff"
+    count: 22
+  - name: gold
+    color: "#ffd166"
+    count: 18
+interactions:
+  - [0.7, -0.9, 0.6]
+  - [0.8, 0.4, -0.8]
+  - [-0.7, 0.9, 0.2]
