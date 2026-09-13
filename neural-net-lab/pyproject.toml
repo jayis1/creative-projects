@@ -1,0 +1,10 @@
+[build-system]
+requires=['setuptools>=61']
+build-backend='setuptools.build_meta'
+[project]
+name='neural-net-lab'
+version='0.1.0'
+description='Inspectable pure-Python multilayer perceptron laboratory'
+requires-python='>=3.10'
+[project.scripts]
+neural-net-lab='neural_net_lab.cli:main'
