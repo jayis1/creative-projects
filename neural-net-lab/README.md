@@ -23,4 +23,4 @@ restored=MLP.load('xor.json')
 Inputs and targets are numeric sequences. Every layer has an explicit positive width; malformed dimensions, empty datasets, mismatched widths, and invalid optimizer parameters raise `ValueError` rather than failing deep inside training. `predict_batch` preserves row order. Training also supports gradient-norm clipping (`clip=`) and validation-based early stopping (`patience=`), useful when experimenting with unstable or noisy datasets.
 
 ## Known limitations
-The reference implementation intentionally trains with scalar Python loops, so it favors transparency over large-dataset speed. MSE is currently the only loss; classification targets should be encoded as one-hot or sigmoid-compatible values.
+The reference implementation intentionally trains with scalar Python loops, so it favors transparency over large-dataset speed. MSE and numerically clamped binary cross-entropy (`loss_name="bce"`) are supported; BCE requires a sigmoid output. Binary `accuracy` is available for one-output models.
