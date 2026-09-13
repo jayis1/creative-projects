@@ -24,3 +24,10 @@ Inputs and targets are numeric sequences. Every layer has an explicit positive w
 
 ## Known limitations
 The reference implementation intentionally trains with scalar Python loops, so it favors transparency over large-dataset speed. MSE and numerically clamped binary cross-entropy (`loss_name="bce"`) are supported; BCE requires a sigmoid output. Binary `accuracy` is available for one-output models.
+
+## Known Issues (Resolved)
+- Adam's per-layer moment state was incorrectly unpacked and could not train; state tensors now have explicit weight/bias names.
+- Adam's epsilon was added outside the learning-rate fraction; the stabilized denominator is now mathematically correct.
+- Gradient code contained a dead placeholder allocation; it was removed without changing the chain-rule result.
+- Early stopping now restores the best validation checkpoint instead of returning the last, overfit epoch.
+- Accuracy and model loading reject empty/misaligned data and malformed layer dimensions.

@@ -2,7 +2,7 @@
 from __future__ import annotations
 import json, math, random
 from dataclasses import dataclass
-from typing import Callable, Sequence
+from typing import Sequence
 
 
 def _act(name: str, x: float) -> tuple[float, float]:
@@ -58,7 +58,8 @@ class MLP:
         delta=[(y-t) if loss_name == "bce" else 2*(y-t)*d for y,t,d in zip(acts[-1],target,caches[-1][2])]
         grads=[]
         for i in range(len(self.layers)-1,-1,-1):
-            inp,_,slopes=caches[i]; grads.append(([d*v for v in delta for d in []], []))
+            inp,_,slopes=caches[i]
+            grads.append((None, None))
             gw=[[delta[o]*inp[j] for j in range(len(inp))] for o in range(len(delta))]
             gb=delta[:]; grads[-1]=(gw,gb)
             if i:
@@ -77,7 +78,7 @@ class MLP:
         if loss_name == "bce" and self.layers[-1].activation != "sigmoid": raise ValueError("bce requires a sigmoid output layer")
         opt=optimizer
         rng=random.Random(seed); hist=TrainingHistory([],[]); ids=list(range(len(xs)))
-        best=float("inf"); stale=0
+        best=float("inf"); stale=0; best_weights=None
         for _ in range(epochs):
             if shuffle: rng.shuffle(ids)
             for start in range(0,len(ids),batch_size):
@@ -96,9 +97,14 @@ class MLP:
                             gw=[[v*factor for v in row] for row in gw]; gb=[v*factor for v in gb]
                     opt.step(self.layers[i],gw,gb,lr,count) if opt else self._apply(self.layers[i],gw,gb,lr,count)
             hist.losses.append(self.loss(xs,ys,loss_name)); current=self.loss(*validation,loss_name=loss_name) if validation else hist.losses[-1]; hist.val_losses.append(current if validation else float("nan"))
-            if current < best-1e-12: best,stale=current,0
+            if current < best-1e-12:
+                best,stale=current,0
+                best_weights=[([row[:] for row in l.w], l.b[:]) for l in self.layers]
             else: stale+=1
-            if patience is not None and stale>=patience: break
+            if patience is not None and stale>=patience:
+                if best_weights:
+                    for l,(w,b) in zip(self.layers,best_weights): l.w,l.b=[row[:] for row in w],b[:]
+                break
         return hist
     @staticmethod
     def _apply(l,gw,gb,lr,n):
@@ -110,7 +116,7 @@ class MLP:
         return sum(self._grad(x,y,loss_name)[1] for x,y in zip(xs,ys))/len(xs)
     def accuracy(self,xs,ys,threshold=.5):
         """Binary accuracy for one-output sigmoid models."""
-        if len(self.layers[-1].b)!=1 or not 0<=threshold<=1: raise ValueError("accuracy requires one output and a valid threshold")
+        if not xs or len(xs)!=len(ys) or len(self.layers[-1].b)!=1 or not 0<=threshold<=1: raise ValueError("accuracy requires aligned data, one output, and a valid threshold")
         return sum((self.predict(x)[0]>=threshold)==(y[0]>=threshold) for x,y in zip(xs,ys))/len(xs)
     def to_dict(self): return {"sizes":self.sizes,"activations":[l.activation for l in self.layers],"weights":[l.w for l in self.layers],"biases":[l.b for l in self.layers]}
     def save(self,path):
@@ -118,6 +124,11 @@ class MLP:
     @classmethod
     def load(cls,path):
         with open(path,encoding="utf8") as f: d=json.load(f)
-        net=cls(d["sizes"],d["activations"]); 
-        for l,w,b in zip(net.layers,d["weights"],d["biases"]): l.w=w; l.b=b
+        if not isinstance(d,dict) or not all(k in d for k in ("sizes","activations","weights","biases")): raise ValueError("invalid model file")
+        net=cls(d["sizes"],d["activations"])
+        if len(d["weights"])!=len(net.layers) or len(d["biases"])!=len(net.layers): raise ValueError("model layer count mismatch")
+        for l,w,b in zip(net.layers,d["weights"],d["biases"]):
+            if (not isinstance(w,list) or len(w)!=len(l.w) or any(not isinstance(row,list) or len(row)!=len(l.w[0]) for row in w) or not isinstance(b,list) or len(b)!=len(l.b)):
+                raise ValueError("invalid model dimensions")
+            l.w=w; l.b=b
         return net
