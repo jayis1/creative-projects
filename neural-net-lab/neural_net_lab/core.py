@@ -1,134 +1,140 @@
-"""A dependency-free dense neural network with mini-batch training."""
+"""Dependency-free dense neural networks with inspectable backpropagation."""
 from __future__ import annotations
 import json, math, random
 from dataclasses import dataclass
-from typing import Sequence
+from typing import Any, Sequence
 
 
 def _act(name: str, x: float) -> tuple[float, float]:
-    if name == "relu": return (max(0.0, x), 1.0 if x > 0 else 0.0)
+    if name == "relu": return max(0.0, x), 1.0 if x > 0 else 0.0
     if name == "tanh":
-        y = math.tanh(x); return y, 1.0-y*y
+        y = math.tanh(x); return y, 1.0 - y * y
     if name == "sigmoid":
-        y = 1.0/(1.0+math.exp(-max(-60.0, min(60.0, x)))); return y, y*(1-y)
+        y = 1.0 / (1.0 + math.exp(-max(-60.0, min(60.0, x))))
+        return y, y * (1.0 - y)
     if name == "linear": return x, 1.0
+    if name == "softmax": raise ValueError("softmax is a vector output activation")
     raise ValueError(f"unknown activation: {name}")
 
 @dataclass
 class TrainingHistory:
     losses: list[float]
     val_losses: list[float]
+    stopped_epoch: int | None = None
 
 class Layer:
+    """A fully-connected layer; weights are output-major for readability."""
     def __init__(self, inputs: int, outputs: int, activation="tanh", rng=None):
         if inputs < 1 or outputs < 1: raise ValueError("layer dimensions must be positive")
-        self.activation=activation; r=rng or random.Random()
-        scale=math.sqrt(2/inputs) if activation == "relu" else math.sqrt(1/inputs)
-        self.w=[[r.gauss(0, scale) for _ in range(inputs)] for _ in range(outputs)]
-        self.b=[0.0]*outputs
+        if activation not in {"relu", "tanh", "sigmoid", "linear", "softmax"}:
+            raise ValueError(f"unknown activation: {activation}")
+        if activation == "softmax" and outputs < 2: raise ValueError("softmax needs at least two outputs")
+        self.activation = activation; r = rng or random.Random()
+        scale = math.sqrt(2 / inputs) if activation == "relu" else math.sqrt(1 / inputs)
+        self.w = [[r.gauss(0, scale) for _ in range(inputs)] for _ in range(outputs)]
+        self.b = [0.0] * outputs
     def forward(self, x):
         if len(x) != len(self.w[0]): raise ValueError("input width does not match layer")
-        z=[sum(a*v for a,v in zip(row,x))+b for row,b in zip(self.w,self.b)]
-        out=[]; slopes=[]
-        for v in z:
-            y,d=_act(self.activation,v); out.append(y); slopes.append(d)
-        return out, (x, z, slopes)
+        z = [sum(a * v for a, v in zip(row, x)) + b for row, b in zip(self.w, self.b)]
+        if self.activation == "softmax":
+            m = max(z); e = [math.exp(v - m) for v in z]; total = sum(e)
+            out = [v / total for v in e]; slopes = [v * (1 - v) for v in out]
+        else:
+            out, slopes = zip(*(_act(self.activation, v) for v in z)); out, slopes = list(out), list(slopes)
+        return out, (list(x), z, slopes)
 
 class MLP:
     def __init__(self, sizes: Sequence[int], activations=None, seed=0):
-        if len(sizes)<2 or any(not isinstance(n,int) or n<1 for n in sizes): raise ValueError("sizes must contain positive integers")
-        acts=list(activations or ["tanh"]*(len(sizes)-2)+["sigmoid"])
-        if len(acts)!=len(sizes)-1: raise ValueError("one activation per layer required")
-        self.layers=[]; rng=random.Random(seed)
-        for i,(a,b) in enumerate(zip(sizes,sizes[1:])): self.layers.append(Layer(a,b,acts[i],rng))
-        self.sizes=list(sizes)
-    def predict(self,x):
-        y=list(map(float,x))
-        for layer in self.layers: y,_=layer.forward(y)
+        if len(sizes) < 2 or any(not isinstance(n, int) or isinstance(n, bool) or n < 1 for n in sizes):
+            raise ValueError("sizes must contain positive integers")
+        acts = list(activations or ["tanh"] * (len(sizes) - 2) + ["sigmoid"])
+        if len(acts) != len(sizes) - 1: raise ValueError("one activation per layer required")
+        if "softmax" in acts[:-1]: raise ValueError("softmax is only valid on the output layer")
+        self.layers = []; rng = random.Random(seed)
+        for a, b, act in zip(sizes, sizes[1:], acts): self.layers.append(Layer(a, b, act, rng))
+        self.sizes = list(sizes)
+    def predict(self, x):
+        y = list(map(float, x))
+        for layer in self.layers: y, _ = layer.forward(y)
         return y
-    def _grad(self,x,target,loss_name="mse"):
-        acts=[list(map(float,x))]; caches=[]
-        for l in self.layers:
-            y,c=l.forward(acts[-1]); acts.append(y); caches.append(c)
-        if len(target)!=len(acts[-1]): raise ValueError("target width does not match output")
-        if loss_name not in ("mse", "bce"): raise ValueError("loss must be mse or bce")
-        if loss_name == "bce" and self.layers[-1].activation != "sigmoid":
-            raise ValueError("bce requires a sigmoid output layer")
-        # BCE's sigmoid derivative cancels, avoiding vanishing gradients at the extremes.
-        delta=[(y-t) if loss_name == "bce" else 2*(y-t)*d for y,t,d in zip(acts[-1],target,caches[-1][2])]
-        grads=[]
-        for i in range(len(self.layers)-1,-1,-1):
-            inp,_,slopes=caches[i]
-            grads.append((None, None))
-            gw=[[delta[o]*inp[j] for j in range(len(inp))] for o in range(len(delta))]
-            gb=delta[:]; grads[-1]=(gw,gb)
-            if i:
-                delta=[sum(self.layers[i].w[o][j]*delta[o] for o in range(len(delta)))*caches[i-1][2][j] for j in range(len(inp))]
-        if loss_name == "bce":
-            cost=-sum(t*math.log(max(y,1e-15))+(1-t)*math.log(max(1-y,1e-15)) for y,t in zip(acts[-1],target))
-        else: cost=0.5*sum((a-b)**2 for a,b in zip(acts[-1],target))
+    def predict_batch(self, xs): return [self.predict(x) for x in xs]
+    def _grad(self, x, target, loss_name="mse"):
+        acts = [list(map(float, x))]; caches = []
+        for layer in self.layers:
+            y, cache = layer.forward(acts[-1]); acts.append(y); caches.append(cache)
+        if len(target) != len(acts[-1]): raise ValueError("target width does not match output")
+        valid = {"mse", "bce", "cross_entropy"}
+        if loss_name not in valid: raise ValueError(f"loss must be one of {sorted(valid)}")
+        output_act = self.layers[-1].activation
+        if loss_name == "bce" and output_act != "sigmoid": raise ValueError("bce requires a sigmoid output layer")
+        if loss_name == "cross_entropy" and output_act != "softmax": raise ValueError("cross_entropy requires a softmax output layer")
+        y = acts[-1]
+        if loss_name in {"bce", "cross_entropy"}: delta = [a - t for a, t in zip(y, target)]
+        else: delta = [2 * (a - t) * d for a, t, d in zip(y, target, caches[-1][2])]
+        grads = []
+        for i in range(len(self.layers) - 1, -1, -1):
+            inp, _, slopes = caches[i]
+            grads.append(([[delta[o] * inp[j] for j in range(len(inp))] for o in range(len(delta))], delta[:]))
+            if i: delta = [sum(self.layers[i].w[o][j] * delta[o] for o in range(len(delta))) * caches[i-1][2][j] for j in range(len(inp))]
+        if loss_name == "bce": cost = -sum(t * math.log(max(a, 1e-15)) + (1-t) * math.log(max(1-a, 1e-15)) for a, t in zip(y, target))
+        elif loss_name == "cross_entropy": cost = -sum(t * math.log(max(a, 1e-15)) for a, t in zip(y, target))
+        else: cost = 0.5 * sum((a-b) ** 2 for a, b in zip(y, target))
         return list(reversed(grads)), cost
-    def predict_batch(self, xs):
-        """Predict every row while preserving input order."""
-        return [self.predict(x) for x in xs]
-    def train(self,xs,ys,epochs=1000,lr=.1,batch_size=16,optimizer=None,validation=None,shuffle=True,seed=1,clip=None,patience=None,loss_name="mse"):
-        if len(xs)!=len(ys) or not xs: raise ValueError("xs and ys must be non-empty and equal length")
-        if epochs<1 or lr<=0 or batch_size<1 or (clip is not None and clip<=0) or (patience is not None and patience<1): raise ValueError("invalid training parameters")
-        if loss_name not in ("mse", "bce"): raise ValueError("loss must be mse or bce")
-        if loss_name == "bce" and self.layers[-1].activation != "sigmoid": raise ValueError("bce requires a sigmoid output layer")
-        opt=optimizer
-        rng=random.Random(seed); hist=TrainingHistory([],[]); ids=list(range(len(xs)))
-        best=float("inf"); stale=0; best_weights=None
-        for _ in range(epochs):
+    def train(self, xs, ys, epochs=1000, lr=.1, batch_size=16, optimizer=None, validation=None, shuffle=True, seed=1, clip=None, patience=None, loss_name="mse"):
+        if len(xs) != len(ys) or not xs: raise ValueError("xs and ys must be non-empty and equal length")
+        if epochs < 1 or lr <= 0 or batch_size < 1 or (clip is not None and clip <= 0) or (patience is not None and patience < 1): raise ValueError("invalid training parameters")
+        if validation and (not validation[0] or len(validation[0]) != len(validation[1])): raise ValueError("validation data must be non-empty and aligned")
+        rng = random.Random(seed); hist = TrainingHistory([], []); ids = list(range(len(xs))); opt = optimizer
+        best, stale, best_weights = float("inf"), 0, None
+        for epoch in range(epochs):
             if shuffle: rng.shuffle(ids)
-            for start in range(0,len(ids),batch_size):
-                sums=[([[0.0]*len(l.w[0]) for _ in l.w],[0.0]*len(l.b)) for l in self.layers]; count=0
+            for start in range(0, len(ids), batch_size):
+                sums = [([[0.0] * len(l.w[0]) for _ in l.w], [0.0] * len(l.b)) for l in self.layers]; count = 0
                 for k in ids[start:start+batch_size]:
-                    gs,_=self._grad(xs[k],ys[k],loss_name); count+=1
-                    for i,(gw,gb) in enumerate(gs):
+                    gs, _ = self._grad(xs[k], ys[k], loss_name); count += 1
+                    for i, (gw, gb) in enumerate(gs):
                         for o in range(len(gw)):
-                            for j in range(len(gw[o])): sums[i][0][o][j]+=gw[o][j]
-                            sums[i][1][o]+=gb[o]
-                for i,(gw,gb) in enumerate(sums):
+                            for j in range(len(gw[o])): sums[i][0][o][j] += gw[o][j]
+                            sums[i][1][o] += gb[o]
+                for i, (gw, gb) in enumerate(sums):
                     if clip is not None:
-                        norm=math.sqrt(sum(v*v for row in gw for v in row)+sum(v*v for v in gb))
-                        if norm>clip:
-                            factor=clip/norm
-                            gw=[[v*factor for v in row] for row in gw]; gb=[v*factor for v in gb]
-                    opt.step(self.layers[i],gw,gb,lr,count) if opt else self._apply(self.layers[i],gw,gb,lr,count)
-            hist.losses.append(self.loss(xs,ys,loss_name)); current=self.loss(*validation,loss_name=loss_name) if validation else hist.losses[-1]; hist.val_losses.append(current if validation else float("nan"))
-            if current < best-1e-12:
-                best,stale=current,0
-                best_weights=[([row[:] for row in l.w], l.b[:]) for l in self.layers]
-            else: stale+=1
-            if patience is not None and stale>=patience:
+                        norm = math.sqrt(sum(v*v for row in gw for v in row) + sum(v*v for v in gb))
+                        if norm > clip: factor = clip / norm; gw = [[v*factor for v in row] for row in gw]; gb = [v*factor for v in gb]
+                    (opt.step(self.layers[i], gw, gb, lr, count) if opt else self._apply(self.layers[i], gw, gb, lr, count))
+            loss = self.loss(xs, ys, loss_name); current = self.loss(*validation, loss_name=loss_name) if validation else loss
+            hist.losses.append(loss); hist.val_losses.append(current if validation else float("nan"))
+            if current < best - 1e-12: best, stale = current, 0; best_weights = [([r[:] for r in l.w], l.b[:]) for l in self.layers]
+            else: stale += 1
+            if patience is not None and stale >= patience:
+                hist.stopped_epoch = epoch + 1
                 if best_weights:
-                    for l,(w,b) in zip(self.layers,best_weights): l.w,l.b=[row[:] for row in w],b[:]
+                    for layer, (w, b) in zip(self.layers, best_weights): layer.w, layer.b = [r[:] for r in w], b[:]
                 break
         return hist
     @staticmethod
-    def _apply(l,gw,gb,lr,n):
-        for o in range(len(l.w)):
-            for j in range(len(l.w[o])): l.w[o][j]-=lr*gw[o][j]/n
-            l.b[o]-=lr*gb[o]/n
-    def loss(self,xs,ys,loss_name="mse"):
-        if not xs or len(xs)!=len(ys): raise ValueError("loss data must be non-empty and aligned")
-        return sum(self._grad(x,y,loss_name)[1] for x,y in zip(xs,ys))/len(xs)
-    def accuracy(self,xs,ys,threshold=.5):
-        """Binary accuracy for one-output sigmoid models."""
-        if not xs or len(xs)!=len(ys) or len(self.layers[-1].b)!=1 or not 0<=threshold<=1: raise ValueError("accuracy requires aligned data, one output, and a valid threshold")
-        return sum((self.predict(x)[0]>=threshold)==(y[0]>=threshold) for x,y in zip(xs,ys))/len(xs)
-    def to_dict(self): return {"sizes":self.sizes,"activations":[l.activation for l in self.layers],"weights":[l.w for l in self.layers],"biases":[l.b for l in self.layers]}
-    def save(self,path):
-        with open(path,"w",encoding="utf8") as f: json.dump(self.to_dict(),f,indent=2)
+    def _apply(layer, gw, gb, lr, n):
+        for o in range(len(layer.w)):
+            for j in range(len(layer.w[o])): layer.w[o][j] -= lr * gw[o][j] / n
+            layer.b[o] -= lr * gb[o] / n
+    def loss(self, xs, ys, loss_name="mse"):
+        if not xs or len(xs) != len(ys): raise ValueError("loss data must be non-empty and aligned")
+        return sum(self._grad(x, y, loss_name)[1] for x, y in zip(xs, ys)) / len(xs)
+    def accuracy(self, xs, ys, threshold=.5):
+        if not xs or len(xs) != len(ys) or not 0 <= threshold <= 1: raise ValueError("accuracy requires aligned data and a valid threshold")
+        if len(self.layers[-1].b) == 1: return sum((self.predict(x)[0] >= threshold) == (y[0] >= threshold) for x, y in zip(xs, ys)) / len(xs)
+        return sum(max(range(len(p)), key=p.__getitem__) == max(range(len(y)), key=y.__getitem__) for p, y in zip(self.predict_batch(xs), ys)) / len(xs)
+    def to_dict(self) -> dict[str, Any]: return {"sizes": self.sizes, "activations": [l.activation for l in self.layers], "weights": [l.w for l in self.layers], "biases": [l.b for l in self.layers]}
+    def save(self, path):
+        with open(path, "w", encoding="utf8") as f: json.dump(self.to_dict(), f, indent=2)
     @classmethod
-    def load(cls,path):
-        with open(path,encoding="utf8") as f: d=json.load(f)
-        if not isinstance(d,dict) or not all(k in d for k in ("sizes","activations","weights","biases")): raise ValueError("invalid model file")
-        net=cls(d["sizes"],d["activations"])
-        if len(d["weights"])!=len(net.layers) or len(d["biases"])!=len(net.layers): raise ValueError("model layer count mismatch")
-        for l,w,b in zip(net.layers,d["weights"],d["biases"]):
-            if (not isinstance(w,list) or len(w)!=len(l.w) or any(not isinstance(row,list) or len(row)!=len(l.w[0]) for row in w) or not isinstance(b,list) or len(b)!=len(l.b)):
-                raise ValueError("invalid model dimensions")
-            l.w=w; l.b=b
+    def load(cls, path):
+        try:
+            with open(path, encoding="utf8") as f: d = json.load(f)
+        except (OSError, json.JSONDecodeError) as e: raise ValueError(f"cannot read model: {e}") from e
+        if not isinstance(d, dict) or not all(k in d for k in ("sizes", "activations", "weights", "biases")): raise ValueError("invalid model file")
+        net = cls(d["sizes"], d["activations"])
+        if len(d["weights"]) != len(net.layers) or len(d["biases"]) != len(net.layers): raise ValueError("model layer count mismatch")
+        for layer, weights, bias in zip(net.layers, d["weights"], d["biases"]):
+            if not isinstance(weights, list) or len(weights) != len(layer.w) or any(not isinstance(row, list) or len(row) != len(layer.w[0]) or any(not isinstance(v, (int, float)) for v in row) for row in weights) or not isinstance(bias, list) or len(bias) != len(layer.b): raise ValueError("invalid model dimensions")
+            layer.w, layer.b = weights, bias
         return net
