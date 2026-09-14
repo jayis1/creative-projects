@@ -30,7 +30,15 @@ assert 0.048 < current.midpoint() < 0.052
 
 ## Tests and scope
 
-Run `PYTHONPATH=. python3 -m unittest discover -s tests -v`. The project has no third-party dependencies and is intentionally offline. It currently handles real scalar intervals only; transcendental functions, interval vectors, and dependency-aware expressions are planned enhancements.
+Run `PYTHONPATH=. python3 -m unittest discover -s tests -v`. The project has no third-party dependencies and is intentionally offline. It currently handles real scalar intervals only; dependency-aware expressions and interval vectors are planned enhancements.
+
+## Known Issues (Resolved)
+
+- Cosine bounds previously missed interior minima (for example, `[2, 4]`), because the periodic critical-point scan advanced by `2π`. The scan now visits every `π`-spaced extremum, with a regression test covering this case.
+
+## Limitations
+
+Transcendental bounds use correctly widened binary floating-point evaluations rather than arbitrary-precision directed rounding. Very large finite inputs can still raise the corresponding Python `OverflowError`.
 
 ## Non-goals
 

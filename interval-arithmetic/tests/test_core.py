@@ -33,6 +33,10 @@ class IntervalTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             Interval(0, 1).log()
 
+    def test_cosine_captures_interior_minimum(self):
+        # The minimum at pi must be included even when neither endpoint is pi.
+        self.assertIn(-1.0, Interval(2.0, 4.0).cos())
+
     def test_rejects_invalid_interval(self):
         with self.assertRaises(ValueError):
             Interval(2, 1)

@@ -116,7 +116,7 @@ def _trig_interval(interval: Interval, function, critical_offset: float) -> Inte
     if interval.width() >= 2 * math.pi:
         return Interval(-1.0, 1.0)
     points = [interval.lower, interval.upper]
-    period = 2 * math.pi
+    period = math.pi
     first = math.ceil((interval.lower - critical_offset) / period)
     last = math.floor((interval.upper - critical_offset) / period)
     points.extend(critical_offset + n * period for n in range(first, last + 1))
