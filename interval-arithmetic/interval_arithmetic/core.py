@@ -84,12 +84,44 @@ class Interval:
     def __rtruediv__(self, other: "Interval | float") -> "Interval":
         return as_interval(other) / self
 
+    def sqrt(self) -> "Interval":
+        if self.lower < 0:
+            raise ValueError("square root interval cannot contain negative values")
+        return Interval(_down(math.sqrt(self.lower)), _up(math.sqrt(self.upper)))
+
+    def exp(self) -> "Interval":
+        return Interval(_down(math.exp(self.lower)), _up(math.exp(self.upper)))
+
+    def log(self) -> "Interval":
+        if self.lower <= 0:
+            raise ValueError("log interval must be strictly positive")
+        return Interval(_down(math.log(self.lower)), _up(math.log(self.upper)))
+
+    def sin(self) -> "Interval":
+        return _trig_interval(self, math.sin, math.pi / 2)
+
+    def cos(self) -> "Interval":
+        return _trig_interval(self, math.cos, 0.0)
+
     def intersect(self, other: "Interval") -> "Interval | None":
         low, high = max(self.lower, other.lower), min(self.upper, other.upper)
         return None if low > high else Interval(low, high)
 
     def __repr__(self) -> str:
         return f"Interval({self.lower:.12g}, {self.upper:.12g})"
+
+
+def _trig_interval(interval: Interval, function, critical_offset: float) -> Interval:
+    """Bound a periodic function, widening to [-1, 1] across a full period."""
+    if interval.width() >= 2 * math.pi:
+        return Interval(-1.0, 1.0)
+    points = [interval.lower, interval.upper]
+    period = 2 * math.pi
+    first = math.ceil((interval.lower - critical_offset) / period)
+    last = math.floor((interval.upper - critical_offset) / period)
+    points.extend(critical_offset + n * period for n in range(first, last + 1))
+    values = [function(point) for point in points]
+    return Interval(_down(min(values)), _up(max(values)))
 
 
 def as_interval(value: Interval | float) -> Interval:

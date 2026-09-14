@@ -15,7 +15,7 @@ The `--width` option turns each number into a closed interval around its center.
 
 ## How it works
 
-`Interval` stores `[lower, upper]` and uses outward rounding (`math.nextafter`) after each operation, so the mathematical result remains enclosed despite ordinary binary floating-point rounding. Addition, subtraction, multiplication, reciprocal-based division, intersection, midpoint, radius, and width are supported. `interval_sum` and `interval_product` fold an iterable without losing the conservative bounds.
+`Interval` stores `[lower, upper]` and uses outward rounding (`math.nextafter`) after each operation, so the mathematical result remains enclosed despite ordinary binary floating-point rounding. Addition, subtraction, multiplication, reciprocal-based division, square root, exp/log, conservative sine/cosine, intersection, midpoint, radius, and width are supported. `interval_sum` and `interval_product` fold an iterable without losing the conservative bounds.
 
 ## Python API
 

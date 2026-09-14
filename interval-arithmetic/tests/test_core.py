@@ -22,6 +22,17 @@ class IntervalTests(unittest.TestCase):
         self.assertIn(6, interval_sum([Interval(1, 2), 4]))
         self.assertIn(-6, interval_product([Interval(-2, -1), 3]))
 
+    def test_transcendental_bounds(self):
+        self.assertIn(math.sqrt(4), Interval(3.9, 4.1).sqrt())
+        self.assertIn(1.0, Interval(0, math.pi / 2).sin())
+        self.assertIn(0.0, Interval(0, 2 * math.pi).cos())
+        self.assertEqual(Interval(0, 10).sin(), Interval(-1, 1))
+        self.assertIn(math.e, Interval(1, 1).exp())
+        with self.assertRaises(ValueError):
+            Interval(-1, 2).sqrt()
+        with self.assertRaises(ValueError):
+            Interval(0, 1).log()
+
     def test_rejects_invalid_interval(self):
         with self.assertRaises(ValueError):
             Interval(2, 1)
