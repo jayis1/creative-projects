@@ -86,5 +86,6 @@ A monorepo of AI-generated creative coding projects. Each project lives in its o
 || [suffix-automaton](./suffix-automaton) | Suffix automaton toolkit v0.3: linear-time construction, substring membership/counting/location queries, k-th lexicographic substrings, shortest absent substrings, generalized + pairwise LCS, repeated-substring reports, JSON/DOT export, 22 tests, 3 bugs fixed |
 || [neural-net-lab](./neural-net-lab) | Pure-Python multilayer perceptron laboratory with dense layers, four activations, mini-batch backpropagation, SGD/Adam, validation tracking, deterministic seeds, JSON persistence, and CLI |
 | [sokoban-solver](./sokoban-solver) | Sokoban toolkit v0.3: push-aware A* solver with exact matching heuristic, explain overlays, JSON/TOML config, level-pack solving, solution export, docs, 15 tests, pure stdlib |
+| [interval-arithmetic](./interval-arithmetic) | Validated pure-Python interval arithmetic with outward rounding, uncertainty propagation, safe division, CLI, examples, and tests |
 
 ---
