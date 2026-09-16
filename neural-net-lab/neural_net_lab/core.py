@@ -70,7 +70,7 @@ class MLP:
         if loss_name == "cross_entropy" and output_act != "softmax": raise ValueError("cross_entropy requires a softmax output layer")
         y = acts[-1]
         if loss_name in {"bce", "cross_entropy"}: delta = [a - t for a, t in zip(y, target)]
-        else: delta = [2 * (a - t) * d for a, t, d in zip(y, target, caches[-1][2])]
+        else: delta = [(a - t) * d for a, t, d in zip(y, target, caches[-1][2])]
         grads = []
         for i in range(len(self.layers) - 1, -1, -1):
             inp, _, slopes = caches[i]
@@ -80,6 +80,41 @@ class MLP:
         elif loss_name == "cross_entropy": cost = -sum(t * math.log(max(a, 1e-15)) for a, t in zip(y, target))
         else: cost = 0.5 * sum((a-b) ** 2 for a, b in zip(y, target))
         return list(reversed(grads)), cost
+
+    def gradient_check(self, x, target, loss_name="mse", epsilon=1e-6):
+        """Compare backpropagation gradients with finite differences.
+
+        This educational diagnostic perturbs every weight and bias for one
+        sample, then returns the largest normalized discrepancy. A value near
+        zero indicates that the analytic gradients agree with the loss surface.
+        """
+        if epsilon <= 0:
+            raise ValueError("epsilon must be positive")
+        analytic, _ = self._grad(x, target, loss_name)
+        worst = 0.0
+        for layer_index, layer in enumerate(self.layers):
+            for output_index, row in enumerate(layer.w):
+                for input_index in range(len(row)):
+                    original = row[input_index]
+                    row[input_index] = original + epsilon
+                    plus = self._grad(x, target, loss_name)[1]
+                    row[input_index] = original - epsilon
+                    minus = self._grad(x, target, loss_name)[1]
+                    row[input_index] = original
+                    numeric = (plus - minus) / (2 * epsilon)
+                    expected = analytic[layer_index][0][output_index][input_index]
+                    worst = max(worst, abs(numeric - expected) / max(1e-12, abs(numeric) + abs(expected)))
+            for output_index, original in enumerate(layer.b):
+                layer.b[output_index] = original + epsilon
+                plus = self._grad(x, target, loss_name)[1]
+                layer.b[output_index] = original - epsilon
+                minus = self._grad(x, target, loss_name)[1]
+                layer.b[output_index] = original
+                numeric = (plus - minus) / (2 * epsilon)
+                expected = analytic[layer_index][1][output_index]
+                worst = max(worst, abs(numeric - expected) / max(1e-12, abs(numeric) + abs(expected)))
+        return worst
+
     def train(self, xs, ys, epochs=1000, lr=.1, batch_size=16, optimizer=None, validation=None, shuffle=True, seed=1, clip=None, patience=None, loss_name="mse"):
         if len(xs) != len(ys) or not xs: raise ValueError("xs and ys must be non-empty and equal length")
         if epochs < 1 or lr <= 0 or batch_size < 1 or (clip is not None and clip <= 0) or (patience is not None and patience < 1): raise ValueError("invalid training parameters")

@@ -15,6 +15,7 @@ def main(argv=None):
     p.add_argument("--save", help="write trained model JSON")
     p.add_argument("--epochs", type=int); p.add_argument("--lr", type=float); p.add_argument("--loss", choices=["mse", "bce", "cross_entropy"])
     p.add_argument("--optimizer", choices=["adam", "sgd"]); p.add_argument("--verbose", action="store_true")
+    p.add_argument("--gradient-check", action="store_true", help="validate backpropagation with finite differences")
     a = p.parse_args(argv); logging.basicConfig(level=logging.INFO if a.verbose else logging.WARNING, format="%(levelname)s %(message)s")
     if a.load:
         net = MLP.load(a.load)
@@ -26,6 +27,9 @@ def main(argv=None):
         if value is not None: c[key] = value
     net = MLP(c["sizes"], c.get("activations"), c.get("seed", 0)); opt = Adam() if c["optimizer"] == "adam" else SGD()
     log.info("training sizes=%s optimizer=%s loss=%s", c["sizes"], c["optimizer"], c["loss"])
+    if a.gradient_check:
+        error = net.gradient_check(XOR_X[0], XOR_Y[0], loss_name=c["loss"])
+        print(f"gradient check max relative error: {error:.3e}")
     history = net.train(XOR_X, XOR_Y, epochs=c["epochs"], lr=c["lr"], batch_size=c.get("batch_size", 16), optimizer=opt, clip=c.get("clip"), patience=c.get("patience"), loss_name=c["loss"])
     print(f"final {c['loss']} loss: {history.losses[-1]:.6f}; accuracy: {net.accuracy(XOR_X, XOR_Y):.2%}; epochs: {len(history.losses)}")
     for x, y in zip(XOR_X, XOR_Y): print(x, "=>", round(net.predict(x)[0], 4), "target", y[0])

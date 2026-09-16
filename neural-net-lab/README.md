@@ -34,6 +34,15 @@ python3 -m neural_net_lab.cli --epochs 2000 --loss bce --save xor.json
 neural-net-lab --config examples/xor.toml --verbose
 ```
 
+Use the diagnostic mode to verify the implementation's backpropagation against
+finite-difference numerical gradients before experimenting with a new loss or
+activation:
+
+```bash
+neural-net-lab --gradient-check --epochs 1
+# gradient check max relative error: 1.589e-09
+```
+
 A saved model can be inspected without retraining:
 
 ```bash
@@ -86,7 +95,7 @@ restored = MLP.load("classifier.json")
 
 ## Architecture
 
-`Layer` owns dense weights, biases, initialization, and activation caches. `MLP` composes layers, performs forward passes, computes MSE/BCE/categorical cross-entropy, and applies reverse-mode chain-rule gradients. Softmax uses a numerically stable max-shift and cross-entropy uses the simplified `prediction - target` gradient. `optim.py` supplies interchangeable SGD and Adam updates. `config.py` validates TOML/JSON experiments; `cli.py` is a thin orchestration layer with logging and model inspection.
+`Layer` owns dense weights, biases, initialization, and activation caches. `MLP` composes layers, performs forward passes, computes MSE/BCE/categorical cross-entropy, and applies reverse-mode chain-rule gradients. `MLP.gradient_check()` provides a finite-difference audit of those gradients for educational debugging. `optim.py` supplies interchangeable SGD and Adam updates. `config.py` validates TOML/JSON experiments; `cli.py` is a thin orchestration layer with logging, model inspection, and gradient diagnostics.
 
 ## Development
 
@@ -105,6 +114,12 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). CI runs the test suite on every push and
 - Gradient-checking utility for educational debugging
 
 ## Changelog
+
+### 2026-09-16
+
+- Added finite-difference gradient checking to audit backpropagation for every weight and bias.
+- Corrected the MSE derivative to match the documented `0.5 * squared error` loss.
+- Added `--gradient-check` CLI diagnostics and documented the workflow.
 
 ### 2026-09-13
 

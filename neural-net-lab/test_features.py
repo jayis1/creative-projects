@@ -24,3 +24,11 @@ def test_load_reports_bad_json(tmp_path: Path):
     try: MLP.load(p)
     except ValueError as e: assert "cannot read model" in str(e)
     else: raise AssertionError("malformed JSON accepted")
+
+
+def test_gradient_check_validates_backpropagation():
+    x = [[0.2, -0.4], [0.7, 0.1]]
+    y = [[1.0], [0.0]]
+    net = MLP([2, 3, 1], ["tanh", "sigmoid"], seed=9)
+    assert net.gradient_check(x[0], y[0], loss_name="bce") < 1e-5
+    assert net.gradient_check(x[0], y[0], loss_name="mse") < 1e-5
