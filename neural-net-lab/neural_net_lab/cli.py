@@ -2,6 +2,7 @@
 import argparse, logging
 from .config import DEFAULTS, load_config
 from .core import MLP
+from .data import load_dataset, train_test_split
 from .optim import Adam, SGD
 
 log = logging.getLogger("neural_net_lab")
@@ -11,6 +12,9 @@ XOR_Y = [[0], [1], [1], [0]]
 def main(argv=None):
     p = argparse.ArgumentParser(description="Train and inspect a pure-Python MLP (XOR demo by default).")
     p.add_argument("--config", help="TOML or JSON experiment configuration")
+    p.add_argument("--dataset", help="CSV or JSONL dataset to train instead of XOR")
+    p.add_argument("--target-column", help="CSV target column (defaults to the final column)")
+    p.add_argument("--validation-split", type=float, metavar="FRACTION", help="reserve a deterministic validation fraction")
     p.add_argument("--load", help="load a JSON model and print predictions")
     p.add_argument("--save", help="write trained model JSON")
     p.add_argument("--epochs", type=int); p.add_argument("--lr", type=float); p.add_argument("--loss", choices=["mse", "bce", "cross_entropy"])
@@ -25,14 +29,25 @@ def main(argv=None):
     for key in ("epochs", "lr", "loss", "optimizer"):
         value = getattr(a, key)
         if value is not None: c[key] = value
+    xs, ys = XOR_X, XOR_Y
+    validation = None
+    if a.dataset:
+        xs, ys = load_dataset(a.dataset, a.target_column)
+        if a.validation_split is not None:
+            (xs, ys), validation = train_test_split(xs, ys, a.validation_split, seed=c.get("seed", 0))
+        sizes = list(c["sizes"])
+        if sizes[0] != len(xs[0]) or sizes[-1] != len(ys[0]):
+            raise ValueError("dataset feature/target widths must match config sizes")
     net = MLP(c["sizes"], c.get("activations"), c.get("seed", 0)); opt = Adam() if c["optimizer"] == "adam" else SGD()
     log.info("training sizes=%s optimizer=%s loss=%s", c["sizes"], c["optimizer"], c["loss"])
     if a.gradient_check:
-        error = net.gradient_check(XOR_X[0], XOR_Y[0], loss_name=c["loss"])
+        error = net.gradient_check(xs[0], ys[0], loss_name=c["loss"])
         print(f"gradient check max relative error: {error:.3e}")
-    history = net.train(XOR_X, XOR_Y, epochs=c["epochs"], lr=c["lr"], batch_size=c.get("batch_size", 16), optimizer=opt, clip=c.get("clip"), patience=c.get("patience"), loss_name=c["loss"])
-    print(f"final {c['loss']} loss: {history.losses[-1]:.6f}; accuracy: {net.accuracy(XOR_X, XOR_Y):.2%}; epochs: {len(history.losses)}")
-    for x, y in zip(XOR_X, XOR_Y): print(x, "=>", round(net.predict(x)[0], 4), "target", y[0])
+    history = net.train(xs, ys, epochs=c["epochs"], lr=c["lr"], batch_size=c.get("batch_size", 16), optimizer=opt, validation=validation, clip=c.get("clip"), patience=c.get("patience"), loss_name=c["loss"])
+    print(f"final {c['loss']} loss: {history.losses[-1]:.6f}; accuracy: {net.accuracy(xs, ys):.2%}; epochs: {len(history.losses)}")
+    if validation:
+        print(f"validation loss: {history.val_losses[-1]:.6f}; validation accuracy: {net.accuracy(*validation):.2%}")
+    for x, y in zip(xs, ys): print(x, "=>", round(net.predict(x)[0], 4), "target", y[0])
     if a.save: net.save(a.save); log.info("saved model to %s", a.save)
     return 0
 
