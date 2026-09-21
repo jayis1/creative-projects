@@ -1,6 +1,6 @@
 # Neural Net Lab
 
-[![CI](https://github.com/jayis1/creative-projects/actions/workflows/test.yml/badge.svg)](https://github.com/jayis1/creative-projects/actions) ![Python](https://img.shields.io/badge/python-3.10%2B-blue) [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+![Python](https://img.shields.io/badge/python-3.10%2B-blue) [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 A dependency-free, inspectable multilayer perceptron for learning neural networks from first principles. It now covers binary and multiclass classification, configurable experiments, model persistence, early stopping, and a production-shaped CLI without hiding the math behind NumPy or a framework.
 
@@ -116,7 +116,7 @@ python3 -m pytest -q
 python3 -m compileall -q neural_net_lab
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). CI runs the test suite on every push and pull request.
+See [CONTRIBUTING.md](CONTRIBUTING.md). Run the local test and compilation commands above before submitting a change.
 
 ## Roadmap
 
