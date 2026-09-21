@@ -61,6 +61,9 @@ class Trace:
         # Every process has its own view. Independent local events must not
         # accidentally observe another process merely because they are listed later.
         views = {process: [0] * len(self.processes) for process in self.processes}
+        for event in self.events:
+            if event.process in views:
+                views[event.process] = list(event.vector)
         lamport = self.events[-1].lamport if self.events else 0
         result: list[Event] = []
         for action in actions:
@@ -124,8 +127,21 @@ def load_json(text: str) -> Trace:
             if not isinstance(item, dict):
                 raise TraceError("event must be an object")
             process, kind = item["process"], item["kind"]
-            trace.events.append(Event(process, kind, item.get("peer"), str(item.get("payload", "")),
-                                      int(item["lamport"]), tuple(item["vector"].get(p, 0) for p in processes)))
+            if process not in processes or kind not in {"local", "send", "receive"}:
+                raise TraceError("event has an unknown process or kind")
+            peer = item.get("peer")
+            if kind in {"send", "receive"} and peer not in processes:
+                raise TraceError("message event requires a known peer")
+            if kind == "local" and peer is not None:
+                raise TraceError("local event cannot have a peer")
+            vector = item["vector"]
+            if set(vector) != set(processes) or any(not isinstance(vector[p], int) or vector[p] < 0 for p in processes):
+                raise TraceError("vector must contain exactly the non-negative process counters")
+            lamport = item["lamport"]
+            if not isinstance(lamport, int) or lamport < 1:
+                raise TraceError("lamport timestamp must be a positive integer")
+            trace.events.append(Event(process, kind, peer, str(item.get("payload", "")),
+                                      lamport, tuple(vector[p] for p in processes)))
         return trace
     except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
         raise TraceError(f"invalid trace JSON: {exc}") from exc

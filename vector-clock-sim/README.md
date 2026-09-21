@@ -42,6 +42,11 @@ print(trace.to_json())
 
 The JSON format stores process names and event vectors and can be loaded with `load_json`. Invalid process names, malformed actions, unknown event kinds, and incomplete send/receive actions raise `TraceError` instead of being silently accepted.
 
+## Known Issues (Resolved)
+
+- Repeated `record()` calls reset a process counter, producing duplicate vector timestamps. Regression coverage now verifies state continuity across calls.
+- JSON loading accepted unknown processes and event kinds, and silently ignored unexpected vector keys. The loader now validates event kinds, peers, timestamps, and exact vector membership before constructing a trace.
+
 ## Tests
 
 ```bash

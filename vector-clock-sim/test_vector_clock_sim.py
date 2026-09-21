@@ -45,3 +45,19 @@ def test_summary_and_frontier():
     assert t.summary() == {"events": 2, "local": 2, "send": 0, "receive": 0,
                            "concurrent_pairs": 1, "frontier": 2}
     assert len(t.causal_frontier()) == 2
+
+
+def test_record_continues_clock_across_calls():
+    t = Trace(("a", "b"))
+    t.record([("a", "local")])
+    t.record([("a", "local")])
+    assert [event.vector for event in t.events] == [(1, 0), (2, 0)]
+
+
+def test_load_json_rejects_invalid_event_shape():
+    base = {"processes": ["a"], "events": [{"process": "a", "kind": "local",
+            "lamport": 1, "vector": {"a": 1}}]}
+    for mutate in ({"process": "missing"}, {"kind": "teleport"}, {"vector": {"a": 0, "x": 1}}):
+        item = dict(base["events"][0], **mutate)
+        with pytest.raises(TraceError):
+            load_json(json.dumps({"processes": ["a"], "events": [item]}))
