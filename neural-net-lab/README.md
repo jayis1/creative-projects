@@ -1,6 +1,6 @@
 # Neural Net Lab
 
-[![CI](https://github.com/jayis1/creative-projects/actions/workflows/test.yml/badge.svg)](https://github.com/jayis1/creative-projects/actions) ![Python](https://img.shields.io/badge/python-3.10%2B-blue) [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+![Python](https://img.shields.io/badge/python-3.10%2B-blue) [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 A dependency-free, inspectable multilayer perceptron for learning neural networks from first principles. It now covers binary and multiclass classification, configurable experiments, model persistence, early stopping, and a production-shaped CLI without hiding the math behind NumPy or a framework.
 
@@ -49,6 +49,18 @@ A saved model can be inspected without retraining:
 neural-net-lab --load xor.json
 ```
 
+Train on your own numeric CSV (the final column is the target by default), with a
+reproducible validation split:
+
+```bash
+neural-net-lab --dataset examples/xor.csv --target-column label \
+  --config examples/xor.toml --validation-split 0.25 --epochs 500
+```
+
+CSV files need a header and numeric columns. JSONL files use one object per line:
+`{"features": [0.2, 0.8], "target": [1]}`. Dataset loading is dependency-free,
+validates consistent widths, and never mutates the input files.
+
 Example output (values vary if you change the seed):
 
 ```text
@@ -95,7 +107,7 @@ restored = MLP.load("classifier.json")
 
 ## Architecture
 
-`Layer` owns dense weights, biases, initialization, and activation caches. `MLP` composes layers, performs forward passes, computes MSE/BCE/categorical cross-entropy, and applies reverse-mode chain-rule gradients. `MLP.gradient_check()` provides a finite-difference audit of those gradients for educational debugging. `optim.py` supplies interchangeable SGD and Adam updates. `config.py` validates TOML/JSON experiments; `cli.py` is a thin orchestration layer with logging, model inspection, and gradient diagnostics.
+`Layer` owns dense weights, biases, initialization, and activation caches. `MLP` composes layers, performs forward passes, computes MSE/BCE/categorical cross-entropy, and applies reverse-mode chain-rule gradients. `MLP.gradient_check()` provides a finite-difference audit of those gradients for educational debugging. `optim.py` supplies interchangeable SGD and Adam updates. `config.py` validates TOML/JSON experiments; `data.py` provides validated CSV/JSONL loading and deterministic train/validation splitting; `cli.py` is a thin orchestration layer with logging, model inspection, dataset training, and gradient diagnostics.
 
 ## Development
 
@@ -104,16 +116,22 @@ python3 -m pytest -q
 python3 -m compileall -q neural_net_lab
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). CI runs the test suite on every push and pull request.
+See [CONTRIBUTING.md](CONTRIBUTING.md). Run the local test and compilation commands above before submitting a change.
 
 ## Roadmap
 
-- CSV/JSONL dataset adapters and train/validation splitting
+- CSV/JSONL dataset adapters and train/validation splitting (completed)
 - Additional optimizers and learning-rate schedules
 - Optional NumPy backend for large experiments
-- Gradient-checking utility for educational debugging
+- More gradient-checking diagnostics for educational debugging
 
 ## Changelog
+
+### 2026-09-21
+
+- Added validated, dependency-free CSV and JSONL dataset adapters.
+- Added deterministic train/validation splitting and CLI dataset training flags.
+- Added dataset-loader regression tests and a runnable XOR CSV example.
 
 ### 2026-09-16
 
