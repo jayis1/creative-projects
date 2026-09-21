@@ -37,3 +37,11 @@ def test_rejects_bad_process_and_kind():
 def test_invalid_json():
     with pytest.raises(TraceError):
         load_json("[]")
+
+
+def test_summary_and_frontier():
+    t = Trace(("a", "b"))
+    t.record([("a", "local"), ("b", "local")])
+    assert t.summary() == {"events": 2, "local": 2, "send": 0, "receive": 0,
+                           "concurrent_pairs": 1, "frontier": 2}
+    assert len(t.causal_frontier()) == 2

@@ -8,6 +8,7 @@ def main() -> int:
     parser.add_argument("--event", action="append", default=[], metavar="P:K[:PEER[:PAYLOAD]]",
                         help="record an event; repeat for a sequence")
     parser.add_argument("--json", action="store_true", help="emit JSON")
+    parser.add_argument("--summary", action="store_true", help="emit aggregate counts")
     args = parser.parse_args()
     try:
         trace = Trace(tuple(args.processes))
@@ -17,6 +18,9 @@ def main() -> int:
         parser.error(str(exc))
     if args.json:
         print(trace.to_json())
+    elif args.summary:
+        for key, value in trace.summary().items():
+            print(f"{key}: {value}")
     else:
         for event in trace.events:
             print(f"{event.process}: {event.kind} L={event.lamport} V={event.vector}")

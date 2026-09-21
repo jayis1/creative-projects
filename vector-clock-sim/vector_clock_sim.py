@@ -95,6 +95,20 @@ class Trace:
         return [(a, b) for i, a in enumerate(self.events) for b in self.events[i + 1:]
                 if not self.happens_before(a, b) and not self.happens_before(b, a)]
 
+    def causal_frontier(self) -> list[Event]:
+        """Return events not causally preceded by any other event."""
+        return [event for event in self.events
+                if not any(other is not event and self.happens_before(other, event)
+                           for other in self.events)]
+
+    def summary(self) -> dict[str, int]:
+        """Return stable counts useful for dashboards and batch processing."""
+        return {"events": len(self.events), "local": sum(e.kind == "local" for e in self.events),
+                "send": sum(e.kind == "send" for e in self.events),
+                "receive": sum(e.kind == "receive" for e in self.events),
+                "concurrent_pairs": len(self.concurrent_pairs()),
+                "frontier": len(self.causal_frontier())}
+
     def to_json(self) -> str:
         return json.dumps({"processes": self.processes,
                            "events": [e.to_dict(self.processes) for e in self.events]}, indent=2)
