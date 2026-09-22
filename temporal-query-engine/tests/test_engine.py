@@ -10,6 +10,9 @@ class TemporalTests(unittest.TestCase):
     def test_index_prunes_and_orders(self):
         idx=IntervalIndex([Event('late',10,20),Event('early',1,4),Event('mid',3,8)])
         self.assertEqual([e.id for e in idx.overlaps(2,5)], ['early','mid'])
+        self.assertEqual([e.id for e in idx.overlaps(2,5,label='x')], [])
+        idx.add(Event('tagged',2,6,'x'))
+        self.assertEqual([e.id for e in idx.overlaps(2,5,label='x')], ['tagged'])
     def test_duplicate_and_invalid(self):
         idx=IntervalIndex(); idx.add(Event('x',0,1))
         with self.assertRaises(ValueError): idx.add(Event('x',2,3))

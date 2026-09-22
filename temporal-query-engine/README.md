@@ -15,7 +15,7 @@ python3 -m unittest discover -s temporal-query-engine/tests -t temporal-query-en
 python3 -m temporal_query.cli 2 6 --event deploy:0:3:release --event outage:4:8:incident --event idle:10:12
 ```
 
-Expected query output is JSON containing `deploy` and `outage`. The CLI accepts `ID:START:END[:LABEL]`; malformed events and non-positive intervals return an error.
+Expected query output is JSON containing `deploy` and `outage`. The CLI accepts `ID:START:END[:LABEL]`; `--label LABEL` filters results exactly. Malformed events and non-positive intervals return an error.
 
 Python API:
 

@@ -42,13 +42,14 @@ class IntervalIndex:
         if not removed: raise KeyError(event_id)
         self._ids.remove(event_id); return removed[0]
 
-    def overlaps(self, start: float, end: float) -> list[Event]:
+    def overlaps(self, start: float, end: float, label: str | None = None) -> list[Event]:
+        """Return intervals intersecting [start, end), optionally by label."""
         if start >= end: raise ValueError("query start must be less than end")
         out: list[Event] = []
         def visit(n: _Node | None) -> None:
             if not n or n.max_end <= start: return
             visit(n.left)
-            if n.event.start < end and n.event.end > start: out.append(n.event)
+            if n.event.start < end and n.event.end > start and (label is None or n.event.label == label): out.append(n.event)
             if n.event.start < end: visit(n.right)
         visit(self._root); return sorted(out, key=lambda e: (e.start, e.end, e.id))
 
