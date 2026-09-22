@@ -57,7 +57,7 @@ neural-net-lab --dataset examples/xor.csv --target-column label \
   --config examples/xor.toml --validation-split 0.25 --epochs 500
 ```
 
-CSV files need a header and numeric columns. JSONL files use one object per line:
+CSV files need a header and numeric columns. Pass comma-separated target columns for one-hot or other vector targets, for example `--target-column class_a,class_b`. JSONL files use one object per line:
 `{"features": [0.2, 0.8], "target": [1]}`. Dataset loading is dependency-free,
 validates consistent widths, and never mutates the input files.
 
@@ -126,6 +126,11 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Run the local test and compilation comma
 - More gradient-checking diagnostics for educational debugging
 
 ## Changelog
+
+### 2026-09-22
+
+- Added multiclass CSV support with comma-separated target columns for one-hot labels.
+- Added centralized validation for architecture, optimizer, loss, and training hyperparameters, including CLI overrides.
 
 ### 2026-09-21
 

@@ -37,14 +37,15 @@ def load_dataset(path: str | Path, target_column: str | None = None) -> Dataset:
         if not rows or not rows[0]:
             raise ValueError("CSV dataset must contain a header and at least one row")
         columns = list(rows[0])
-        target = target_column or columns[-1]
-        if target not in columns:
-            raise ValueError(f"target column {target!r} is not present in CSV header")
-        feature_columns = [column for column in columns if column != target]
+        targets = [name.strip() for name in (target_column or columns[-1]).split(",")]
+        if not targets or any(name not in columns for name in targets):
+            missing = next(name for name in targets if name not in columns)
+            raise ValueError(f"target column {missing!r} is not present in CSV header")
+        feature_columns = [column for column in columns if column not in targets]
         if not feature_columns:
             raise ValueError("CSV dataset needs at least one feature column")
         xs = [_numbers([row[column] for column in feature_columns], "CSV features") for row in rows]
-        ys = [[_numbers([row[target]], "CSV target")[0]] for row in rows]
+        ys = [_numbers([row[name] for name in targets], "CSV targets") for row in rows]
         return xs, ys
     if source.suffix.lower() in {".jsonl", ".ndjson"}:
         xs: list[list[float]] = []

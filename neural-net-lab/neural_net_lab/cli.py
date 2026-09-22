@@ -1,6 +1,6 @@
 """Command-line experiment runner."""
 import argparse, logging
-from .config import DEFAULTS, load_config
+from .config import DEFAULTS, load_config, validate_config
 from .core import MLP
 from .data import load_dataset, train_test_split
 from .optim import Adam, SGD
@@ -29,6 +29,7 @@ def main(argv=None):
     for key in ("epochs", "lr", "loss", "optimizer"):
         value = getattr(a, key)
         if value is not None: c[key] = value
+    c = validate_config(c)
     xs, ys = XOR_X, XOR_Y
     validation = None
     if a.dataset:

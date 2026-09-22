@@ -11,6 +11,14 @@ def test_csv_loader_uses_named_target(tmp_path: Path):
     assert load_dataset(path, "label") == ([[1.0, 2.0], [3.0, 4.0]], [[0.0], [1.0]])
 
 
+def test_csv_loader_supports_multiple_target_columns(tmp_path: Path):
+    path = tmp_path / "classes.csv"
+    path.write_text("x1,x2,class_a,class_b\n1,2,1,0\n3,4,0,1\n", encoding="utf8")
+    assert load_dataset(path, "class_a,class_b") == (
+        [[1.0, 2.0], [3.0, 4.0]], [[1.0, 0.0], [0.0, 1.0]]
+    )
+
+
 def test_jsonl_loader_supports_vector_targets(tmp_path: Path):
     path = tmp_path / "samples.jsonl"
     path.write_text('{"features": [1, 2], "target": [1, 0]}\n', encoding="utf8")

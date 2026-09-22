@@ -1,6 +1,7 @@
 """Additional feature coverage for softmax classification and configuration."""
 import json
 from pathlib import Path
+import pytest
 from neural_net_lab import MLP, Adam
 from neural_net_lab.config import load_config
 
@@ -18,6 +19,15 @@ def test_toml_configuration(tmp_path: Path):
     p.write_text('sizes=[2,2,1]\noptimizer="sgd"\n', encoding="utf8")
     c = load_config(p)
     assert c["sizes"] == [2, 2, 1] and c["optimizer"] == "sgd" and c["epochs"] == 2000
+
+def test_config_validation_rejects_invalid_cli_values():
+    from neural_net_lab.config import DEFAULTS, validate_config
+
+    with pytest.raises(ValueError, match="positive integer"):
+        validate_config({**DEFAULTS, "epochs": 0})
+    with pytest.raises(ValueError, match="one name per layer"):
+        validate_config({**DEFAULTS, "activations": ["tanh"]})
+
 
 def test_load_reports_bad_json(tmp_path: Path):
     p = tmp_path / "bad.json"; p.write_text("not json", encoding="utf8")
