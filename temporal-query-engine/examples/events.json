@@ -1,0 +1,7 @@
+{
+  "events": [
+    {"id": "deploy", "start": 0, "end": 3, "label": "release"},
+    {"id": "outage", "start": 4, "end": 8, "label": "incident"},
+    {"id": "idle", "start": 10, "end": 12, "label": "maintenance"}
+  ]
+}
