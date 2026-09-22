@@ -2,6 +2,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
+import math
 
 class Relation(str, Enum):
     BEFORE = "before"
@@ -31,6 +32,8 @@ class Event:
             raise ValueError("event id must not be empty")
         if self.start >= self.end:
             raise ValueError("event start must be less than end")
+        if not (math.isfinite(self.start) and math.isfinite(self.end)):
+            raise ValueError("event endpoints must be finite")
 
     def relation_to(self, other: "Event") -> Relation:
         a, b, c, d = self.start, self.end, other.start, other.end

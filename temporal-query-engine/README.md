@@ -25,6 +25,10 @@ idx = IntervalIndex([Event("deploy", 0, 3), Event("outage", 4, 8)])
 print([event.id for event in idx.overlaps(2, 5)])  # deploy, outage
 ```
 
+## Known Issues (Resolved)
+
+- Non-finite endpoints (`NaN`/infinity) could enter the index and make ordering/pruning undefined. `Event` now rejects them; regression coverage is in `test_duplicate_and_invalid`.
+
 ## Tests and limits
 
 The test suite covers relation classification, ordering, duplicate IDs, invalid ranges, deletion, and boundary-touching intervals. The package is standard-library only and performs no file or network I/O. Event identifiers must be unique and interval endpoints must be finite values supplied by the caller.

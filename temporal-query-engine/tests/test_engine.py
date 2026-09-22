@@ -17,6 +17,8 @@ class TemporalTests(unittest.TestCase):
         idx=IntervalIndex(); idx.add(Event('x',0,1))
         with self.assertRaises(ValueError): idx.add(Event('x',2,3))
         with self.assertRaises(ValueError): idx.overlaps(2,1)
+        with self.assertRaises(ValueError): Event('nan',float('nan'),1)
+        with self.assertRaises(ValueError): Event('inf',0,float('inf'))
     def test_remove(self):
         idx=IntervalIndex([Event('x',0,1)])
         self.assertEqual(idx.remove('x').id,'x')
