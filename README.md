@@ -6,6 +6,7 @@ A monorepo of AI-generated creative coding projects. Each project lives in its o
 
 | Project | Description |
 |---------|-------------|
+| [generative-poetry](./generative-poetry) | Procedural poetry engine: haiku, limerick, free verse, acrostic, sonnet — syllable counting, phonetic rhyme detection, 5 themes (nature/city/space/autumn/sea), seed-reproducible, CLI, 52 tests, pip-installable |
 | [finite-element-solver](./finite-element-solver) | 2D truss finite element analysis toolkit: direct stiffness method, JSON/TOML models, named load cases, self-weight, summaries, CLI, examples, 15 tests, 4 bugs fixed |
 | [lattice-boltzmann-fluid-sim](./lattice-boltzmann-fluid-sim) | 2D fluid dynamics via Lattice Boltzmann Method |
 | [lsystem-renderer](./lsystem-renderer) | L-System fractal and plant renderer |

@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "generative-poetry"
+version = "1.0.0"
+description = "Procedural poetry generator: haiku, limerick, free verse, acrostic, sonnet"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+keywords = ["poetry", "generative", "creative", "nlp", "art"]
+
+[project.scripts]
+poetry-gen = "cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v"
