@@ -15,7 +15,10 @@ def main(argv=None):
     p.add_argument("--dataset", help="CSV or JSONL dataset to train instead of XOR")
     p.add_argument("--target-column", help="CSV target column (defaults to the final column)")
     p.add_argument("--validation-split", type=float, metavar="FRACTION", help="reserve a deterministic validation fraction")
-    p.add_argument("--load", help="load a JSON model and print predictions")
+    p.add_argument("--load", help="load a JSON model and print XOR predictions")
+    p.add_argument("--evaluate", metavar="DATASET", help="evaluate a loaded model on CSV or JSONL data")
+    p.add_argument("--threshold", type=float, default=0.5, help="binary accuracy threshold for --evaluate")
+    p.add_argument("--eval-loss", choices=["mse", "bce", "cross_entropy"], default="mse", help="loss used when evaluating a loaded model")
     p.add_argument("--save", help="write trained model JSON")
     p.add_argument("--epochs", type=int); p.add_argument("--lr", type=float); p.add_argument("--loss", choices=["mse", "bce", "cross_entropy"])
     p.add_argument("--optimizer", choices=["adam", "sgd"]); p.add_argument("--verbose", action="store_true")
@@ -23,7 +26,18 @@ def main(argv=None):
     a = p.parse_args(argv); logging.basicConfig(level=logging.INFO if a.verbose else logging.WARNING, format="%(levelname)s %(message)s")
     if a.load:
         net = MLP.load(a.load)
-        for x in XOR_X: print(x, "=>", [round(v, 6) for v in net.predict(x)])
+        if a.evaluate:
+            xs, ys = load_dataset(a.evaluate, a.target_column)
+            if len(xs[0]) != net.sizes[0] or len(ys[0]) != net.sizes[-1]:
+                raise ValueError("evaluation dataset widths do not match the loaded model")
+            if not 0 <= a.threshold <= 1:
+                raise ValueError("threshold must be between 0 and 1")
+            print(f"loss: {net.loss(xs, ys, a.eval_loss):.6f}; accuracy: {net.accuracy(xs, ys, a.threshold):.2%}; samples: {len(xs)}")
+            return 0
+        for x in XOR_X:
+            if len(x) != net.sizes[0]:
+                raise ValueError("XOR inspection requires a model with two input features; use --evaluate for another dataset")
+            print(x, "=>", [round(v, 6) for v in net.predict(x)])
         return 0
     c = load_config(a.config) if a.config else dict(DEFAULTS)
     for key in ("epochs", "lr", "loss", "optimizer"):

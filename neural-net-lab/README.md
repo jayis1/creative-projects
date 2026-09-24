@@ -43,11 +43,16 @@ neural-net-lab --gradient-check --epochs 1
 # gradient check max relative error: 1.589e-09
 ```
 
-A saved model can be inspected without retraining:
+A saved model can be evaluated against a labeled CSV or JSONL dataset without retraining:
 
 ```bash
-neural-net-lab --load xor.json
+neural-net-lab --load xor.json --evaluate examples/xor.csv \
+  --target-column label --eval-loss bce
+# loss: 0.0008; accuracy: 100.00%; samples: 4
 ```
+
+Evaluation validates feature and target widths before scoring, and `--threshold`
+controls binary classification cutoffs.
 
 Train on your own numeric CSV (the final column is the target by default), with a
 reproducible validation split:
@@ -131,6 +136,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Run the local test and compilation comma
 
 - Added multiclass CSV support with comma-separated target columns for one-hot labels.
 - Added centralized validation for architecture, optimizer, loss, and training hyperparameters, including CLI overrides.
+- Added dataset evaluation for saved models with explicit loss selection and threshold validation.
+- Added CLI regression tests for evaluation and model/dataset shape errors.
 
 ### 2026-09-21
 
@@ -148,7 +155,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Run the local test and compilation comma
 
 - Added stable softmax and categorical cross-entropy for multiclass models.
 - Added validated TOML/JSON configuration and CLI model-inspection mode.
-- Added logging, type-oriented public contracts, CI, contributor guidance, and regression tests.
+- Added logging, type-oriented public contracts, regression tests, and contributor guidance.
 - Added multiclass argmax accuracy while retaining binary threshold accuracy.
 
 ## Known Issues (Resolved)
