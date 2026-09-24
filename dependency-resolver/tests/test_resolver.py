@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parents[1]))
-from resolver import PackageIndex, Requirement, ResolutionError, Resolver, Version
+from resolver import PackageIndex, Requirement, ResolutionError, Resolver, Version, write_lockfile
 
 
 class ResolverTests(unittest.TestCase):
@@ -42,7 +42,19 @@ class ResolverTests(unittest.TestCase):
         with self.assertRaises(ResolutionError):
             Resolver(index).resolve([Requirement("a"), Requirement("b")])
 
-    def test_cli_outputs_sorted_lock(self):
+    def test_duplicate_versions_are_rejected(self):
+        with self.assertRaises(ValueError):
+            PackageIndex.from_dict({"packages": [{"name": "x", "version": "1.0.0"}, {"name": "x", "version": "1.0.0"}]})
+
+    def test_lockfile_is_complete(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "lock.json"
+            resolved = Resolver(self.index).resolve([Requirement("app", "=1.0.0")])
+            write_lockfile(str(path), resolved, 3)
+            lock = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(lock["packages"]["core"]["version"], "1.1.0")
+            self.assertEqual(lock["decisions"], 3)
+
         document = {"dependencies": {"app": "1.0.0"}, "packages": [
             {"name": "app", "version": "1.0.0"}
         ]}

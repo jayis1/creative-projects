@@ -36,7 +36,13 @@ Example manifest:
 }
 ```
 
-The command prints a stable mapping such as `{ "app": "1.0.0", "core": "1.2.0" }` (pretty-printed).
+The CLI can also write an atomic lockfile. The lock records selected versions, each package's dependency edges, and the number of search decisions:
+
+```bash
+python3 resolver.py examples.json --lockfile resolved.lock.json
+```
+
+Lockfile writes use a temporary file plus `os.replace`, so a killed process cannot leave a half-written lock. Duplicate package versions are rejected during index loading, avoiding ambiguous registry data.
 
 ## Limitations
 

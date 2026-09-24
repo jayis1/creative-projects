@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
+import tempfile
 from dataclasses import dataclass, field
 from functools import total_ordering
 from typing import Iterable
@@ -99,6 +101,8 @@ class PackageIndex:
         index = cls()
         for item in data.get("packages", []):
             package = Package.from_dict(item)
+            if any(existing.version == package.version for existing in index.packages.get(package.name, [])):
+                raise ValueError(f"duplicate package version: {package.name}@{package.version}")
             index.packages.setdefault(package.name, []).append(package)
         for versions in index.packages.values():
             versions.sort(key=lambda p: p.version, reverse=True)
@@ -154,15 +158,37 @@ def load_requirements(data: dict) -> list[Requirement]:
     return [Requirement(name, expression) for name, expression in data.get("dependencies", {}).items()]
 
 
+def write_lockfile(path: str, resolved: dict[str, Package], decisions: int) -> None:
+    """Write a lockfile atomically so an interrupted run cannot truncate it."""
+    target = os.path.abspath(path)
+    directory = os.path.dirname(target) or "."
+    payload = {"packages": {name: {"version": str(pkg.version), "dependencies": {r.name: r.expression for r in pkg.dependencies}} for name, pkg in sorted(resolved.items())}, "decisions": decisions}
+    fd, temporary = tempfile.mkstemp(prefix=".resolver-", suffix=".tmp", dir=directory, text=True)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, indent=2, sort_keys=True)
+            handle.write("\n")
+        os.replace(temporary, target)
+    except Exception:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
+        raise
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Resolve a package graph deterministically")
     parser.add_argument("manifest", help="JSON file with dependencies and packages")
+    parser.add_argument("--lockfile", help="also write an atomic JSON lockfile")
     args = parser.parse_args(argv)
     try:
         with open(args.manifest, encoding="utf-8") as handle:
             document = json.load(handle)
         resolver = Resolver(PackageIndex.from_dict(document))
         resolved = resolver.resolve(load_requirements(document))
+        if args.lockfile:
+            write_lockfile(args.lockfile, resolved, resolver.decisions)
     except (OSError, json.JSONDecodeError, ValueError, ResolutionError) as exc:
         parser.error(str(exc))
     print(json.dumps({name: str(pkg.version) for name, pkg in sorted(resolved.items())}, indent=2))
