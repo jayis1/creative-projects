@@ -64,7 +64,12 @@ class Requirement:
             if term.startswith(op):
                 target = Version.parse(term[len(op):])
                 if op == "^":
-                    upper = Version(target.major + 1, 0, 0) if target.major else Version(0, target.minor + 1, 0)
+                    if target.major:
+                        upper = Version(target.major + 1, 0, 0)
+                    elif target.minor:
+                        upper = Version(0, target.minor + 1, 0)
+                    else:
+                        upper = Version(0, 0, target.patch + 1)
                     return version >= target and version < upper
                 if op == "~":
                     return version >= target and version < Version(target.major, target.minor + 1, 0)

@@ -23,7 +23,13 @@ class ResolverTests(unittest.TestCase):
         self.assertLess(Version.parse("1.0.0-alpha"), Version.parse("1.0.0"))
         self.assertGreater(Version.parse("2.0.0"), Version.parse("1.9.9"))
 
-    def test_requirement_ranges(self):
+    def test_caret_zero_patch_only_allows_patch_updates(self):
+        requirement = Requirement("x", "^0.0.3")
+        self.assertTrue(requirement.matches(Version.parse("0.0.3")))
+        self.assertFalse(requirement.matches(Version.parse("0.0.4")))
+        self.assertFalse(requirement.matches(Version.parse("0.0.5")))
+        self.assertFalse(requirement.matches(Version.parse("0.1.0")))
+
         self.assertTrue(Requirement("x", "^1.2.0").matches(Version.parse("1.9.0")))
         self.assertFalse(Requirement("x", "^1.2.0").matches(Version.parse("2.0.0")))
         self.assertTrue(Requirement("x", "1.x").matches(Version.parse("1.8.2")))

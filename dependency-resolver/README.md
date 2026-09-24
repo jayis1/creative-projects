@@ -44,6 +44,11 @@ python3 resolver.py examples.json --lockfile resolved.lock.json
 
 Lockfile writes use a temporary file plus `os.replace`, so a killed process cannot leave a half-written lock. Duplicate package versions are rejected during index loading, avoiding ambiguous registry data.
 
+## Known Issues (Resolved)
+
+- Fixed caret-range upper bounds for `^0.0.x`: only the exact patch version is accepted under semver's zero-major rules. A regression test covers `0.0.3`, `0.0.4`, and `0.0.5`.
+- Rejected duplicate package/version records and added atomic lockfile writes to prevent ambiguous or truncated resolution state.
+
 ## Limitations
 
 The index is supplied in one JSON file; it does not contact registries, evaluate peer/optional dependencies, or implement platform-specific packages. Those boundaries keep resolution deterministic and safe to run offline.
