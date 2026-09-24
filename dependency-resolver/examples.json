@@ -1,0 +1,10 @@
+{
+  "dependencies": {"app": "1.0.0"},
+  "packages": [
+    {"name": "app", "version": "1.0.0", "dependencies": {"core": "^1.0.0", "plugin": ">=2.0.0"}},
+    {"name": "core", "version": "1.0.0"},
+    {"name": "core", "version": "1.1.0"},
+    {"name": "plugin", "version": "2.0.0", "dependencies": {"core": ">=1.1.0"}},
+    {"name": "plugin", "version": "2.1.0", "dependencies": {"core": "<1.1.0"}}
+  ]
+}

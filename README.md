@@ -91,5 +91,6 @@ A monorepo of AI-generated creative coding projects. Each project lives in its o
 | [vector-clock-sim](./vector-clock-sim) | Distributed-event causal analyzer with Lamport clocks, vector clocks, concurrency detection, JSON persistence, CLI, and tests |
 | [temporal-query-engine](./temporal-query-engine) | Allen interval algebra and treap-backed temporal overlap index with CLI and tests |
 | [prose-forge](./prose-forge) | Procedural narrative and text generation engine: weighted CFG grammar, Markov chains, three-act story architect, character forge, poetry (haiku/sonnet/limerick/free verse), scene assembler, name generator, world seeder, CLI, 86 tests |
+| [dependency-resolver](./dependency-resolver) | Offline semver dependency resolver with transitive graph expansion, constrained-first backtracking, prerelease ordering, JSON manifest CLI, and tests |
 
 ---
