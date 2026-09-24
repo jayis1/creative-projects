@@ -1,5 +1,7 @@
 # Dependency Resolver
 
+Author: jayis1
+
 A deterministic package dependency solver built from scratch. It parses semantic versions, evaluates caret/tilde/comparison/wildcard constraints, and uses most-constrained-first backtracking to choose a compatible version for every transitive dependency.
 
 This is deliberately different from the repository's parser, database, and solver projects: it models a practical package-manager problem with version semantics, graph expansion, and reproducible lock output rather than a general-purpose SAT/CSP engine.
