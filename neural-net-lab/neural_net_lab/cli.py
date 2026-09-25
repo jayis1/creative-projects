@@ -1,5 +1,5 @@
 """Command-line experiment runner."""
-import argparse, logging
+import argparse, json, logging
 from .config import DEFAULTS, load_config, validate_config
 from .core import MLP
 from .data import load_dataset, train_test_split
@@ -17,6 +17,7 @@ def main(argv=None):
     p.add_argument("--validation-split", type=float, metavar="FRACTION", help="reserve a deterministic validation fraction")
     p.add_argument("--load", help="load a JSON model and print XOR predictions")
     p.add_argument("--evaluate", metavar="DATASET", help="evaluate a loaded model on CSV or JSONL data")
+    p.add_argument("--report", action="store_true", help="print a JSON classification report during --evaluate")
     p.add_argument("--threshold", type=float, default=0.5, help="binary accuracy threshold for --evaluate")
     p.add_argument("--eval-loss", choices=["mse", "bce", "cross_entropy"], default="mse", help="loss used when evaluating a loaded model")
     p.add_argument("--save", help="write trained model JSON")
@@ -33,6 +34,8 @@ def main(argv=None):
             if not 0 <= a.threshold <= 1:
                 raise ValueError("threshold must be between 0 and 1")
             print(f"loss: {net.loss(xs, ys, a.eval_loss):.6f}; accuracy: {net.accuracy(xs, ys, a.threshold):.2%}; samples: {len(xs)}")
+            if a.report:
+                print(json.dumps(net.classification_report(xs, ys, a.threshold), sort_keys=True))
             return 0
         for x in XOR_X:
             if len(x) != net.sizes[0]:

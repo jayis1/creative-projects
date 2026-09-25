@@ -4,6 +4,8 @@
 
 A dependency-free, inspectable multilayer perceptron for learning neural networks from first principles. It now covers binary and multiclass classification, configurable experiments, model persistence, early stopping, and a production-shaped CLI without hiding the math behind NumPy or a framework.
 
+Maintained by [jayis1](https://github.com/jayis1).
+
 ## Contents
 
 - [Install](#install)
@@ -52,7 +54,14 @@ neural-net-lab --load xor.json --evaluate examples/xor.csv \
 ```
 
 Evaluation validates feature and target widths before scoring, and `--threshold`
-controls binary classification cutoffs.
+controls binary classification cutoffs. Add `--report` to print a machine-readable
+confusion matrix plus per-class precision, recall, and F1 scores:
+
+```bash
+neural-net-lab --load xor.json --evaluate examples/xor.csv \
+  --target-column label --eval-loss bce --report
+# ... {"confusion_matrix": [[2, 0], [0, 2]], "macro_f1": 1.0, ...}
+```
 
 Train on your own numeric CSV (the final column is the target by default), with a
 reproducible validation split:
@@ -108,7 +117,7 @@ net.save("classifier.json")
 restored = MLP.load("classifier.json")
 ```
 
-`TrainingHistory.losses` and `val_losses` are epoch-level metrics. Use `clip` for gradient-norm clipping and `patience` with `validation=(x_val, y_val)` for best-checkpoint early stopping.
+`TrainingHistory.losses` and `val_losses` are epoch-level metrics. Use `clip` for gradient-norm clipping and `patience` with `validation=(x_val, y_val)` for best-checkpoint early stopping. `MLP.classification_report()` provides the same threshold/argmax label rules as `accuracy()` plus confusion-matrix and macro-averaged metrics.
 
 ## Architecture
 
@@ -131,6 +140,12 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Run the local test and compilation comma
 - More gradient-checking diagnostics for educational debugging
 
 ## Changelog
+
+### 2026-09-23
+
+- Added binary and multiclass classification reports with confusion matrices and macro precision, recall, and F1 metrics.
+- Added `--report` to the evaluation CLI for machine-readable JSON output.
+- Added regression coverage for report scoring, CLI serialization, and target-shape validation.
 
 ### 2026-09-22
 

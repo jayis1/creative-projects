@@ -158,6 +158,41 @@ class MLP:
         if not xs or len(xs) != len(ys) or not 0 <= threshold <= 1: raise ValueError("accuracy requires aligned data and a valid threshold")
         if len(self.layers[-1].b) == 1: return sum((self.predict(x)[0] >= threshold) == (y[0] >= threshold) for x, y in zip(xs, ys)) / len(xs)
         return sum(max(range(len(p)), key=p.__getitem__) == max(range(len(y)), key=y.__getitem__) for p, y in zip(self.predict_batch(xs), ys)) / len(xs)
+    def classification_report(self, xs, ys, threshold=.5) -> dict[str, Any]:
+        """Return confusion matrix and macro precision/recall/F1 for classification.
+
+        Labels are thresholded for binary sigmoid outputs and argmaxed for
+        multiclass outputs. Empty classes are retained in the matrix and get
+        zero precision/recall, making reports comparable across runs.
+        """
+        if not xs or len(xs) != len(ys) or not 0 <= threshold <= 1:
+            raise ValueError("report requires aligned data and a valid threshold")
+        classes = len(self.layers[-1].b)
+        if any(len(y) != classes for y in ys):
+            raise ValueError("target width does not match output")
+        if classes == 1:
+            actual = [int(y[0] >= threshold) for y in ys]
+            predicted = [int(self.predict(x)[0] >= threshold) for x in xs]
+            size = 2
+        else:
+            actual = [max(range(classes), key=y.__getitem__) for y in ys]
+            predicted = [max(range(classes), key=self.predict(x).__getitem__) for x in xs]
+            size = classes
+        matrix = [[0 for _ in range(size)] for _ in range(size)]
+        for truth, guess in zip(actual, predicted): matrix[truth][guess] += 1
+        scores = []
+        for label in range(size):
+            tp = matrix[label][label]
+            fp = sum(matrix[row][label] for row in range(size)) - tp
+            fn = sum(matrix[label]) - tp
+            precision = tp / (tp + fp) if tp + fp else 0.0
+            recall = tp / (tp + fn) if tp + fn else 0.0
+            f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
+            scores.append({"precision": precision, "recall": recall, "f1": f1, "support": sum(matrix[label])})
+        return {"accuracy": self.accuracy(xs, ys, threshold), "confusion_matrix": matrix, "per_class": scores,
+                "macro_precision": sum(s["precision"] for s in scores) / size,
+                "macro_recall": sum(s["recall"] for s in scores) / size,
+                "macro_f1": sum(s["f1"] for s in scores) / size}
     def to_dict(self) -> dict[str, Any]: return {"sizes": self.sizes, "activations": [l.activation for l in self.layers], "weights": [l.w for l in self.layers], "biases": [l.b for l in self.layers]}
     def save(self, path):
         with open(path, "w", encoding="utf8") as f: json.dump(self.to_dict(), f, indent=2)
