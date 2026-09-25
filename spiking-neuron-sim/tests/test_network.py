@@ -21,6 +21,20 @@ def test_network_delivers_delayed_spike():
     assert [(s.neuron, s.time) for s in spikes] == [("a", 0.0), ("b", 2.0)]
 
 
+
+
+def test_population_report_and_state_roundtrip():
+    net = LIFNetwork(seed=3)
+    cells = net.add_population("cell", 2, threshold=0.5)
+    assert [cell.name for cell in cells] == ["cell-0", "cell-1"]
+    assert net.connect_all_to_all(["cell-0"], ["cell-1"], 0.5, delay=1.0) == 1
+    report = net.simulate([Stimulus(0, "cell-0", 1.0)], until=2)
+    assert report.count == 2
+    assert report.firing_rates()["cell-0"] == 500.0
+    restored = LIFNetwork.from_state(net.export_state())
+    assert restored.export_state() == net.export_state()
+
+
 def test_invalid_inputs_are_rejected():
     with pytest.raises(ValueError):
         Neuron("bad", tau=0)

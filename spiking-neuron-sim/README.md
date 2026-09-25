@@ -47,3 +47,11 @@ python3 -m pytest -q
 ## Phase 1 scope
 
 The initial release provides validated neuron and connection parameters, deterministic priority-queue delivery, delayed synapses, reset support, a small CLI, and tests. Enhancement and bug-hunt phases add richer network construction and regression coverage.
+
+## Enhancements (Phase 2)
+
+- `add_population` creates named neuron groups with validation.
+- `connect_all_to_all` builds dense or bipartite topologies without self-edges.
+- `SimulationReport` exposes spike counts and firing rates (spikes/second).
+- `export_state` and `from_state` provide validated, JSON-compatible topology snapshots.
+- The public API now has docstrings and deterministic seeded construction for repeatable experiments.

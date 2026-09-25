@@ -13,6 +13,26 @@ import random
 from typing import Iterable
 
 
+@dataclass(frozen=True)
+class SimulationReport:
+    """Immutable summary of one simulation run."""
+
+    spikes: tuple[Spike, ...]
+    until: float
+
+    @property
+    def count(self) -> int:
+        return len(self.spikes)
+
+    def firing_rates(self) -> dict[str, float]:
+        if self.until <= 0:
+            return {name: 0.0 for name in {spike.neuron for spike in self.spikes}}
+        counts: dict[str, int] = {}
+        for spike in self.spikes:
+            counts[spike.neuron] = counts.get(spike.neuron, 0) + 1
+        return {name: count * 1000.0 / self.until for name, count in counts.items()}
+
+
 @dataclass(frozen=True, order=True)
 class Spike:
     time: float
@@ -168,6 +188,55 @@ class LIFNetwork:
             neuron.last_spike = -math.inf
             neuron.spikes.clear()
             neuron.input_current = 0.0
+
+    def simulate(self, stimuli: Iterable[Stimulus], until: float) -> SimulationReport:
+        """Run a simulation and return spikes plus derived metrics."""
+        return SimulationReport(tuple(self.stimulate(stimuli, until)), until)
+
+    def add_population(self, prefix: str, count: int, **kwargs: float) -> list[Neuron]:
+        """Create ``count`` neurons named prefix-0, prefix-1, ..."""
+        if count < 0:
+            raise ValueError("population count must be non-negative")
+        return [self.add_neuron(f"{prefix}-{i}", **kwargs) for i in range(count)]
+
+    def connect_all_to_all(self, sources: Iterable[str], targets: Iterable[str], weight: float, *, delay: float = 0.0, plastic: bool = False) -> int:
+        """Connect every source to every target, returning edge count."""
+        source_list, target_list = list(sources), list(targets)
+        created = 0
+        for source in source_list:
+            for target in target_list:
+                if source != target:
+                    self.connect(source, target, weight, delay=delay, plastic=plastic)
+                    created += 1
+        return created
+
+    def export_state(self) -> dict[str, object]:
+        """Return a JSON-serializable snapshot of topology and neuron state."""
+        return {
+            "neurons": [{"name": n.name, "threshold": n.threshold, "resting": n.resting,
+                         "reset": n.reset, "tau": n.tau, "refractory": n.refractory}
+                        for n in self.neurons.values()],
+            "connections": [{"source": c.source, "target": c.target, "weight": c.weight,
+                             "delay": c.delay, "plastic": c.plastic} for c in self.connections],
+        }
+
+    @classmethod
+    def from_state(cls, state: dict[str, object], *, seed: int | None = None) -> "LIFNetwork":
+        """Rebuild a network from :meth:`export_state` output with validation."""
+        if not isinstance(state.get("neurons"), list) or not isinstance(state.get("connections"), list):
+            raise ValueError("state must contain neuron and connection lists")
+        network = cls(seed=seed)
+        for item in state["neurons"]:
+            if not isinstance(item, dict):
+                raise ValueError("each neuron must be an object")
+            data = {key: item[key] for key in ("threshold", "resting", "reset", "tau", "refractory") if key in item}
+            network.add_neuron(str(item["name"]), **data)
+        for item in state["connections"]:
+            if not isinstance(item, dict):
+                raise ValueError("each connection must be an object")
+            network.connect(str(item["source"]), str(item["target"]), float(item["weight"]),
+                            delay=float(item.get("delay", 0.0)), plastic=bool(item.get("plastic", False)))
+        return network
 
     def _require_neuron(self, name: str) -> None:
         if name not in self.neurons:
