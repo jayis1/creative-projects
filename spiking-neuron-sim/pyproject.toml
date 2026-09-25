@@ -1,0 +1,8 @@
+[project]
+name = "spiking-neuron-sim"
+version = "0.1.0"
+description = "Dependency-free event-driven leaky integrate-and-fire network simulator"
+requires-python = ">=3.10"
+
+[project.scripts]
+spiking-neuron-sim = "spiking_neuron_sim.cli:main"
