@@ -55,3 +55,8 @@ The initial release provides validated neuron and connection parameters, determi
 - `SimulationReport` exposes spike counts and firing rates (spikes/second).
 - `export_state` and `from_state` provide validated, JSON-compatible topology snapshots.
 - The public API now has docstrings and deterministic seeded construction for repeatable experiments.
+
+## Bugs Fixed in Phase 3
+
+- Fixed membrane leakage between subthreshold input events. The simulator now tracks the last integration time instead of treating every event before the first spike as simultaneous. A regression test covers widely separated inputs.
+- Reset now clears the integration clock as well as potential, refractory state, and spike history.

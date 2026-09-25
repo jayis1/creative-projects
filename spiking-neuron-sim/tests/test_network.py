@@ -23,6 +23,13 @@ def test_network_delivers_delayed_spike():
 
 
 
+def test_subthreshold_inputs_decay_between_events():
+    net = LIFNetwork()
+    net.add_neuron("n", threshold=1.0, tau=1.0)
+    spikes = net.stimulate([Stimulus(0, "n", 0.75), Stimulus(10, "n", 0.75)], until=10)
+    assert spikes == []
+
+
 def test_population_report_and_state_roundtrip():
     net = LIFNetwork(seed=3)
     cells = net.add_population("cell", 2, threshold=0.5)

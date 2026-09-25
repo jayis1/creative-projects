@@ -49,6 +49,7 @@ class Neuron:
     refractory: float = 2.0
     potential: float = 0.0
     last_spike: float = -math.inf
+    last_update: float = 0.0
     spikes: list[float] = field(default_factory=list)
     input_current: float = 0.0
 
@@ -69,12 +70,14 @@ class Neuron:
         self.input_current += amount
 
     def advance(self, time: float) -> bool:
-        if time < self.last_spike:
+        if time < self.last_update:
             raise ValueError("time cannot move backwards")
         if time - self.last_spike < self.refractory:
             self.input_current = 0.0
+            self.last_update = time
             return False
-        self.decay(time - (self.last_spike if self.last_spike != -math.inf else time))
+        self.decay(time - self.last_update)
+        self.last_update = time
         self.potential += self.input_current
         self.input_current = 0.0
         if self.potential >= self.threshold:
@@ -186,6 +189,7 @@ class LIFNetwork:
         for neuron in self.neurons.values():
             neuron.potential = neuron.reset
             neuron.last_spike = -math.inf
+            neuron.last_update = 0.0
             neuron.spikes.clear()
             neuron.input_current = 0.0
 
