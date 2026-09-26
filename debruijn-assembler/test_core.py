@@ -14,3 +14,15 @@ def test_assemble_reconstructs_linear_read():
 
 def test_parse_newline_reads():
     assert parse_reads("acg\nttt\n") == ["ACG", "TTT"]
+
+
+def test_parse_fasta_multiline_and_fastq_validation():
+    assert parse_reads(">a\nac\ngt\n>b\nttt\n") == ["ACGT", "TTT"]
+    assert parse_reads("@r\nACGT\n+\n!!!!\n") == ["ACGT"]
+
+
+def test_min_count_prunes_rare_kmers_and_reports_n50():
+    result = assemble(["ACGT", "ACGT", "TTT"], k=3, min_count=2)
+    assert result.contigs == ("ACGT",)
+    assert result.n50 == 4
+    assert result.graph_nodes == 3

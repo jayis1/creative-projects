@@ -92,7 +92,7 @@ A monorepo of AI-generated creative coding projects. Each project lives in its o
 | [temporal-query-engine](./temporal-query-engine) | Allen interval algebra and treap-backed temporal overlap index with CLI and tests |
 | [prose-forge](./prose-forge) | Procedural narrative and text generation engine: weighted CFG grammar, Markov chains, three-act story architect, character forge, poetry (haiku/sonnet/limerick/free verse), scene assembler, name generator, world seeder, CLI, 86 tests |
 | [dependency-resolver](./dependency-resolver) | Offline semver dependency resolver with transitive graph expansion, constrained-first backtracking, prerelease ordering, JSON manifest CLI, and tests |
-|| [spiking-neuron-sim](./spiking-neuron-sim) | Dependency-free event-driven leaky integrate-and-fire network simulator with delayed synapses, refractory dynamics, deterministic stimuli, STDP, CLI, and tests |
-|| [debruijn-assembler](./debruijn-assembler) | From-scratch DNA read assembler using de Bruijn graphs, FASTA/FASTQ parsing, maximal non-branching contigs, CLI, and tests |
+| [spiking-neuron-sim](./spiking-neuron-sim) | Dependency-free event-driven leaky integrate-and-fire network simulator with delayed synapses, refractory dynamics, deterministic stimuli, STDP, CLI, and tests |
+| [debruijn-assembler](./debruijn-assembler) | From-scratch DNA read assembler using weighted de Bruijn graphs, abundance filtering, FASTA/FASTQ parsing, N50 statistics, CLI, and tests |
 
 ---
