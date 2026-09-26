@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "debruijn-assembler"
+version = "0.1.0"
+description = "A from-scratch de Bruijn graph DNA read assembler"
+requires-python = ">=3.10"
+
+[project.scripts]
+de-bruijn-assemble = "debruijn_assembler.cli:main"
