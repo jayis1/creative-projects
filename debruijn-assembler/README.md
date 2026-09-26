@@ -26,6 +26,13 @@ result = assemble(parse_reads("reads.fastq"), k=31, min_count=2)
 print(result.contigs, result.n50)
 ```
 
+## Known Issues (Resolved)
+
+- Weighted k-mer coverage once caused duplicate contigs; traversal now consumes each distinct edge once while preserving coverage counts for statistics.
+- Literal sequence text longer than an OS path limit could be mistaken for a filename; input detection now bounds path probing and handles `OSError`.
+- Empty FASTA records were silently discarded; strict parsing now reports malformed records, with `strict=False` available for recovery workflows.
+- Branching graphs are split at branch nodes into deterministic maximal non-branching contigs.
+
 ## Development
 
 ```bash

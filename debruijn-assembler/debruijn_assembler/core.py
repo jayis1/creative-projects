@@ -50,13 +50,19 @@ def parse_reads(source: str | Path, *, strict: bool = True) -> list[str]:
     if lines[0].startswith(">"):
         reads: list[str] = []
         current: list[str] = []
+        saw_header = False
         for line in lines:
             if line.startswith(">"):
+                if saw_header and not current and strict:
+                    raise ValueError("FASTA record has no sequence")
                 if current:
                     reads.append("".join(current).upper())
                     current = []
+                saw_header = True
             else:
                 current.append(line)
+        if not current and strict:
+            raise ValueError("FASTA record has no sequence")
         if current:
             reads.append("".join(current).upper())
         return reads
@@ -115,7 +121,7 @@ def _n50(contigs: list[str]) -> int:
 
 
 def _eulerian_contigs(graph: dict[str, Counter[str]]) -> list[str]:
-    """Walk every weighted edge on maximal non-branching paths."""
+    """Walk every distinct weighted edge on maximal non-branching paths."""
     indegree: Counter[str] = Counter()
     outdegree: Counter[str] = Counter()
     for node, edges in graph.items():
