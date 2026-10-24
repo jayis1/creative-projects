@@ -33,4 +33,6 @@ The demo prints a finite protocol graph, liveness/safety checks, and the shortes
 
 ## Known Issues (Resolved)
 
-Initial and enhanced suites cover cycles, deadlocks, boolean composition, next-state checks, until formulas, and shortest traces. The dedicated bug-hunt phase records any verified findings.
+- `TransitionSystem.states` returned a tuple built from a set, so its order was not breadth-first or repeatable. Regression test `test_states_are_returned_in_breadth_first_order` failed on a branching graph before the fix; it now checks the explicit discovery order.
+
+The bug hunt also exercised deadlock behavior and cyclic reachability. The model remains intended for finite explicit-state inputs; there is no symbolic reduction for very large state spaces.

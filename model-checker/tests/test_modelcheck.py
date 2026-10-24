@@ -37,6 +37,10 @@ class ModelCheckTests(unittest.TestCase):
     def test_until_goal_holds_immediately(self):
         self.assertTrue(check(self.ts, F.EU(F.atom('missing'), F.atom('start'))))
 
+    def test_states_are_returned_in_breadth_first_order(self):
+        ts = TransitionSystem.build(0, {0:[2,1], 2:[3], 1:[4]})
+        self.assertEqual(ts.states, (0,2,1,3,4))
+
     def test_shortest_path(self):
         self.assertEqual(self.ts.shortest_path(lambda s: s == 'c'), ['a','b','c'])
 

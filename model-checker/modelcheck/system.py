@@ -25,14 +25,15 @@ class TransitionSystem:
     @property
     def states(self) -> tuple[State, ...]:
         """Return reachable states, breadth-first and without duplicates."""
-        seen, queue = {self.initial}, deque([self.initial])
+        seen, ordered, queue = {self.initial}, [self.initial], deque([self.initial])
         while queue:
             state = queue.popleft()
             for nxt in self.transitions.get(state, ()):
                 if nxt not in seen:
                     seen.add(nxt)
+                    ordered.append(nxt)
                     queue.append(nxt)
-        return tuple(seen)
+        return tuple(ordered)
 
     def predecessors(self, subset: set[State]) -> set[State]:
         return {s for s in self.states if any(t in subset for t in self.transitions.get(s, ()))}
