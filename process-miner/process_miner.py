@@ -5,7 +5,20 @@ import argparse
 import csv
 import json
 from collections import Counter, defaultdict
+from datetime import datetime, timezone
 from pathlib import Path
+
+
+def _timestamp_key(value: str) -> tuple[int, object]:
+    """Sort ISO-8601 instants chronologically; retain lexical order for labels."""
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return (1, value)
+    # Treat timezone-naive ISO values consistently as UTC.
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return (0, parsed.astimezone(timezone.utc))
 
 
 def discover(rows: list[dict[str, str]]) -> dict:
@@ -24,7 +37,7 @@ def discover(rows: list[dict[str, str]]) -> dict:
     ends: Counter[str] = Counter()
     for events in grouped.values():
         # Input order breaks equal-timestamp ties deterministically.
-        events.sort(key=lambda item: (item[0], item[2]))
+        events.sort(key=lambda item: (_timestamp_key(item[0]), item[2]))
         sequence = [event[1] for event in events]
         activities.update(sequence)
         starts[sequence[0]] += 1

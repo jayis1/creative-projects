@@ -21,6 +21,13 @@ class DiscoveryTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             discover([{"case":"x", "activity":"  ", "timestamp":"1"}])
 
+    def test_timezone_offsets_are_ordered_by_instant(self):
+        rows = [{"case":"x", "activity":"later", "timestamp":"2025-01-01T09:30:00Z"},
+                {"case":"x", "activity":"earlier", "timestamp":"2025-01-01T10:00:00+02:00"}]
+        result = discover(rows)
+        self.assertEqual(result["starts"], {"earlier": 1})
+        self.assertEqual(result["directly_follows"][0]["source"], "earlier")
+
     def test_empty_log(self):
         self.assertEqual(discover([])["cases"], 0)
 

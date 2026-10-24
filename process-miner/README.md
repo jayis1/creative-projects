@@ -12,6 +12,10 @@ Analyze a CSV with columns `case,activity,timestamp` using `python3 process_mine
 
 Each case trace is sorted by timestamp then original row position. A single pass counts occurrences and adjacent activity pairs; the output is deterministic and JSON-serializable. This is a directly-follows abstraction, not a probabilistic or conformance model.
 
+## Known Issues (Resolved)
+
+- ISO-8601 timestamps with differing UTC offsets were incorrectly ordered as strings. A regression test demonstrated the wrong case start; timestamps are now compared as UTC instants (naive ISO values are interpreted as UTC). Non-ISO timestamp labels retain lexical ordering.
+
 ## Tests
 
 Run `python3 -m unittest discover -s process-miner/tests` from the repository root.
