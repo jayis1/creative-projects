@@ -98,5 +98,6 @@ A monorepo of AI-generated creative coding projects. Each project lives in its o
 | [event-ledger](./event-ledger) | Event-sourced account ledger with atomic transfers, deterministic replay, checksummed snapshots, CLI, and tests |
 | [packet-forge](./packet-forge) | Offline Ethernet II/IPv4 packet decoder with UDP validation, bounded parsing, flow summaries, CLI, and tests |
 | [model-checker](./model-checker) | Finite-state CTL model checker with fixed-point operators, protocol demo, and witness traces |
+| [automata-inference](./automata-inference) | RPNI DFA learner from labeled string samples, JSON CLI, minimization, and unit tests |
 
 ---
