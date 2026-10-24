@@ -50,7 +50,15 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("csv", nargs="?", type=Path)
     parser.add_argument("--demo", action="store_true", help="analyze a built-in sample")
+    parser.add_argument("--min-edge-count", type=int, default=1,
+                        help="hide directly-follows edges seen fewer times")
+    parser.add_argument("--top-activities", type=int,
+                        help="show only the N most frequent activities")
     args = parser.parse_args(argv)
+    if args.min_edge_count < 1:
+        parser.error("--min-edge-count must be at least 1")
+    if args.top_activities is not None and args.top_activities < 1:
+        parser.error("--top-activities must be at least 1")
     if not args.demo and args.csv is None:
         parser.error("provide a CSV path or --demo")
     sample = [{"case":"A","activity":"order","timestamp":"1"},
@@ -60,6 +68,11 @@ def main(argv: list[str] | None = None) -> int:
               {"case":"B","activity":"cancel","timestamp":"2"}]
     try:
         result = discover(sample if args.demo else read_csv(args.csv))
+        result["directly_follows"] = [edge for edge in result["directly_follows"]
+                                      if edge["count"] >= args.min_edge_count]
+        if args.top_activities is not None:
+            ranked = sorted(result["activities"].items(), key=lambda pair: (-pair[1], pair[0]))
+            result["activities"] = dict(ranked[:args.top_activities])
     except (OSError, UnicodeError, csv.Error, ValueError) as exc:
         parser.error(str(exc))
     print(json.dumps(result, indent=2, ensure_ascii=False))

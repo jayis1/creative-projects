@@ -6,7 +6,7 @@ Discover a compact process model from event-log CSVs. It groups events by case, 
 
 From this directory run `python3 process_miner.py --demo`. The JSON output includes two cases: `order` branches to `pay` and `cancel`; `pay` continues to `ship`.
 
-Analyze a CSV with columns `case,activity,timestamp` using `python3 process_miner.py events.csv`.
+Analyze a CSV with columns `case,activity,timestamp` using `python3 process_miner.py events.csv`. `--min-edge-count 3` suppresses rare edges; `--top-activities 5` limits the frequency list to its five most common labels. Invalid non-positive limits are rejected.
 
 ## How it works
 

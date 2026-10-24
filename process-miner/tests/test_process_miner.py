@@ -1,8 +1,11 @@
+import contextlib
+import io
+import json
 import sys
 import unittest
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from process_miner import discover
+from process_miner import discover, main
 
 class DiscoveryTests(unittest.TestCase):
     def test_counts_trace_edges(self):
@@ -20,6 +23,14 @@ class DiscoveryTests(unittest.TestCase):
 
     def test_empty_log(self):
         self.assertEqual(discover([])["cases"], 0)
+
+    def test_cli_threshold_and_top_activities(self):
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            self.assertEqual(main(["--demo", "--min-edge-count", "2", "--top-activities", "1"]), 0)
+        model = json.loads(output.getvalue())
+        self.assertEqual(model["directly_follows"], [])
+        self.assertEqual(model["activities"], {"order": 2})
 
 if __name__ == "__main__":
     unittest.main()
