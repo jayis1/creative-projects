@@ -34,6 +34,24 @@ class PacketTests(unittest.TestCase):
             with self.assertRaises(DecodeError):
                 read_pcap(path)
 
+    def test_fragmented_ipv4_is_rejected(self):
+        frame = bytearray(demo_frame())
+        frame[20:22] = struct.pack("!H", 0x2000)  # MF flag
+        with self.assertRaises(DecodeError):
+            decode_frame(bytes(frame))
+
+    def test_udp_length_below_header_is_rejected(self):
+        frame = bytearray(demo_frame())
+        frame[38:40] = struct.pack("!H", 7)
+        with self.assertRaises(DecodeError):
+            decode_frame(bytes(frame))
+
+    def test_udp_length_past_ip_payload_is_rejected(self):
+        frame = bytearray(demo_frame())
+        frame[38:40] = struct.pack("!H", 100)
+        with self.assertRaises(DecodeError):
+            decode_frame(bytes(frame))
+
     def test_short_frame(self):
         with self.assertRaises(DecodeError):
             decode_frame(b"short")
