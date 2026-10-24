@@ -6,7 +6,7 @@ import sys
 from automata_inference import infer
 
 
-def main(argv=None):
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Infer a DFA from positive/negative JSON word lists")
     parser.add_argument("samples", help="JSON file with positive and negative arrays")
     parser.add_argument("--minimize", action="store_true", help="minimize the inferred DFA")
@@ -14,6 +14,8 @@ def main(argv=None):
     try:
         with open(args.samples, encoding="utf-8") as stream:
             data = json.load(stream)
+        if not isinstance(data, dict) or not isinstance(data.get("positive"), list) or not isinstance(data.get("negative"), list):
+            raise ValueError("positive and negative samples must be arrays")
         dfa = infer(data["positive"], data["negative"])
         if args.minimize:
             dfa = dfa.minimize()

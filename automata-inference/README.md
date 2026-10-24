@@ -30,7 +30,7 @@ Example output (the transition state IDs are deterministic):
 }
 ```
 
-Run `python3 cli.py --help` for options. Add `--minimize` to compact equivalent states. The library also supports ordered batch classification with `accepts_many` and shortest distinguishing-word checks between two hypotheses with `distinguishing_word`; equivalent machines return `None`. Input JSON uses two arrays, `positive` and `negative`. Library example:
+Run `python3 cli.py --help` for options. Add `--minimize` to compact equivalent states. The library also supports ordered batch classification with `accepts_many` and shortest distinguishing-word checks between two hypotheses with `distinguishing_word`; equivalent machines return `None`. Input JSON must contain `positive` and `negative` arrays of strings; malformed schemas fail with a concise error and exit status 2. The learner rejects contradictory labels and non-string samples. The library has no runtime dependencies.
 
 ```python
 from automata_inference import infer
@@ -41,3 +41,7 @@ print(machine.accepts("cat"))  # True
 ## Tests
 
 Run `python3 -m unittest discover -s automata-inference -p 'test_*.py'` from the repository root.
+
+## Known Issues (Resolved)
+
+- The CLI previously treated a JSON string in place of a sample array as a collection of one-character words and exited successfully. A regression test reproduced the false success before the fix; the CLI now validates the JSON object and array fields and returns status 2 with a clear diagnostic. The test suite covers this red-to-green case.

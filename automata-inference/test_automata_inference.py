@@ -1,6 +1,12 @@
+import contextlib
+import io
+import json
+import tempfile
 import unittest
+from pathlib import Path
 
 from automata_inference import infer
+from cli import main
 
 
 class InferenceTests(unittest.TestCase):
@@ -26,6 +32,16 @@ class InferenceTests(unittest.TestCase):
         smaller = machine.minimize()
         for word in ["", "0", "00", "000", "1", "01", "001", "0000"]:
             self.assertEqual(machine.accepts(word), smaller.accepts(word))
+
+    def test_cli_rejects_non_array_sample_fields(self):
+        with tempfile.TemporaryDirectory() as directory:
+            sample_file = Path(directory) / "samples.json"
+            sample_file.write_text(json.dumps({"positive": "ab", "negative": []}), encoding="utf-8")
+            stderr = io.StringIO()
+            with contextlib.redirect_stderr(stderr):
+                result = main([str(sample_file)])
+            self.assertEqual(result, 2)
+            self.assertIn("arrays", stderr.getvalue())
 
     def test_batch_classification_and_equivalence_witness(self):
         machine = infer(["a", "aa"], ["", "b"])
