@@ -25,6 +25,18 @@ class ModelCheckTests(unittest.TestCase):
         self.assertTrue(check(self.ts, F.both(F.atom('start'), F.neg(F.atom('goal')))))
         self.assertTrue('a' in satisfying(self.ts, F.either(F.atom('start'), F.atom('goal'))))
 
+    def test_until_operators(self):
+        condition, goal = F.either(F.atom('start'), F.atom('mid')), F.atom('goal')
+        self.assertEqual(satisfying(self.ts, F.EU(condition, goal)), {'a', 'b', 'c'})
+        self.assertTrue(check(self.ts, F.EU(condition, goal)))
+        self.assertFalse(check(self.ts, F.AU(condition, goal)))
+        loop = TransitionSystem.build('x', {'x':['x','y'], 'y':['y']}, {'x':['ok']})
+        self.assertTrue(check(loop, F.EU(F.atom('ok'), F.atom('missing')) ) is False)
+        self.assertFalse(check(loop, F.AU(F.atom('ok'), F.atom('missing'))))
+
+    def test_until_goal_holds_immediately(self):
+        self.assertTrue(check(self.ts, F.EU(F.atom('missing'), F.atom('start'))))
+
     def test_shortest_path(self):
         self.assertEqual(self.ts.shortest_path(lambda s: s == 'c'), ['a','b','c'])
 

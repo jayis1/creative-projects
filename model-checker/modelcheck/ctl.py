@@ -27,6 +27,10 @@ class Formula:
     def EG(a): return Formula('EG', (a,))
     @staticmethod
     def AG(a): return Formula('AG', (a,))
+    @staticmethod
+    def EU(condition, goal): return Formula('EU', (condition, goal))
+    @staticmethod
+    def AU(condition, goal): return Formula('AU', (condition, goal))
 
 
 def satisfying(ts: TransitionSystem, f: Formula) -> set[State]:
@@ -52,6 +56,14 @@ def satisfying(ts: TransitionSystem, f: Formula) -> set[State]:
         while True:
             previous = result
             result = {s for s in result if (any if op == 'EG' else all)(t in result for t in ts.successors(s))}
+            if result == previous: return result
+    if op in ('EU', 'AU'):
+        condition, goal = (satisfying(ts, x) for x in args)
+        result = set(goal)
+        while True:
+            previous = result.copy()
+            continuation = {s for s in condition if (any if op == 'EU' else all)(t in result for t in ts.successors(s))}
+            result |= continuation
             if result == previous: return result
     raise ValueError(f'unsupported CTL operator: {op}')
 
