@@ -24,6 +24,11 @@ class PetriNetTests(unittest.TestCase):
         dead_end = PetriNet({'p': 0}, ())
         self.assertEqual(dead_end.deadlocks(), {(0,)})
 
+    def test_initial_marking_respects_token_cap(self):
+        net = PetriNet({'p': 3}, ())
+        with self.assertRaises(ValueError):
+            net.reachable(token_cap=2)
+
     def test_resource_bounds(self):
         with self.assertRaises(ValueError):
             self.net.simulate(-1)

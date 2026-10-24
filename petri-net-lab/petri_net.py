@@ -78,6 +78,9 @@ class PetriNet:
         if type(token_cap) is not int or token_cap < 0:
             raise ValueError("token_cap must be non-negative")
         seen = {self.initial}
+        # Check the seed state too; applying the cap only to successors leaks an invalid state.
+        if max(self.initial, default=0) > token_cap:
+            raise ValueError("initial marking exceeds token_cap")
         queue = deque([self.initial])
         while queue:
             marking = queue.popleft()

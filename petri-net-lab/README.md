@@ -33,6 +33,10 @@ Output:
 
 The distinctive focus is bounded exhaustive state-space exploration alongside a trace simulator, rather than a GUI workflow or a general-purpose workflow engine.
 
+## Known Issues (Resolved)
+
+- An initial marking above `token_cap` was returned as reachable even though all later markings were constrained. `reachable` now rejects that initial condition; regression test: `test_initial_marking_respects_token_cap` (verified failing before the fix and passing afterward).
+
 ## Tests
 
 Run `python3 -m unittest discover -s tests -v` from this directory. No third-party packages or network access are required.
