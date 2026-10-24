@@ -33,6 +33,32 @@ class DFA:
             state = nxt
         return self.states[state].accepting
 
+    def accepts_many(self, words: Iterable[str]) -> list[bool]:
+        """Classify a sequence of words in input order."""
+        return [self.accepts(word) for word in words]
+
+    def distinguishing_word(self, other: "DFA") -> str | None:
+        """Return a shortest word on which two DFAs disagree, or None if equivalent."""
+        alphabet = sorted({ch for machine in (self, other) for state in machine.states
+                           for ch in state.transitions})
+        start = (self.start, other.start)
+        queue = deque([(start, "")])
+        seen = {start}
+        while queue:
+            (left, right), prefix = queue.popleft()
+            left_accepts = left >= 0 and self.states[left].accepting
+            right_accepts = right >= 0 and other.states[right].accepting
+            if left_accepts != right_accepts:
+                return prefix
+            for symbol in alphabet:
+                a = self.states[left].transitions.get(symbol, -1) if left >= 0 else -1
+                b = other.states[right].transitions.get(symbol, -1) if right >= 0 else -1
+                pair = (a, b)
+                if pair not in seen:
+                    seen.add(pair)
+                    queue.append((pair, prefix + symbol))
+        return None
+
     def to_dict(self) -> dict:
         """Return a stable JSON-compatible representation."""
         return {"start": self.start, "accepting": [i for i, s in enumerate(self.states) if s.accepting],

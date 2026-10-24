@@ -27,6 +27,17 @@ class InferenceTests(unittest.TestCase):
         for word in ["", "0", "00", "000", "1", "01", "001", "0000"]:
             self.assertEqual(machine.accepts(word), smaller.accepts(word))
 
+    def test_batch_classification_and_equivalence_witness(self):
+        machine = infer(["a", "aa"], ["", "b"])
+        minimized = machine.minimize()
+        self.assertEqual(machine.accepts_many(["a", "", "aa"]), [True, False, True])
+        self.assertIsNone(machine.distinguishing_word(minimized))
+        different = infer(["a"], ["", "aa"])
+        witness = machine.distinguishing_word(different)
+        self.assertIsNotNone(witness)
+        assert witness is not None
+        self.assertNotEqual(machine.accepts(witness), different.accepts(witness))
+
 
 if __name__ == "__main__":
     unittest.main()
