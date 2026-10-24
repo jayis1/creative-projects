@@ -94,5 +94,6 @@ A monorepo of AI-generated creative coding projects. Each project lives in its o
 | [dependency-resolver](./dependency-resolver) | Offline semver dependency resolver with transitive graph expansion, constrained-first backtracking, prerelease ordering, JSON manifest CLI, and tests |
 | [spiking-neuron-sim](./spiking-neuron-sim) | Dependency-free event-driven leaky integrate-and-fire network simulator with delayed synapses, refractory dynamics, deterministic stimuli, STDP, CLI, and tests |
 | [debruijn-assembler](./debruijn-assembler) | From-scratch DNA read assembler using weighted de Bruijn graphs, abundance filtering, FASTA/FASTQ parsing, N50 statistics, CLI, and tests |
+| [petri-net-lab](./petri-net-lab) | Bounded weighted Petri-net simulator with deterministic traces, BFS reachability exploration, token/state limits, and pure-stdlib tests |
 
 ---
