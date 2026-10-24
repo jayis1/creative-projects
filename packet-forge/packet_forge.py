@@ -7,11 +7,8 @@ import json
 import struct
 from typing import Iterable
 
-
-class DecodeError(ValueError):
-    """A packet is truncated or contains unsupported framing."""
-
-
+from errors import DecodeError
+from pcap import read_pcap
 @dataclass(frozen=True)
 class Packet:
     source: str
@@ -93,16 +90,22 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--demo", action="store_true", help="decode the built-in sample")
     parser.add_argument("--hex", help="decode one Ethernet frame supplied as hex")
+    parser.add_argument("--pcap", help="read a bounded classic Ethernet pcap file")
     args = parser.parse_args(argv)
+    if sum(bool(x) for x in (args.demo, args.hex, args.pcap)) != 1:
+        parser.error("choose exactly one of --demo, --hex, or --pcap")
     if args.demo:
         frames = [demo_frame()]
-    elif args.hex:
+    elif args.pcap:
+        try:
+            frames = read_pcap(args.pcap)
+        except (DecodeError, OSError) as exc:
+            parser.error(str(exc))
+    else:
         try:
             frames = [bytes.fromhex(args.hex)]
         except ValueError as exc:
             parser.error(f"invalid hex input: {exc}")
-    else:
-        parser.error("choose --demo or --hex")
     try:
         print(json.dumps(summarize(frames), indent=2, sort_keys=True))
     except DecodeError as exc:

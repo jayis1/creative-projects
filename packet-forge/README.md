@@ -22,7 +22,17 @@ Decode a frame represented as hexadecimal:
 python3 packet_forge.py --hex 00112233445566778899aabb0800
 ```
 
-This short input is accepted as a frame candidate but counted as rejected because its Ethernet header is truncated. As a library, call `decode_frame(bytes)` or `summarize(iterable_of_frames)`.
+Read a classic Ethernet pcap capture:
+
+```sh
+python3 packet_forge.py --pcap capture.pcap
+```
+
+The pcap reader supports classic pcap v2.4 in either byte order, requires Ethernet link type, caps files at 64 MiB and frames at 10,000 by default, and rejects truncated/oversized records. It does not support pcapng, VLAN-tagged IPv4, IPv6, or fragmented IPv4.
+
+## How it works
+
+The decoder checks Ethernet framing, IPv4 version/header length/total length and fragmentation, then validates UDP's declared length before exposing metadata. `DecodeError` rejects malformed or unsupported frames. `summarize` aggregates protocol and endpoint counts while discarding input buffers after each frame. Parsing is linear in frame size and the largest accepted frame is 65,535 bytes.
 
 ## Tests
 
