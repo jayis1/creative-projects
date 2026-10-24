@@ -29,7 +29,7 @@ Output:
 {(1, 0), (0, 1)}
 ```
 
-`simulate(steps, schedule=None)` accepts an optional transition-name sequence. `reachable(max_states=10000, token_cap=100)` returns a set of markings. Unknown places, duplicate arcs, invalid weights, disabled firings, malformed markings, and invalid resource limits are rejected.
+`simulate(steps, schedule=None)` accepts an optional transition-name sequence. `reachable(max_states=10000, token_cap=100)` returns a set of markings. `deadlocks(max_states=10000, token_cap=100)` filters the reachable set for markings where no transition is enabled, useful for detecting terminal states in workflow models. Unknown places, duplicate arcs, invalid weights, disabled firings, malformed markings, and invalid resource limits are rejected.
 
 The distinctive focus is bounded exhaustive state-space exploration alongside a trace simulator, rather than a GUI workflow or a general-purpose workflow engine.
 

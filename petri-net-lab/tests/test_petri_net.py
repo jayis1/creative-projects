@@ -19,6 +19,11 @@ class PetriNetTests(unittest.TestCase):
     def test_simulation_stops_when_deadlocked(self):
         self.assertEqual(len(self.net.simulate(5, ('start',))), 2)
 
+    def test_deadlock_analysis(self):
+        self.assertEqual(self.net.deadlocks(), set())
+        dead_end = PetriNet({'p': 0}, ())
+        self.assertEqual(dead_end.deadlocks(), {(0,)})
+
     def test_resource_bounds(self):
         with self.assertRaises(ValueError):
             self.net.simulate(-1)

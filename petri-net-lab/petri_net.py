@@ -93,6 +93,11 @@ class PetriNet:
                         queue.append(nxt)
         return seen
 
+    def deadlocks(self, max_states: int = 10_000, token_cap: int = 100) -> set[tuple[int, ...]]:
+        """Return reachable markings with no enabled transition."""
+        states = self.reachable(max_states=max_states, token_cap=token_cap)
+        return {m for m in states if not any(self.enabled(m, t) for t in self.transitions)}
+
     def _check_marking(self, marking: tuple[int, ...]) -> None:
         if len(marking) != len(self.places) or any(type(n) is not int or n < 0 for n in marking):
             raise ValueError("marking must contain one non-negative integer per place")
