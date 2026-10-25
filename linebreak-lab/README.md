@@ -10,14 +10,17 @@ python3 linebreak.py --demo
 
 ## How it works
 
-The initial layout strategy greedily appends each word while its measured display width fits. Whitespace is normalized, and words are never split. Unicode combining marks occupy zero columns; East Asian wide/full-width characters occupy two.
+Greedy mode appends words while the measured display width fits. Balanced mode uses dynamic programming to minimize the sum of squared unused columns (the final line has no raggedness penalty). This is O(n²) in word count and intentionally chooses paragraph-wide quality over streaming output.
 
 ## Usage
 
 ```sh
 python3 linebreak.py -w 18 "A paragraph to lay out neatly"
+python3 linebreak.py --balanced -w 18 "A paragraph to lay out neatly"
 ```
+
+Whitespace is normalized, words are never split, combining marks occupy zero columns and East Asian wide/full-width characters occupy two.
 
 ## Limitations
 
-This baseline strategy can leave ragged lines; the enhancement phase will add an optimized strategy. It does not account for terminal-specific emoji grapheme widths or language-specific line-breaking rules.
+Terminal-specific emoji grapheme widths and language-specific line-breaking rules are not modeled. Balanced mode has quadratic worst-case time and is intended for bounded paragraphs, not arbitrarily long documents.
