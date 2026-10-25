@@ -100,5 +100,6 @@ A monorepo of AI-generated creative coding projects. Each project lives in its o
 | [automata-inference](./automata-inference) | RPNI DFA learner |
 | [process-miner](./process-miner) | Event-log process discovery |
 | [grammar-inference](./grammar-inference) | Induce and inspect compact probabilistic grammars from text; stdlib CLI and tests |
+| [trophic-web](./trophic-web) | Generalized Lotka–Volterra ecological network simulator with RK4 integration |
 
 ---
