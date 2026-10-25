@@ -18,6 +18,10 @@ python3 -m unittest discover -s geohash-atlas/tests -v
 
 `python3 -m geohash_atlas neighbors ezs42` lists the eight adjacent cells and the cell's height/width in degrees. Neighbor cells are not wrapped across globe edges; unavailable neighbors appear as `null`.
 
+## Known Issues (Resolved)
+
+- Boolean precision was accepted as integer `1` because Python treats `bool` as an `int`; precision validation now explicitly rejects booleans, covered by a regression test.
+
 ## Limitations
 
 This implementation reports rectangular geohash cells; it does not calculate geodesic distances or handle polygons crossing the antimeridian as a single region.

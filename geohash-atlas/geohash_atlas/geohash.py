@@ -16,7 +16,7 @@ def encode(latitude: float, longitude: float, precision: int = 8) -> str:
     """Encode coordinates as a base-32 geohash of the requested length."""
     if not -90 <= latitude <= 90 or not -180 <= longitude <= 180:
         raise ValueError("latitude/longitude outside valid range")
-    if not isinstance(precision, int) or not 1 <= precision <= 12:
+    if isinstance(precision, bool) or not isinstance(precision, int) or not 1 <= precision <= 12:
         raise ValueError("precision must be an integer from 1 to 12")
     lat_range, lon_range = [-90.0, 90.0], [-180.0, 180.0]
     bits = (16, 8, 4, 2, 1)
