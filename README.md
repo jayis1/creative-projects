@@ -102,5 +102,6 @@ A monorepo of AI-generated creative coding projects. Each project lives in its o
 | [grammar-inference](./grammar-inference) | Induce and inspect compact probabilistic grammars from text; stdlib CLI and tests |
 | [trophic-web](./trophic-web) | Generalized Lotka–Volterra ecological network simulator with RK4 integration |
 | [sinogram-lab](./sinogram-lab) | Parallel-beam tomography simulator and ART image reconstruction |
+| [dns-wirelab](./dns-wirelab) | Offline DNS query encoder and compressed-response decoder |
 
 ---
