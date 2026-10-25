@@ -14,6 +14,10 @@ class SinogramTests(unittest.TestCase):
         self.assertEqual(len(project(image, angles=4, detectors=8)), 4)
         self.assertEqual(len(project(image, angles=4, detectors=8)[0]), 8)
 
+    def test_zero_detectors_is_rejected(self):
+        with self.assertRaises(ValueError):
+            project(phantom(3), angles=2, detectors=0)
+
     def test_projection_and_reconstruction_are_finite(self):
         image = phantom(5)
         scan = project(image, angles=8, detectors=10)

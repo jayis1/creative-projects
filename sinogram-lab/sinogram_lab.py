@@ -66,9 +66,10 @@ def project(image: list[list[float]], angles: int = 18, detectors: int | None = 
     """Return angle-major line integrals, using parallel rays."""
     size = len(image)
     _validate_image(image)
-    if not 1 <= angles <= 180 or not 1 <= (detectors or size * 2) <= 512:
+    if detectors is None:
+        detectors = size * 2
+    if not 1 <= angles <= 180 or not 1 <= detectors <= 512:
         raise ValueError("angles must be 1..180 and detectors 1..512")
-    detectors = detectors or size * 2
     out = []
     for a in range(angles):
         theta = math.pi * a / angles

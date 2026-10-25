@@ -19,7 +19,11 @@ The first command prints the size, scan geometry, seed, MAE, and an ASCII image.
 
 ## Testing
 
-Run `python3 -m unittest discover -s tests -v`. Tests cover deterministic phantom/projections, a projection reconstruction invariant, ASCII rendering, and invalid inputs. Only Python 3 standard library is required.
+Run `python3 -m unittest discover -s tests -v`. Tests cover deterministic phantom/projections, a projection reconstruction invariant, ASCII rendering, PGM export, and invalid inputs. Only Python 3 standard library is required.
+
+## Known Issues (Resolved)
+
+- Explicit `detectors=0` was silently treated as the default detector count because zero is falsey. `test_zero_detectors_is_rejected` reproduced the issue; detector defaults now apply only when the argument is `None`, and zero raises `ValueError`.
 
 ## Why this version
 
