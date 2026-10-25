@@ -16,7 +16,7 @@ python3 -m geohash_atlas decode ezs42
 python3 -m unittest discover -s geohash-atlas/tests -v
 ```
 
-The example encode result is `ezs42`. Decode returns a JSON object containing the cell bounds. No dependencies or network access are required.
+`python3 -m geohash_atlas neighbors ezs42` lists the eight adjacent cells and the cell's height/width in degrees. Neighbor cells are not wrapped across globe edges; unavailable neighbors appear as `null`.
 
 ## Limitations
 

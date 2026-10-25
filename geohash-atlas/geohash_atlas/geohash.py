@@ -52,3 +52,33 @@ def decode(code: str) -> Bounds:
             bounds[0 if _DECODE[char] & mask else 1] = midpoint
             even = not even
     return Bounds(lat[0], lon[0], lat[1], lon[1])
+
+
+def neighbors(code: str) -> dict[str, str | None]:
+    """Return the 8 adjacent cells, using None where the globe edge is crossed.
+
+    Neighbors are derived from cell centers, then checked against the original
+    cell width/height so longitude wrapping cannot silently return a distant cell.
+    """
+    cell = decode(code)
+    lat_step, lon_step = cell.north - cell.south, cell.east - cell.west
+    lat_center = (cell.south + cell.north) / 2
+    lon_center = (cell.west + cell.east) / 2
+    result = {}
+    for dy, yname in ((1, "n"), (0, ""), (-1, "s")):
+        for dx, xname in ((-1, "w"), (0, ""), (1, "e")):
+            if dx == 0 and dy == 0:
+                continue
+            lat, lon = lat_center + dy * lat_step, lon_center + dx * lon_step
+            key = yname + xname
+            if lat < -90 or lat > 90 or lon < -180 or lon > 180:
+                result[key] = None
+            else:
+                result[key] = encode(lat, lon, len(code))
+    return result
+
+
+def cell_size(code: str) -> tuple[float, float]:
+    """Return cell height and width in degrees."""
+    b = decode(code)
+    return b.north - b.south, b.east - b.west
