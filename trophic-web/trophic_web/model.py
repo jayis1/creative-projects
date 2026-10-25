@@ -35,7 +35,12 @@ def derivative(web: Web, state: tuple[float, ...]) -> tuple[float, ...]:
     n = len(web.names)
     if len(state) != n or any(not _finite(x) or x < 0 for x in state):
         raise ValueError("state must contain one finite nonnegative abundance per species")
-    return tuple(state[i] * (web.growth[i] + sum(a * x for a, x in zip(web.interactions[i], state))) for i in range(n))
+    values = tuple(state[i] * (web.growth[i] + sum(
+        a * x for a, x in zip(web.interactions[i], state)
+    )) for i in range(n))
+    if any(not _finite(value) for value in values):
+        raise OverflowError("derivative became non-finite; reduce abundances or interaction strength")
+    return values
 
 
 def _add(x: tuple[float, ...], y: tuple[float, ...], scale: float) -> tuple[float, ...]:

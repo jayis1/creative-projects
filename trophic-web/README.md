@@ -36,6 +36,10 @@ Unlike a fixed textbook predator–prey pair, the model accepts an arbitrary int
 - Export complete trajectories to CSV, while keeping terminal output sampled.
 - Include a ready-to-run pond food-web fixture.
 
+## Known Issues (Resolved)
+
+- Finite parameters and abundances could overflow during derivative calculation, returning `inf` instead of an explicit error. `test_derivative_rejects_finite_inputs_that_overflow` reproduces this case; derivatives now raise `OverflowError` on non-finite results.
+
 ## Limitations
 
 The supplied web is pedagogical. There is no parameter fitting, adaptive step sizing, stochastic events, or formal equilibrium/stability analysis. Large steps and strong interactions can be numerically unstable; reduce `--dt`.

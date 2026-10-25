@@ -12,6 +12,11 @@ class ModelTests(unittest.TestCase):
         web = Web(("a",), (1.0,), ((-0.5,),))
         self.assertEqual(derivative(web, (2.0,)), (0.0,))
 
+    def test_derivative_rejects_finite_inputs_that_overflow(self):
+        web = Web(("a",), (1e308,), ((0.0,),))
+        with self.assertRaises(OverflowError):
+            derivative(web, (2.0,))
+
     def test_logistic_solution_grows_toward_capacity(self):
         web = Web(("a",), (1.0,), ((-1.0,),))
         states = simulate(web, (0.2,), 0.02, 250)
