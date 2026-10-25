@@ -1,7 +1,10 @@
-import math
+import json
+import tempfile
 import unittest
+from pathlib import Path
 
 from trophic_web.model import Web, derivative, meadow, simulate, step
+from trophic_web.io import load_web, write_csv
 
 
 class ModelTests(unittest.TestCase):
@@ -33,6 +36,21 @@ class ModelTests(unittest.TestCase):
     def test_simulation_is_deterministic(self):
         web, start = meadow()
         self.assertEqual(simulate(web, start, steps=20), simulate(web, start, steps=20))
+
+    def test_json_load_and_csv_export(self):
+        payload = {"names": ["reed"], "growth": [0.2], "interactions": [[-0.1]], "initial": [1.0]}
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "web.json"
+            output = Path(directory) / "trajectory.csv"
+            source.write_text(json.dumps(payload), encoding="utf-8")
+            web, initial = load_web(source)
+            trajectory = simulate(web, initial, steps=2)
+            write_csv(output, web, trajectory, 0.1)
+            rows = output.read_text(encoding="utf-8").splitlines()
+        self.assertEqual(web.names, ("reed",))
+        self.assertEqual(initial, (1.0,))
+        self.assertEqual(len(rows), 4)
+        self.assertEqual(rows[0], "time,reed")
 
 
 if __name__ == "__main__":
