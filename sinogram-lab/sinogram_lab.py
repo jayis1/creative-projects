@@ -5,16 +5,23 @@ import argparse
 import math
 import random
 
+from io_tools import save_pgm
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Toy parallel-beam tomography with algebraic reconstruction")
     parser.add_argument("--demo", action="store_true", help="run the deterministic reconstruction demo")
     parser.add_argument("--seed", type=int, default=7, help="noise seed (default: 7)")
     parser.add_argument("--size", type=int, default=12, help="square phantom size, 2..128 (default: 12)")
+    parser.add_argument("--output", help="optional path for reconstructed ASCII PGM image")
     args = parser.parse_args()
     if not 2 <= args.size <= 128:
         parser.error("--size must be between 2 and 128")
+    result = reconstruct_demo(args.seed, args.size)
     print(demo(args.seed, args.size))
+    if args.output:
+        save_pgm(result, args.output)
+        print(f"Wrote {args.output}")
 
 
 def phantom(size: int = 16) -> list[list[float]]:
@@ -119,6 +126,14 @@ def render(image: list[list[float]]) -> str:
     ramp = " .:-=+*#%@"
     peak = max((v for row in image for v in row), default=0.0)
     return "\n".join("".join(ramp[min(9, int(v / peak * 9))] if peak else " " for v in row) for row in image)
+
+
+def reconstruct_demo(seed: int = 7, size: int = 12) -> list[list[float]]:
+    """Create the seeded noisy phantom reconstruction used by CLI export."""
+    rng = random.Random(seed)
+    scan = project(phantom(size), angles=16, detectors=size * 2)
+    noisy = [[max(0.0, v + rng.gauss(0, .025)) for v in row] for row in scan]
+    return reconstruct(noisy, size, iterations=10)
 
 
 def demo(seed: int = 7, size: int = 12) -> str:

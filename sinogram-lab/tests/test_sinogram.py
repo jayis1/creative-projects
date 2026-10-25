@@ -1,6 +1,9 @@
 import math
+import tempfile
 import unittest
+from pathlib import Path
 
+from io_tools import save_pgm
 from sinogram_lab import demo, phantom, project, reconstruct, render
 
 
@@ -24,6 +27,13 @@ class SinogramTests(unittest.TestCase):
     def test_render_shape(self):
         lines = render([[0, 1], [0.5, 0]]) .splitlines()
         self.assertEqual([len(line) for line in lines], [2, 2])
+
+    def test_pgm_export(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "image.pgm"
+            save_pgm([[0, 1], [.5, .25]], target)
+            self.assertEqual(target.read_text().splitlines()[:4], ["P2", "# Sinogram Lab reconstruction", "2 2", "255"])
+            self.assertEqual(target.read_text().splitlines()[-2:], ["0 255", "128 64"])
 
     def test_invalid_inputs(self):
         for call in (lambda: phantom(1), lambda: project([[1, 2], [3]], 4),

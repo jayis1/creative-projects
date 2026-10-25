@@ -11,6 +11,7 @@ A dependency-free tomography sandbox for learners exploring computational imagin
 ```sh
 python3 run.py --demo
 python3 run.py --demo --size 16 --seed 19
+python3 run.py --demo --output reconstruction.pgm
 python3 -m unittest discover -s tests -v
 ```
 
