@@ -42,8 +42,9 @@ def balanced_wrap(text: str, width: int) -> list[str]:
     if not n:
         return []
     # dp[i] is minimum remaining raggedness for words starting at i.
-    costs = [0.0] * (n + 1)
-    ends = [n] * n
+    costs = [float("inf")] * (n + 1)
+    costs[n] = 0.0
+    ends = [0] * n
     for i in range(n - 1, -1, -1):
         used = 0
         for j in range(i, n):
