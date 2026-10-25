@@ -103,5 +103,6 @@ A monorepo of AI-generated creative coding projects. Each project lives in its o
 | [trophic-web](./trophic-web) | Generalized Lotka–Volterra ecological network simulator with RK4 integration |
 | [sinogram-lab](./sinogram-lab) | Parallel-beam tomography simulator and ART image reconstruction |
 | [dns-wirelab](./dns-wirelab) | Offline DNS query encoder and compressed-response decoder |
+| [queueing-lab](./queueing-lab) | Discrete-event open queueing-network simulator with probabilistic rework |
 
 ---
