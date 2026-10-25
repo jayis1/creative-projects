@@ -43,6 +43,12 @@ class QueueingNetworkTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 load_network(str(path))
 
+    def test_repeated_runs_are_independent_and_reproducible(self):
+        network = QueueingNetwork([Station("desk", 1, 1.0)], [Route("desk", None, 1.0)], seed=9)
+        first = network.run(customers=5, interarrival_mean=1.0)
+        second = network.run(customers=5, interarrival_mean=1.0)
+        self.assertEqual(first, second)
+
     def test_invalid_run_limits_are_rejected(self):
         net = QueueingNetwork([Station("a", 1, 1.0)], [Route("a", None, 1.0)])
         for customers, gap in [(0, 1), (3, 0), (3, float("inf"))]:

@@ -37,6 +37,10 @@ python3 queueing_lab.py --network example-network.json --customers 500 --seed 7 
 
 JSON files have `stations` and `routes` arrays matching the Python dataclasses; files larger than 1 MiB are rejected. Loading parses data only and never executes it.
 
+## Known Issues (Resolved)
+
+- Reusing a `QueueingNetwork` instance accumulated prior station metrics and continued the random stream, so a second batch was not independent. The regression test `test_repeated_runs_are_independent_and_reproducible` reproduced unequal reports before the fix; `run()` now resets station runtime state and initializes its RNG from the configured seed on each invocation.
+
 ## Tests
 
 ```sh

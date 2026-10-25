@@ -66,6 +66,7 @@ class QueueingNetwork:
         for name, outgoing in self.routes.items():
             if not outgoing or abs(sum(r.probability for r in outgoing) - 1.0) > 1e-9:
                 raise ValueError(f"routes from {name!r} must sum to 1")
+        self.seed = seed
         self.rng = random.Random(seed)
 
     def run(self, *, customers: int, interarrival_mean: float, max_events: int = 2_000_000) -> dict:
@@ -77,6 +78,10 @@ class QueueingNetwork:
         if not isinstance(max_events, int) or max_events < customers or max_events > 2_000_000:
             raise ValueError("max_events must be an integer from customers to 2000000")
 
+        # Each invocation is an independent batch; discard prior metrics and RNG state.
+        self.states = {name: _StationState(state.spec, [_Server() for _ in state.servers])
+                       for name, state in self.states.items()}
+        self.rng = random.Random(self.seed)
         heap: list[tuple[float, int, str, int, float]] = []
         seq = 0
         first = next(iter(self.states))
@@ -113,7 +118,6 @@ class QueueingNetwork:
                 completed += 1
             else:
                 heapq.heappush(heap, (finish, seq, destination, cid, finish)); seq += 1
-        result = {"seed": self.rng.seed if False else None}
         result = {"customers_entered": customers, "completed": completed, "events": processed, "makespan": last_time,
                   "stations": {}}
         for name, st in self.states.items():
