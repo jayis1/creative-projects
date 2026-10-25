@@ -1,0 +1,13 @@
+{
+  "stations": [
+    {"name": "intake", "servers": 1, "mean_service": 0.8},
+    {"name": "inspection", "servers": 2, "mean_service": 1.0},
+    {"name": "repair", "servers": 1, "mean_service": 2.0}
+  ],
+  "routes": [
+    {"source": "intake", "destination": "inspection", "probability": 1.0},
+    {"source": "inspection", "destination": "repair", "probability": 0.25},
+    {"source": "inspection", "destination": null, "probability": 0.75},
+    {"source": "repair", "destination": "inspection", "probability": 1.0}
+  ]
+}

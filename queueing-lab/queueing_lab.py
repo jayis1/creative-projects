@@ -124,6 +124,26 @@ class QueueingNetwork:
         return result
 
 
+def load_network(path: str, *, seed: int = 0) -> QueueingNetwork:
+    """Load a small JSON network definition (max 1 MiB); no code is evaluated."""
+    from pathlib import Path
+
+    source = Path(path)
+    if source.stat().st_size > 1_048_576:
+        raise ValueError("network JSON exceeds 1 MiB")
+    try:
+        data = json.loads(source.read_text(encoding="utf-8"))
+        if not isinstance(data, dict) or set(data) != {"stations", "routes"}:
+            raise ValueError("network JSON requires exactly stations and routes")
+        if not isinstance(data["stations"], list) or not isinstance(data["routes"], list):
+            raise ValueError("stations and routes must be arrays")
+        stations = [Station(**item) for item in data["stations"]]
+        routes = [Route(**item) for item in data["routes"]]
+    except (OSError, UnicodeError, json.JSONDecodeError, TypeError) as exc:
+        raise ValueError(f"cannot load network JSON: {exc}") from exc
+    return QueueingNetwork(stations, routes, seed=seed)
+
+
 def demo(seed: int = 7, customers: int = 500) -> dict:
     stations = [Station("intake", 1, 0.8), Station("inspection", 2, 1.0), Station("repair", 1, 2.0)]
     routes = [Route("intake", "inspection", 1.0), Route("inspection", "repair", 0.25),
@@ -135,10 +155,16 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run a reproducible service-network simulation")
     parser.add_argument("--customers", type=int, default=500)
     parser.add_argument("--seed", type=int, default=7)
+    parser.add_argument("--network", help="JSON network file (defaults to the built-in demo)")
+    parser.add_argument("--interarrival-mean", type=float, default=1.5)
     args = parser.parse_args(argv)
     try:
-        print(json.dumps(demo(args.seed, args.customers), indent=2, sort_keys=True))
-    except (ValueError, RuntimeError) as exc:
+        network = load_network(args.network, seed=args.seed) if args.network else QueueingNetwork(
+            [Station("intake", 1, 0.8), Station("inspection", 2, 1.0), Station("repair", 1, 2.0)],
+            [Route("intake", "inspection", 1.0), Route("inspection", "repair", 0.25),
+             Route("inspection", None, 0.75), Route("repair", "inspection", 1.0)], seed=args.seed)
+        print(json.dumps(network.run(customers=args.customers, interarrival_mean=args.interarrival_mean), indent=2, sort_keys=True))
+    except (ValueError, RuntimeError, OSError) as exc:
         parser.error(str(exc))
     return 0
 

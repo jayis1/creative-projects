@@ -1,6 +1,9 @@
+import json
+import tempfile
 import unittest
+from pathlib import Path
 
-from queueing_lab import QueueingNetwork, Route, Station, demo
+from queueing_lab import QueueingNetwork, Route, Station, demo, load_network
 
 
 class QueueingNetworkTests(unittest.TestCase):
@@ -27,6 +30,18 @@ class QueueingNetworkTests(unittest.TestCase):
             QueueingNetwork([Station("a", 1, 1.0)], [Route("a", None, 0.8)])
         with self.assertRaises(ValueError):
             QueueingNetwork([Station("a", 1, 1.0)], [Route("a", "missing", 1.0)])
+
+    def test_json_network_load_and_invalid_json(self):
+        definition = {"stations": [{"name": "desk", "servers": 1, "mean_service": 1.0}],
+                      "routes": [{"source": "desk", "destination": None, "probability": 1.0}]}
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "network.json"
+            path.write_text(json.dumps(definition), encoding="utf-8")
+            result = load_network(str(path), seed=2).run(customers=3, interarrival_mean=1.0)
+            self.assertEqual(result["completed"], 3)
+            path.write_text("{}", encoding="utf-8")
+            with self.assertRaises(ValueError):
+                load_network(str(path))
 
     def test_invalid_run_limits_are_rejected(self):
         net = QueueingNetwork([Station("a", 1, 1.0)], [Route("a", None, 1.0)])

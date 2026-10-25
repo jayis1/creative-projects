@@ -27,6 +27,16 @@ print(report["stations"]["counter"])
 
 Each station must have outgoing routes whose nonnegative probabilities sum to one. Service and interarrival means must be positive finite values. Limits: 64 stations, 128 servers per station, 100,000 customers and 2,000,000 processed events. No third-party dependencies or network access are required.
 
+## Load a JSON network
+
+The included example defines the same recirculating inspection/repair model:
+
+```sh
+python3 queueing_lab.py --network example-network.json --customers 500 --seed 7 --interarrival-mean 1.5
+```
+
+JSON files have `stations` and `routes` arrays matching the Python dataclasses; files larger than 1 MiB are rejected. Loading parses data only and never executes it.
+
 ## Tests
 
 ```sh
