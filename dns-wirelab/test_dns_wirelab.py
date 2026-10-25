@@ -31,6 +31,11 @@ class DNSWireTests(unittest.TestCase):
         rr = b'\xc0\x0c' + struct.pack('!HHIH', 15, 1, 300, len(mx)) + mx
         packet = struct.pack('!HHHHHH', 3, 0x8180, 1, 1, 0, 0) + question + rr
         self.assertEqual(parse_packet(packet)['answers'][0]['data'], {'preference': 10, 'exchange': 'mail.test.'})
+    def test_malformed_mx_rejected(self):
+        question = encode_name('x.test') + struct.pack('!HH', 15, 1)
+        rr = b'\xc0\x0c' + struct.pack('!HHIH', 15, 1, 30, 2) + b'\x00\x0a'
+        packet = struct.pack('!HHHHHH', 4, 0x8180, 1, 1, 0, 0) + question + rr
+        with self.assertRaises(DNSFormatError): parse_packet(packet)
     def test_trailing_data_rejected(self):
         with self.assertRaises(DNSFormatError): parse_packet(build_query('x.test') + b'junk')
     def test_unsupported_qtype(self):

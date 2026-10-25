@@ -106,7 +106,8 @@ def parse_packet(packet: bytes) -> dict:
             elif typ in (2, 5, 12):
                 value, consumed = decode_name(packet, pos)
                 if consumed > end: raise DNSFormatError('name exceeds record data')
-            elif typ == 15 and length >= 3:
+            elif typ == 15:
+                if length < 3: raise DNSFormatError('MX data is shorter than preference and exchange name')
                 preference = struct.unpack_from('!H', packet, pos)[0]
                 exchange, consumed = decode_name(packet, pos + 2)
                 if consumed != end: raise DNSFormatError('malformed MX record data')

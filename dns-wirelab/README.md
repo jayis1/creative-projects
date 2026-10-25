@@ -32,6 +32,10 @@ python3 dns_wirelab.py inspect 123481800000000000000000
 
 `python3 -m unittest -v`
 
+## Known Issues (Resolved)
+
+- Malformed MX records with fewer than three RDATA bytes were silently displayed as opaque hex instead of rejected; cause: MX decoding only ran when length was at least three; fix: validate the minimum layout and raise `DNSFormatError`; regression test: `test_malformed_mx_rejected` (confirmed failing before the fix).
+
 ## Limitations
 
 This is a wire-format teaching and fixture tool, not a resolver or a complete DNSSEC implementation. It decodes common record types and renders other record payloads as hex. It rejects trailing data and malformed compression rather than attempting recovery.
