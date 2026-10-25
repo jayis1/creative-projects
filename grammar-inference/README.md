@@ -12,7 +12,7 @@ From the repository root:
 
     python3 grammar-inference/cli.py --help
     python3 grammar-inference/cli.py demo
-    python3 grammar-inference/cli.py learn 'red birds fly' 'small birds fly' --samples 2 --seed 7
+    python3 grammar-inference/cli.py learn 'red birds fly' 'small birds fly' --samples 2 --seed 7 --show-rules
 
 Example:
 

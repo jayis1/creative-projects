@@ -12,6 +12,7 @@ def main(argv=None):
     train.add_argument("sentences", nargs="+")
     train.add_argument("--samples", type=int, default=1)
     train.add_argument("--seed", type=int, default=7)
+    train.add_argument("--show-rules", action="store_true", help="print the induced alternatives and counts")
     args = parser.parse_args(argv)
     corpus = ["red birds fly", "small birds fly", "red birds sing", "small birds sing"] if args.command == "demo" else args.sentences
     try:
@@ -23,6 +24,10 @@ def main(argv=None):
         else:
             if not 1 <= args.samples <= 100:
                 parser.error("--samples must be between 1 and 100")
+            if args.show_rules:
+                for left in sorted(grammar.rules):
+                    alternatives = ", ".join(f"{' + '.join(rhs)} ({count})" for rhs, count in sorted(grammar.rules[left].items()))
+                    print(f"{left.replace(chr(31), ' ')} -> {alternatives}")
             for i in range(args.samples):
                 print(grammar.sample(seed=args.seed + i))
     except ValueError as exc:
