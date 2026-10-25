@@ -8,7 +8,11 @@ DNS tools usually hide the bytes behind a resolver. DNS Wirelab exposes the head
 
 ## How it works
 
-The encoder writes DNS labels and a question header. The decoder validates header/section bounds, follows compression pointers with cycle protection, and decodes A, AAAA, name, and TXT records; unknown RDATA is shown as hex. It never sends packets.
+The encoder writes DNS labels and a question header. The decoder validates header/section bounds, follows compression pointers with cycle protection, and decodes A, AAAA, NS, CNAME, PTR, MX, and TXT records; unknown RDATA is shown as hex. It never sends packets. MX data includes preference and exchange host.
+
+## Enhancements
+
+Phase 2 adds decoding of MX preference/exchange records and tests compressed MX names. Query types and transaction IDs are validated before packet generation.
 
 ## Quick start
 
