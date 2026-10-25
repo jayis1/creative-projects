@@ -68,6 +68,8 @@ def learn(sentences: list[str]) -> Grammar:
             continue
         if len(tokens) > 200:
             raise ValueError("sentences may contain at most 200 tokens")
+        if any("\\x1f" in token for token in tokens):
+            raise ValueError("tokens may not contain the reserved separator")
         spans: dict[tuple[int, int], str] = {}
         for width in range(1, len(tokens) + 1):
             for start in range(len(tokens) - width + 1):

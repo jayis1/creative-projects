@@ -19,6 +19,10 @@ class GrammarTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "at least one token"):
             learn(["  "])
 
+    def test_reserved_separator_rejected(self):
+        with self.assertRaisesRegex(ValueError, "reserved separator"):
+            learn(["alpha\\x1fbeta"])
+
     def test_sample_bounds(self):
         with self.assertRaises(ValueError):
             learn(["a"]).sample(max_tokens=0)

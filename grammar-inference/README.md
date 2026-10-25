@@ -31,4 +31,4 @@ Tokenization is whitespace based; the model does not infer syntax categories or 
 
 ## Known Issues (Resolved)
 
-The Phase 3 review found and fixed the empty-corpus issue: the CLI now rejects missing training sentences with an actionable error instead of constructing an unusable model. A regression test covers it.
+- Tokens containing the internal span separator could collide with encoded nonterminals. Phase 3 reproduced this with `test_reserved_separator_rejected`; learning now rejects that reserved control character with a clear `ValueError`.
