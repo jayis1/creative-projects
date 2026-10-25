@@ -21,5 +21,9 @@ Input JSON contains `signatures` (bands × materials) and `observed` (one value 
 
     python3 -m unittest discover -s tests
 
+## Known Issues (Resolved)
+- Initial validation treated the band-major signature matrix as material-major, rejecting valid measurements. The recovery-mixture test exposed the mismatch; validation now requires one matrix row per observation, and the documented example runs successfully.
+- The bug-hunt boundary suite verifies rejection of mismatched dimensions, non-finite values, zero-information signatures, and nonpositive iteration counts. No further confirmed defects were found.
+
 ## Non-goals
 This educational tool does not perform instrument calibration, uncertainty quantification, or spectral library selection. Results depend on well-conditioned, representative signatures.
