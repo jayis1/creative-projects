@@ -3,7 +3,7 @@
 from __future__ import annotations
 import argparse, json, math
 
-def solve(matrix, observed, *, steps=3000, tolerance=1e-10):
+def solve(matrix, observed, *, steps=3000, tolerance=1e-10, normalize=False):
     """Estimate nonnegative material fractions minimizing ||Ax-y||².
 
     Matrix is band-major: one row per band and one column per material.
@@ -31,5 +31,7 @@ def main():
     p=argparse.ArgumentParser(description=__doc__); p.add_argument('json_file'); p.add_argument('--steps',type=int,default=3000); a=p.parse_args()
     with open(a.json_file, encoding='utf8') as f: data=json.load(f)
     result=solve(data['signatures'],data['observed'],steps=a.steps)
-    print(json.dumps({'fractions':result,'reconstruction':[sum(row[i]*result[i] for i in range(len(result))) for row in data['signatures']]}, indent=2))
+    reconstruction=[sum(row[i]*result[i] for i in range(len(result))) for row in data['signatures']]
+    residual=math.sqrt(sum((predicted-observed)**2 for predicted,observed in zip(reconstruction,data['observed'])))
+    print(json.dumps({'fractions':result,'reconstruction':reconstruction,'residual_l2':residual}, indent=2))
 if __name__=='__main__': main()

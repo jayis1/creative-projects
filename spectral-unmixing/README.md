@@ -10,7 +10,12 @@ Run from this directory:
 
     python3 unmix.py examples/mixture.json
 
-Input JSON contains `signatures` (bands × materials) and `observed` (one value per band). Tune iterations with `--steps 5000`. Output includes estimated fractions and reconstructed bands. Python 3.9+, standard library only.
+Input JSON contains `signatures` (bands × materials) and `observed` (one value per band). Tune iterations with `--steps 5000`. Output includes estimated fractions, reconstructed bands, and an L2 residual quantifying mismatch. Python 3.9+, standard library only.
+
+## Enhancements
+- Report the reconstruction residual so fit quality is visible rather than inferred.
+- Reject malformed dimensions, non-finite numbers, and zero-information signatures.
+
 
 ## Tests
 
