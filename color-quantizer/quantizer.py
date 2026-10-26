@@ -78,11 +78,23 @@ def quantize(image: Image, colors=8, dither=False) -> Image:
         out = [min(palette, key=lambda q: sum((p[k]-q[k])**2 for k in range(3))) for p in image.pixels]
     return Image(image.width,image.height,tuple(out))
 
+def palette_report(image, colors):
+    palette = median_cut(image.pixels, colors)
+    assignments = [min(range(len(palette)), key=lambda i: sum((p[k]-palette[i][k])**2 for k in range(3))) for p in image.pixels]
+    counts = [assignments.count(i) for i in range(len(palette))]
+    error = sum(sum((p[k]-palette[i][k])**2 for k in range(3)) for p,i in zip(image.pixels, assignments))
+    return {"palette": [list(p) for p in palette], "counts": counts, "squared_error": error}
+
 def main(argv=None):
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("input"); parser.add_argument("output"); parser.add_argument("-n","--colors",type=int,default=8); parser.add_argument("--dither",action="store_true")
+    parser.add_argument("input"); parser.add_argument("output"); parser.add_argument("-n","--colors",type=int,default=8); parser.add_argument("--dither",action="store_true"); parser.add_argument("--report", help="write palette usage and error as JSON")
     args=parser.parse_args(argv)
-    try: write_ppm(quantize(read_ppm(args.input),args.colors,args.dither),args.output)
+    try:
+        image=read_ppm(args.input)
+        write_ppm(quantize(image,args.colors,args.dither),args.output)
+        if args.report:
+            import json
+            Path(args.report).write_text(json.dumps(palette_report(image,args.colors),indent=2)+"\\n",encoding="utf-8")
     except (OSError,ValueError) as exc: parser.error(str(exc))
     return 0
 if __name__ == "__main__": raise SystemExit(main())

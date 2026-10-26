@@ -20,7 +20,7 @@ Median cut repeatedly splits the color box with greatest channel range at its me
 
 ## Enhancements
 
-Phase 2 adds robust P6 parsing, configurable palette sizes, and optional Floyd–Steinberg dithering.
+- Add `--report report.json` to write palette colors, per-color pixel counts, and squared RGB error for analysis.
 
 ## Known Issues (Resolved)
 
