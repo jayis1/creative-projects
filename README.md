@@ -107,5 +107,6 @@ A monorepo of AI-generated creative coding projects. Each project lives in its o
 | [linebreak-lab](./linebreak-lab) | Unicode-aware paragraph compositor with greedy and balanced line breaking |
 | [geohash-atlas](./geohash-atlas) | Geographic indexing toolkit: geohash encoding and cell-bound decoding |
 | [spectral-unmixing](./spectral-unmixing) | Nonnegative spectral mixture estimation with projected-gradient optimization |
+| [svg-path-lab](./svg-path-lab) | Dependency-free SVG path parser, Bézier sampler, and geometry inspector |
 
 ---
