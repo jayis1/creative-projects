@@ -24,4 +24,4 @@ Median cut repeatedly splits the color box with greatest channel range at its me
 
 ## Known Issues (Resolved)
 
-None confirmed in the initial implementation; regression review is performed in the bug-hunt phase.
+- P6 files with CRLF line endings were misread: the carriage return was consumed but the line feed shifted pixel data. `test_crlf_header_roundtrip` reproduced the failure before the parser fix and verifies correct RGB bytes now. Other PPM whitespace variants beyond standard header delimiters may merit further testing.

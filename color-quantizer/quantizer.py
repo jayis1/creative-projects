@@ -35,7 +35,11 @@ def read_ppm(path: str | Path) -> Image:
     if width <= 0 or height <= 0 or maximum != 255: raise ValueError("dimensions must be positive and maxval 255")
     # P6 header terminates with one whitespace delimiter; do not eat pixel bytes that happen to be whitespace.
     if i >= len(data) or data[i] not in b" \t\r\n": raise ValueError("missing pixel-data delimiter")
-    i += 1
+    # Treat CRLF as a single header delimiter; consuming only CR shifts pixel data.
+    if data[i] == 13 and i + 1 < len(data) and data[i + 1] == 10:
+        i += 2
+    else:
+        i += 1
     raw = data[i:]
     if len(raw) != width * height * 3: raise ValueError("pixel data size does not match dimensions")
     return Image(width, height, tuple(tuple(raw[j:j+3]) for j in range(0, len(raw), 3)))

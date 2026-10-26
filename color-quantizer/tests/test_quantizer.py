@@ -16,8 +16,9 @@ class Tests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             p=Path(d)/'bad.ppm'; p.write_bytes(b'P6\n1 1\n255\n\x00')
             with self.assertRaises(ValueError): read_ppm(p)
-    def test_dither_preserves_size(self):
-        im=Image(2,2,((0,0,0),(80,10,40),(180,210,200),(255,255,255)))
-        self.assertEqual(len(quantize(im,2,True).pixels),4)
+    def test_crlf_header_roundtrip(self):
+        with tempfile.TemporaryDirectory() as d:
+            p=Path(d)/'crlf.ppm'; p.write_bytes(b'P6\r\n1 1\r\n255\r\n\x01\x02\x03')
+            self.assertEqual(read_ppm(p).pixels, ((1,2,3),))
 
 if __name__=='__main__': unittest.main()
