@@ -18,6 +18,8 @@ The tokenizer consumes SVG path syntax strictly, then the parser expands relativ
 
 `python3 main.py --file path.txt`
 
+`python3 main.py --svg drawing.svg --steps 64` reports every path element, preserving its `id` where present. SVG input is read-only and limited to 5 MB; XML is parsed locally without fetching resources.
+
 Supported commands: M, L, H, V, C, S, Q, T, Z (upper or lowercase). Arc commands are not supported. Curve bounds/length are sampled approximations, not exact extrema/integrals. Input files are read only; no output file is written.
 
 ## What makes this different

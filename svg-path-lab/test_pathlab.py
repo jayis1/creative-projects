@@ -1,5 +1,5 @@
 import unittest
-from pathlab import analyze, flatten, parse_path
+from pathlab import analyze, analyze_svg, flatten, parse_path
 
 class PathLabTests(unittest.TestCase):
     def test_relative_repeated_commands_and_close(self):
@@ -27,6 +27,14 @@ class PathLabTests(unittest.TestCase):
     def test_steps_bounded_integer(self):
         for value in (0,10001,1.5,True):
             with self.subTest(value=value),self.assertRaises(ValueError): flatten(parse_path("M0 0 L1 1"),value)
+    def test_analyze_svg_namespaced_multiple_paths(self):
+        svg='<svg xmlns="http://www.w3.org/2000/svg"><path id="a" d="M0 0 L3 4"/><g><path d="M1 1 H2"/></g></svg>'
+        result=analyze_svg(svg)
+        self.assertEqual([item["id"] for item in result],["a",None])
+        self.assertEqual(result[0]["length"],5.0)
+    def test_analyze_svg_rejects_malformed_or_empty_document(self):
+        for source in ("<svg>","<svg/>"):
+            with self.subTest(source=source),self.assertRaises(ValueError): analyze_svg(source)
     def test_nonfinite_rejected(self):
         with self.assertRaises(ValueError): parse_path("M 0 1e999")
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import math
 import re
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 
 _TOKEN = re.compile(r"[A-Za-z]|[-+]?(?:\d*\.\d+|\d+\.?\d*)(?:[eE][-+]?\d+)?")
@@ -152,9 +153,28 @@ def flatten(segments: list[Segment], steps: int = 16) -> list[tuple[float,float]
 
 def analyze(data: str, steps: int = 32) -> dict[str, object]:
     """Return segment count, approximate length, and sampled-curve bounds."""
-    pts=flatten(parse_path(data),steps)
+    segments = parse_path(data)
+    pts = flatten(segments, steps)
     if not pts:
-        return {"segments":0,"length":0.0,"bounds":None}
-    length=sum(math.hypot(b[0]-a[0],b[1]-a[1]) for a,b in zip(pts,pts[1:]))
-    return {"segments":len(parse_path(data)),"length":length,
-            "bounds":(min(p[0] for p in pts),min(p[1] for p in pts),max(p[0] for p in pts),max(p[1] for p in pts))}
+        return {"segments": 0, "length": 0.0, "bounds": None}
+    length = sum(math.hypot(b[0]-a[0], b[1]-a[1]) for a,b in zip(pts,pts[1:]))
+    return {"segments": len(segments), "length": length,
+            "bounds": (min(p[0] for p in pts), min(p[1] for p in pts),
+                       max(p[0] for p in pts), max(p[1] for p in pts))}
+
+
+def analyze_svg(source: str, steps: int = 32) -> list[dict[str, object]]:
+    """Analyze every SVG <path d=...> in an XML document; do not fetch external resources."""
+    try:
+        root = ET.fromstring(source)
+    except ET.ParseError as exc:
+        raise ValueError(f"invalid SVG/XML: {exc}") from exc
+    results = []
+    for element in root.iter():
+        if element.tag.rsplit("}", 1)[-1] == "path" and "d" in element.attrib:
+            item = analyze(element.attrib["d"], steps)
+            item["id"] = element.get("id")
+            results.append(item)
+    if not results:
+        raise ValueError("SVG contains no path elements with a d attribute")
+    return results
