@@ -20,11 +20,16 @@ The tokenizer consumes SVG path syntax strictly, then the parser expands relativ
 
 `python3 main.py --svg drawing.svg --steps 64` reports every path element, preserving its `id` where present. SVG input is read-only and limited to 5 MB; XML is parsed locally without fetching resources.
 
-Supported commands: M, L, H, V, C, S, Q, T, Z (upper or lowercase). Arc commands are not supported. Curve bounds/length are sampled approximations, not exact extrema/integrals. Input files are read only; no output file is written.
+Supported commands: M, L, H, V, C, S, Q, T, Z (upper or lowercase). Arc commands are not supported. Curve bounds/length are sampled approximations, not exact extrema/integrals. Multiple move-to subpaths are measured independently, without counting imaginary connector lines. Input files are read only; no output file is written.
 
 ## What makes this different
 
 A typical SVG viewer renders paths; this tool exposes their geometry as inspectable JSON using only Python's standard library, so path parsing and numerical approximation can be experimented with independently of a graphics stack.
+
+## Known Issues (Resolved)
+
+- Relative coordinate addition could overflow finite operands into infinity, later emitting non-standard JSON numbers. `test_relative_coordinate_overflow_rejected` reproduced this before the fix; parsed segment coordinates are now checked after transformation.
+- Multiple `M` commands were incorrectly treated as drawn line segments, inflating length and connecting separate contours. A reproduced test (`test_move_to_starts_new_subpath_without_connector`) failed at 142.716 instead of 2.0 before the fix; move commands now start independent contours, and regression coverage passes.
 
 ## Tests
 

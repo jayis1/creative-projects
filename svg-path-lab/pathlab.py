@@ -78,12 +78,13 @@ def parse_path(data: str) -> list[Segment]:
             if upper in ("M", "L"):
                 nx, ny = vals
                 if rel: nx, ny = x + nx, y + ny
-                kind = "L"
-                if upper == "M" and not started:
+                if upper == "M":
+                    if not started:
+                        started = True
                     sx, sy = nx, ny
-                    started = True
+                    out.append(Segment("M", ((nx, ny),)))
                 else:
-                    out.append(Segment(kind, ((x, y), (nx, ny))))
+                    out.append(Segment("L", ((x, y), (nx, ny))))
                 x, y = nx, ny
                 if upper == "M": cmd = "l" if rel else "L"
                 last_cubic = last_quad = None
@@ -120,6 +121,8 @@ def parse_path(data: str) -> list[Segment]:
                 q=(2*x-last_quad[0],2*y-last_quad[1]) if previous in ("Q","T") and last_quad else (x,y)
                 out.append(Segment("Q", ((x,y),q,(nx,ny))))
                 x,y=nx,ny; last_quad=q; last_cubic=None
+            if any(not math.isfinite(coord) for point in out[-1].points for coord in point):
+                raise ValueError("coordinate calculation overflowed to a non-finite value")
             previous = upper
     return out
 
@@ -142,7 +145,9 @@ def flatten(segments: list[Segment], steps: int = 16) -> list[tuple[float,float]
         raise ValueError("steps must be an integer from 1 to 10000")
     points: list[tuple[float,float]] = []
     for seg in segments:
-        if seg.kind == "L":
+        if seg.kind == "M":
+            points.append(seg.points[0])
+        elif seg.kind == "L":
             if not points: points.append(seg.points[0])
             points.append(seg.points[-1])
         else:
@@ -157,8 +162,13 @@ def analyze(data: str, steps: int = 32) -> dict[str, object]:
     pts = flatten(segments, steps)
     if not pts:
         return {"segments": 0, "length": 0.0, "bounds": None}
-    length = sum(math.hypot(b[0]-a[0], b[1]-a[1]) for a,b in zip(pts,pts[1:]))
-    return {"segments": len(segments), "length": length,
+    length = 0.0
+    for seg in segments:
+        if seg.kind == "M":
+            continue
+        samples = [seg.points[0]] + [_bezier(seg.points, j/steps) for j in range(1, steps+1)] if seg.kind != "L" else list(seg.points)
+        length += sum(math.hypot(b[0]-a[0], b[1]-a[1]) for a,b in zip(samples,samples[1:]))
+    return {"segments": sum(seg.kind != "M" for seg in segments), "length": length,
             "bounds": (min(p[0] for p in pts), min(p[1] for p in pts),
                        max(p[0] for p in pts), max(p[1] for p in pts))}
 
