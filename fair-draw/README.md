@@ -18,6 +18,12 @@ Pass team names directly:
 python3 fair-draw/fair_draw.py Falcons Owls Tigers
 ```
 
+Generate a home-and-away season (each pairing repeated once with venues reversed):
+
+```sh
+python3 fair-draw/fair_draw.py --double Falcons Owls Tigers
+```
+
 ## How it works
 
 The circle method rotates teams around a fixed position. For an odd number of entrants it adds a bye, so each real team plays at most once per round. Home/away designation alternates deterministically. `audit()` checks complete unique pairings, valid teams, and one appearance per round, then reports home counts.

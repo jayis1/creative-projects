@@ -24,6 +24,17 @@ class RoundRobinTests(unittest.TestCase):
             self.assertEqual(len(playing), len(set(playing)))
         self.assertEqual(audit(rounds, teams)["matches"], 10)
 
+    def test_double_round_robin_swaps_venues_and_doubles_games(self):
+        from fair_draw import double_round_robin
+        teams = ["A", "B", "C", "D", "E"]
+        rounds = double_round_robin(teams)
+        half = len(rounds) // 2
+        self.assertEqual(len(rounds), 10)
+        for first, second in zip(rounds[:half], rounds[half:]):
+            self.assertEqual([(m.home, m.away) for m in first],
+                             [(m.away, m.home) for m in second])
+        self.assertEqual(audit(rounds, teams, double=True)["matches"], 20)
+
     def test_invalid_teams_rejected(self):
         for teams in ([], ["solo"], ["A", "A"], ["A", " "]):
             with self.subTest(teams=teams), self.assertRaises(ValueError):

@@ -36,7 +36,15 @@ def round_robin(teams: Sequence[str]) -> list[list[Match]]:
     return rounds
 
 
-def audit(rounds: Sequence[Sequence[Match]], teams: Sequence[str]) -> dict[str, object]:
+def double_round_robin(teams: Sequence[str]) -> list[list[Match]]:
+    """Schedule a return fixture for every first-leg match, swapping venues."""
+    first_leg = round_robin(teams)
+    second_leg = [[Match(len(first_leg) + r, m.away, m.home) for m in games]
+                  for r, games in enumerate(first_leg, 1)]
+    return first_leg + second_leg
+
+
+def audit(rounds: Sequence[Sequence[Match]], teams: Sequence[str], *, double: bool = False) -> dict[str, object]:
     """Return fixture invariants and per-team home/away counts."""
     appearances = {team: 0 for team in teams}
     home_counts = {team: 0 for team in teams}
@@ -53,9 +61,11 @@ def audit(rounds: Sequence[Sequence[Match]], teams: Sequence[str]) -> dict[str, 
             appearances[game.away] += 1
             home_counts[game.home] += 1
             pairs.append(frozenset((game.home, game.away)))
-    expected = len(teams) * (len(teams) - 1) // 2
-    if len(pairs) != expected or len(set(pairs)) != expected:
+    expected = len(teams) * (len(teams) - 1) // 2 * (2 if double else 1)
+    if len(pairs) != expected or (not double and len(set(pairs)) != expected):
         raise ValueError("fixtures do not contain every pairing exactly once")
+    if double and (len(set(pairs)) != expected // 2 or len(rounds) % 2):
+        raise ValueError("double fixtures must contain two legs for each pairing")
     return {"matches": len(pairs), "pairings_complete": True,
             "appearances_per_team": appearances,
             "home_matches": home_counts,
@@ -74,11 +84,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Generate fair round-robin fixtures")
     parser.add_argument("teams", nargs="*", help="team names (default: sample league)")
     parser.add_argument("--json", action="store_true", help="emit fixtures and audit as JSON")
+    parser.add_argument("--double", action="store_true", help="schedule return legs with venues swapped")
     args = parser.parse_args(argv)
     teams = args.teams or ["Aster", "Birch", "Cedar", "Dune", "Elm"]
     try:
-        rounds = round_robin(teams)
-        report = audit(rounds, teams)
+        rounds = double_round_robin(teams) if args.double else round_robin(teams)
+        report = audit(rounds, teams, double=args.double)
     except ValueError as exc:
         parser.error(str(exc))
     if args.json:
