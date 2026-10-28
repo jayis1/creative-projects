@@ -11,6 +11,9 @@ class MutationTests(unittest.TestCase):
         source = 'x = "a < b"  # x != y\nif x <= 3 and True:\n    pass\n'
         self.assertEqual([item[3] for item in candidates(source)], ["<=", "and", "True"])
 
+    def test_empty_source_has_no_candidates(self):
+        self.assertEqual(candidates(""), [])
+
     def test_each_edit_is_local(self):
         source = 'if a == b:\n    return False\n'
         edits = candidates(source)

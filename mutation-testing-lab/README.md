@@ -23,3 +23,7 @@ Mutations that are syntactically invalid are skipped. A test failure counts as k
 ## Known Issues (Resolved)
 
 - The first version's tests could not import the runner from repository-root invocation; the tests now add their project root to `sys.path` and pass under the documented command.
+
+## Bug Hunt Audit
+
+Reviewed all Python source and tests for tokenizer boundary handling, string/comment exclusion, mutation isolation, timeout handling, temporary-directory cleanup, and command construction. No reproducible implementation defects were found in the audited revision. The empty-source edge case is covered by `test_empty_source_has_no_candidates`; all regression and CLI integration tests pass. This audit does not claim exhaustive security verification.
