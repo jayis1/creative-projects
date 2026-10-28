@@ -35,6 +35,12 @@ class RoundRobinTests(unittest.TestCase):
                              [(m.away, m.home) for m in second])
         self.assertEqual(audit(rounds, teams, double=True)["matches"], 20)
 
+    def test_audit_rejects_double_fixture_without_reversed_return_venue(self):
+        from fair_draw import Match
+        rounds = [[Match(1, "A", "B")], [Match(2, "A", "B")]]
+        with self.assertRaisesRegex(ValueError, "both venues"):
+            audit(rounds, ["A", "B"], double=True)
+
     def test_invalid_teams_rejected(self):
         for teams in ([], ["solo"], ["A", "A"], ["A", " "]):
             with self.subTest(teams=teams), self.assertRaises(ValueError):

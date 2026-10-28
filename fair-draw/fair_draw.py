@@ -49,6 +49,7 @@ def audit(rounds: Sequence[Sequence[Match]], teams: Sequence[str], *, double: bo
     appearances = {team: 0 for team in teams}
     home_counts = {team: 0 for team in teams}
     pairs: list[frozenset[str]] = []
+    directions: dict[frozenset[str], dict[tuple[str, str], int]] = {}
     for games in rounds:
         playing: set[str] = set()
         for game in games:
@@ -60,12 +61,19 @@ def audit(rounds: Sequence[Sequence[Match]], teams: Sequence[str], *, double: bo
             appearances[game.home] += 1
             appearances[game.away] += 1
             home_counts[game.home] += 1
-            pairs.append(frozenset((game.home, game.away)))
+            pair = frozenset((game.home, game.away))
+            pairs.append(pair)
+            direction_counts = directions.setdefault(pair, {})
+            direction = (game.home, game.away)
+            direction_counts[direction] = direction_counts.get(direction, 0) + 1
     expected = len(teams) * (len(teams) - 1) // 2 * (2 if double else 1)
     if len(pairs) != expected or (not double and len(set(pairs)) != expected):
         raise ValueError("fixtures do not contain every pairing exactly once")
     if double and (len(set(pairs)) != expected // 2 or len(rounds) % 2):
         raise ValueError("double fixtures must contain two legs for each pairing")
+    if double and any(counts != {direction: 1 for direction in counts} or len(counts) != 2
+                      for counts in directions.values()):
+        raise ValueError("double fixtures must include both venues exactly once for every pairing")
     return {"matches": len(pairs), "pairings_complete": True,
             "appearances_per_team": appearances,
             "home_matches": home_counts,

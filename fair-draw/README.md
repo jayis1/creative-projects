@@ -34,6 +34,10 @@ Import `round_robin(teams)` to get a list of rounds containing `Match(round, hom
 
 Input requires at least two non-empty unique team names. The project has no third-party dependencies.
 
+## Known Issues (Resolved)
+
+- Double-fixture auditing previously accepted a return game at the same venue as the first leg. `test_audit_rejects_double_fixture_without_reversed_return_venue` reproduced the issue before the fix; the audit now requires both home/away directions exactly once for every pairing.
+
 ## Tests
 
 Run `python3 -m unittest discover -s fair-draw/tests -v` from the repository root.
