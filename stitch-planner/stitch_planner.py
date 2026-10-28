@@ -39,10 +39,12 @@ def plan(mask: list[str], spacing: int = 2, max_stitches: int = 10000) -> list[t
     return points
 
 
-def svg(points: list[tuple[float, float]], width: int, height: int, stitch_length: float = 0.0) -> str:
-    """Render stitch path as a self-contained SVG; optional maximum-length subdivision."""
+def svg(points: list[tuple[float, float]], width: int, height: int, stitch_length: float = 0.0, max_points: int = 100_000) -> str:
+    """Render stitch path as a self-contained SVG; bound optional subdivision growth."""
     if width < 1 or height < 1:
         raise ValueError("dimensions must be positive")
+    if isinstance(max_points, bool) or not isinstance(max_points, int) or max_points < 1:
+        raise ValueError("max_points must be a positive integer")
     if not math.isfinite(stitch_length) or stitch_length < 0:
         raise ValueError("stitch_length must be finite and nonnegative")
     expanded: list[tuple[float, float]] = []
@@ -53,8 +55,12 @@ def svg(points: list[tuple[float, float]], width: int, height: int, stitch_lengt
             a = expanded[-1]
             distance = math.dist(a, p)
             count = max(1, math.ceil(distance / stitch_length)) if stitch_length else 1
+            if len(expanded) + count > max_points:
+                raise ValueError("SVG subdivision point limit exceeded")
             expanded.extend((a[0] + (p[0]-a[0])*i/count, a[1] + (p[1]-a[1])*i/count) for i in range(1, count+1))
         else:
+            if len(points) > max_points:
+                raise ValueError("SVG point limit exceeded")
             expanded.append(p)
     d = " ".join(("M" if i == 0 else "L") + f"{x:g},{y:g}" for i, (x, y) in enumerate(expanded))
     return f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}"><path d="{d}" fill="none" stroke="#c23b55" stroke-width="0.7" stroke-linecap="round"/></svg>\n'

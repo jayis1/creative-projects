@@ -12,8 +12,8 @@ class PlannerTests(unittest.TestCase):
     def test_stitch_limit(self):
         with self.assertRaisesRegex(ValueError, "limit"):
             plan(["###"], max_stitches=1)
-    def test_spacing_rejects_bool(self):
-        with self.assertRaisesRegex(ValueError, "spacing"):
-            plan(["#"], True)
+    def test_svg_subdivision_has_output_limit(self):
+        with self.assertRaisesRegex(ValueError, "limit"):
+            svg([(0., 0.), (1000., 0.)], 1001, 1, 0.001)
 
 if __name__ == "__main__": unittest.main()

@@ -23,6 +23,10 @@ python3 stitch_planner.py examples/leaf.mask -o leaf.svg --spacing 1
 python3 stitch_planner.py examples/leaf.mask -o fine.svg --spacing 1 --max-stitch-length 2.5 --max-stitches 500
 ```
 
-The length option evenly subdivides segments; zero leaves runs unsplit. The vertex limit rejects plans that exceed the requested safety bound. Invalid masks, spacing, and limits are reported as command-line errors. The library's `plan()` and `svg()` functions can also be imported directly.
+The SVG renderer caps expanded output at 100,000 points by default, preventing tiny requested stitch lengths from exhausting memory. The library `svg()` function accepts a smaller `max_points` bound when needed.
+
+## Known Issues (Resolved)
+
+- Extreme subdivision could allocate unbounded intermediate coordinates; `test_svg_subdivision_has_output_limit` reproduced the missing rejection before the fix, and `svg()` now rejects expansions above its point cap.
 
 Run tests from this folder with `python3 -m unittest discover -s tests`.
