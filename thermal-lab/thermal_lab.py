@@ -104,9 +104,11 @@ def main(argv=None):
     if args.csv:
         import csv
         import sys
-        writer = csv.DictWriter(sys.stdout, fieldnames=["step", *[z.name for z in model.zones]])
+        writer = csv.DictWriter(sys.stdout, fieldnames=["elapsed_hours", *[z.name for z in model.zones]])
         writer.writeheader()
-        for step, row in enumerate(history): writer.writerow({"step": step, **row})
+        for step, row in enumerate(history):
+            elapsed = min(step * args.step, args.hours)
+            writer.writerow({"elapsed_hours": f"{elapsed:g}", **row})
     else:
         print(json.dumps(history, indent=2))
 

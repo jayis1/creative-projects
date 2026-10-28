@@ -14,9 +14,9 @@ Each zone is a lumped thermal mass with heat capacity (Wh/K) and heat loss to ou
 
 ## Usage
 
-Run the hero command from this directory. Supply `--initial` for uniform initial temperature; `--hours` and `--step` control simulation duration and integration. The JSON model format is illustrated by `examples/two-zone.json`. `--initial-file` accepts per-zone starting temperatures, `--gains-file` adds constant per-zone heater gains in watts, and `--csv` emits a tabular history for spreadsheets. For example, `python3 thermal_lab.py examples/two-zone.json --outside 5 --hours 1 --step 0.25 --csv` emits a header `step,living,bedroom` followed by five rows.
+Run the hero command from this directory. Supply `--initial` for uniform initial temperature; `--hours` and `--step` control simulation duration and integration. The JSON model format is illustrated by `examples/two-zone.json`. `--initial-file` accepts per-zone starting temperatures, `--gains-file` adds constant per-zone heater gains in watts, and `--csv` emits a tabular history for spreadsheets. CSV output includes an `elapsed_hours` column, including the exact final time when the duration is not a multiple of the step. For example, `python3 thermal_lab.py examples/two-zone.json --outside 5 --hours 1 --step 0.25 --csv` starts with `elapsed_hours,living,bedroom` and has five snapshots at 0, 0.25, 0.5, 0.75, and 1 hour.
 
-Run tests with `python3 -m unittest discover -s tests -v` (six tests).
+Run tests with `python3 -m unittest discover -s tests -v` (seven tests).
 
 All implementation and tests use the Python standard library.
 

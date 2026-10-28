@@ -20,6 +20,17 @@ class ThermalLabTests(unittest.TestCase):
         result = simulate(model, {"hot":30,"cold":10}, 0, .25, .25)
         self.assertLess(result[-1]["hot"], 30)
         self.assertGreater(result[-1]["cold"], 10)
+    def test_csv_includes_elapsed_time_in_hours(self):
+        import subprocess
+        from pathlib import Path
+        project = Path(__file__).resolve().parents[1]
+        run = subprocess.run(
+            ["python3", "thermal_lab.py", "examples/two-zone.json", "--outside", "5", "--hours", "0.6", "--step", "0.25", "--csv"],
+            cwd=project, capture_output=True, text=True, check=True,
+        )
+        rows = run.stdout.splitlines()
+        self.assertEqual(rows[0], "elapsed_hours,living,bedroom")
+        self.assertEqual([row.split(",")[0] for row in rows[1:]], ["0", "0.25", "0.5", "0.6"])
     def test_explicit_step_cannot_exceed_thermal_stability_limit(self):
         model = Model.from_dict({"zones":[{"name":"fast","capacity_wh_k":1000,"outside_w_k":1000}]})
         with self.assertRaisesRegex(ValueError, "stability limit"):
