@@ -36,6 +36,18 @@ class SparseRecoveryTests(unittest.TestCase):
     def test_empty_signal_support(self):
         self.assertEqual(sparse_signal(4, 0, seed=1), [0.0] * 4)
 
+    def test_measurement_dimension_mismatch(self):
+        with self.assertRaisesRegex(ValueError, "measurement count"):
+            recover([[1.0, 0.0], [0.0, 1.0]], [1.0], 1)
+
+    def test_invalid_tolerance(self):
+        with self.assertRaisesRegex(ValueError, "tolerance"):
+            recover([[1.0]], [1.0], 1, tolerance=float("inf"))
+
+    def test_zero_dimensions_rejected(self):
+        with self.assertRaisesRegex(ValueError, "dimensions"):
+            gaussian_matrix(0, 3)
+
 
 if __name__ == "__main__":
     unittest.main()
