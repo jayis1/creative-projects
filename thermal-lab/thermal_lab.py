@@ -82,13 +82,27 @@ def main(argv=None):
     parser.add_argument("--hours", type=float, default=8)
     parser.add_argument("--step", type=float, default=0.25, help="integration step in hours")
     parser.add_argument("--initial", type=float, default=20, help="uniform initial zone temperature")
+    parser.add_argument("--initial-file", type=Path, help="JSON object of per-zone starting temperatures")
+    parser.add_argument("--gains-file", type=Path, help="JSON object of per-zone constant heat gains in watts")
+    parser.add_argument("--csv", action="store_true", help="write snapshots as CSV instead of JSON")
     args = parser.parse_args(argv)
     try:
         data = json.loads(args.model.read_text(encoding="utf-8"))
         model = Model.from_dict(data)
-        history = simulate(model, {z.name: args.initial for z in model.zones}, args.outside, args.hours, args.step)
+        initial = json.loads(args.initial_file.read_text(encoding="utf-8")) if args.initial_file else {z.name: args.initial for z in model.zones}
+        gains = json.loads(args.gains_file.read_text(encoding="utf-8")) if args.gains_file else None
+        if not isinstance(initial, dict) or (gains is not None and not isinstance(gains, dict)):
+            raise ValueError("initial and gains files must contain JSON objects")
+        history = simulate(model, initial, args.outside, args.hours, args.step, gains)
     except (OSError, json.JSONDecodeError, ValueError) as exc:
         parser.error(str(exc))
-    print(json.dumps(history, indent=2))
+    if args.csv:
+        import csv
+        import sys
+        writer = csv.DictWriter(sys.stdout, fieldnames=["step", *[z.name for z in model.zones]])
+        writer.writeheader()
+        for step, row in enumerate(history): writer.writerow({"step": step, **row})
+    else:
+        print(json.dumps(history, indent=2))
 
 if __name__ == "__main__": main()
