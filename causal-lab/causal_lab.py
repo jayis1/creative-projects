@@ -3,6 +3,7 @@
 from __future__ import annotations
 import argparse
 import json
+import math
 import random
 from collections import deque
 
@@ -19,10 +20,11 @@ class CausalGraph:
             if not isinstance(parents, dict) or any(p not in equations for p in parents):
                 raise ValueError(f"invalid parents for {node}")
             intercept, noise = spec.get("intercept", 0), spec.get("noise", 0)
-            if not isinstance(intercept, (int, float)) or not isinstance(noise, (int,float)) or noise < 0:
-                raise ValueError(f"invalid intercept/noise for {node}")
-            if any(not isinstance(w,(int,float)) for w in parents.values()):
-                raise ValueError(f"invalid coefficient for {node}")
+            if (not isinstance(intercept, (int, float)) or not math.isfinite(intercept)
+                    or not isinstance(noise, (int, float)) or not math.isfinite(noise) or noise < 0):
+                raise ValueError(f"intercept and noise for {node} must be finite (noise nonnegative)")
+            if any(not isinstance(w, (int, float)) or not math.isfinite(w) for w in parents.values()):
+                raise ValueError(f"coefficients for {node} must be finite")
             self.equations[node] = {"parents": dict(parents), "intercept": float(intercept), "noise": float(noise)}
         self.order = self._topological_order()
 
@@ -47,8 +49,8 @@ class CausalGraph:
         interventions = interventions or {}
         if not isinstance(interventions,dict) or set(interventions)-set(self.equations):
             raise ValueError("interventions must map known variables to numeric values")
-        if any(not isinstance(v,(int,float)) for v in interventions.values()):
-            raise ValueError("intervention values must be numeric")
+        if any(not isinstance(v,(int,float)) or not math.isfinite(v) for v in interventions.values()):
+            raise ValueError("intervention values must be finite numbers")
         rng=random.Random(seed); rows=[]
         for _ in range(count):
             row={}
@@ -64,8 +66,8 @@ class CausalGraph:
         interventions = interventions or {}
         if not isinstance(interventions, dict) or set(interventions) - set(self.equations):
             raise ValueError("interventions must map known variables to numeric values")
-        if any(not isinstance(v, (int, float)) for v in interventions.values()):
-            raise ValueError("intervention values must be numeric")
+        if any(not isinstance(v, (int, float)) or not math.isfinite(v) for v in interventions.values()):
+            raise ValueError("intervention values must be finite numbers")
         values = {}
         for n in self.order:
             if n in interventions:

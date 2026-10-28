@@ -19,5 +19,13 @@ class ModelTests(unittest.TestCase):
     def test_unknown_intervention_rejected(self):
         with self.assertRaisesRegex(ValueError,'known variables'):
             CausalGraph({'x':{}}).expected_values({'missing':1})
+    def test_nonfinite_model_parameters_rejected(self):
+        import math
+        with self.assertRaisesRegex(ValueError, 'finite'):
+            CausalGraph({'x': {'intercept': math.nan}})
+        with self.assertRaisesRegex(ValueError, 'finite'):
+            CausalGraph({'x': {'noise': math.inf}})
+        with self.assertRaisesRegex(ValueError, 'finite'):
+            CausalGraph({'x': {'parents': {'y': math.nan}}, 'y': {}})
 
 if __name__=='__main__': unittest.main()
