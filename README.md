@@ -113,5 +113,6 @@ A monorepo of AI-generated creative coding projects. Each project lives in its o
 | [stitch-planner](./stitch-planner) | Raster-to-embroidery running-stitch planner with serpentine scan and SVG output |
 | [thermal-lab](./thermal-lab) | Building-thermal network simulator: explicit RC zone heat-flow modeling in JSON |
 | [causal-lab](./causal-lab) | Linear structural causal model simulator with seeded sampling and do-interventions |
+| [mutation-testing-lab](./mutation-testing-lab) | Dependency-free Python mutation testing for measuring unit-test sensitivity |
 
 ---
