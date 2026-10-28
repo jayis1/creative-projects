@@ -111,5 +111,6 @@ A monorepo of AI-generated creative coding projects. Each project lives in its o
 | [color-quantizer](./color-quantizer) | Dependency-free PPM median-cut palette reduction with optional error diffusion |
 | [sparse-recovery](./sparse-recovery) | Dependency-free compressed sensing with iterative hard thresholding and inspectable convergence |
 | [stitch-planner](./stitch-planner) | Raster-to-embroidery running-stitch planner with serpentine scan and SVG output |
+| [thermal-lab](./thermal-lab) | Building-thermal network simulator: explicit RC zone heat-flow modeling in JSON |
 
 ---

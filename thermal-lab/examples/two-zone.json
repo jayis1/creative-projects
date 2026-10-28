@@ -1,0 +1,1 @@
+{"zones":[{"name":"living","capacity_wh_k":3000,"outside_w_k":100},{"name":"bedroom","capacity_wh_k":1800,"outside_w_k":60}],"links":[{"a":"living","b":"bedroom","w_k":80}]}
