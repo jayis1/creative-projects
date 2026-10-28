@@ -20,7 +20,9 @@ class ThermalLabTests(unittest.TestCase):
         result = simulate(model, {"hot":30,"cold":10}, 0, .25, .25)
         self.assertLess(result[-1]["hot"], 30)
         self.assertGreater(result[-1]["cold"], 10)
-    def test_unknown_gain_zone_rejected(self):
-        with self.assertRaises(ValueError): simulate(self.model, {"a":20}, 0, 1, .25, {"missing":10})
+    def test_explicit_step_cannot_exceed_thermal_stability_limit(self):
+        model = Model.from_dict({"zones":[{"name":"fast","capacity_wh_k":1000,"outside_w_k":1000}]})
+        with self.assertRaisesRegex(ValueError, "stability limit"):
+            simulate(model, {"fast":20}, 0, 2, 2)
 
 if __name__ == "__main__": unittest.main()

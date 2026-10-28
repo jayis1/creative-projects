@@ -58,6 +58,11 @@ def simulate(model: Model, initial: dict[str, float], outside_c: float, hours: f
     temps = [float(initial[z.name]) for z in model.zones]
     if any(not math.isfinite(t) for t in temps): raise ValueError("initial temperatures must be finite")
     if any(not math.isfinite(float(g)) for g in gains_w.values()): raise ValueError("heat gains must be finite")
+    # Explicit Euler loses its no-overshoot property when dt exceeds C/sum(G).
+    for i, zone in enumerate(model.zones):
+        total_g = zone.outside_conductance + sum(g for a, b, g in model.links if a == i or b == i)
+        if total_g and step_hours > zone.capacity / total_g:
+            raise ValueError("step_hours exceeds thermal stability limit; reduce step_hours")
     result = [{z.name: t for z, t in zip(model.zones, temps)}]
     elapsed = 0.0
     while elapsed < hours:
