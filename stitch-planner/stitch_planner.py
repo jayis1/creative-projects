@@ -65,10 +65,18 @@ def main() -> None:
     parser.add_argument("mask", type=Path, help="ASCII mask file (# ink, . blank)")
     parser.add_argument("-o", "--output", type=Path, default=Path("stitches.svg"))
     parser.add_argument("--spacing", type=int, default=2)
+    parser.add_argument("--max-stitch-length", type=float, default=0.0, help="subdivide runs longer than this (0 disables)")
+    parser.add_argument("--max-stitches", type=int, default=10000, help="safety limit for generated vertices")
     args = parser.parse_args()
+    if args.max_stitch_length < 0 or not math.isfinite(args.max_stitch_length):
+        parser.error("--max-stitch-length must be finite and nonnegative")
     rows = args.mask.read_text(encoding="utf-8").splitlines()
-    points = plan(rows, args.spacing)
-    args.output.write_text(svg(points, len(rows[0]), len(rows)), encoding="utf-8")
+    try:
+        points = plan(rows, args.spacing, args.max_stitches)
+        rendered = svg(points, len(rows[0]), len(rows), args.max_stitch_length)
+    except ValueError as exc:
+        parser.error(str(exc))
+    args.output.write_text(rendered, encoding="utf-8")
     print(f"Wrote {len(points)} stitch points to {args.output}")
 
 if __name__ == "__main__":

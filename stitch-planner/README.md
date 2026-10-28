@@ -19,6 +19,10 @@ The planner samples every `spacing`th row, detects maximal contiguous ink runs, 
 ```sh
 python3 stitch_planner.py --help
 python3 stitch_planner.py examples/leaf.mask -o leaf.svg --spacing 1
+# Limit long thread spans and bound the vertex count:
+python3 stitch_planner.py examples/leaf.mask -o fine.svg --spacing 1 --max-stitch-length 2.5 --max-stitches 500
 ```
+
+The length option evenly subdivides segments; zero leaves runs unsplit. The vertex limit rejects plans that exceed the requested safety bound. Invalid masks, spacing, and limits are reported as command-line errors. The library's `plan()` and `svg()` functions can also be imported directly.
 
 Run tests from this folder with `python3 -m unittest discover -s tests`.
