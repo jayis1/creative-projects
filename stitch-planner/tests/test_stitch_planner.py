@@ -16,4 +16,26 @@ class PlannerTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "limit"):
             svg([(0., 0.), (1000., 0.)], 1001, 1, 0.001)
 
+    def test_max_stitches_rejects_bool(self):
+        with self.assertRaisesRegex(ValueError, "max_stitches"):
+            plan(["#"], max_stitches=True)
+
+    def test_svg_rejects_nonpositive_dimensions(self):
+        with self.assertRaisesRegex(ValueError, "dimensions"):
+            svg([], 0, 1)
+
+    def test_cli_missing_input_is_a_clean_error(self):
+        import subprocess
+        import sys
+        from pathlib import Path
+
+        script = Path(__file__).parents[1] / "stitch_planner.py"
+        result = subprocess.run(
+            [sys.executable, str(script), "missing.mask"],
+            cwd=Path(__file__).parents[1], capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("error:", result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+
 if __name__ == "__main__": unittest.main()

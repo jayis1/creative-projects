@@ -14,8 +14,8 @@ def plan(mask: list[str], spacing: int = 2, max_stitches: int = 10000) -> list[t
         raise ValueError("mask must be rectangular and contain only '.' and '#'")
     if isinstance(spacing, bool) or not isinstance(spacing, int) or spacing < 1:
         raise ValueError("spacing must be a positive integer")
-    if max_stitches < 1:
-        raise ValueError("max_stitches must be positive")
+    if isinstance(max_stitches, bool) or not isinstance(max_stitches, int) or max_stitches < 1:
+        raise ValueError("max_stitches must be a positive integer")
     points: list[tuple[float, float]] = []
     for y in range(0, len(mask), spacing):
         runs: list[tuple[int, int]] = []
@@ -73,16 +73,17 @@ def main() -> None:
     parser.add_argument("--spacing", type=int, default=2)
     parser.add_argument("--max-stitch-length", type=float, default=0.0, help="subdivide runs longer than this (0 disables)")
     parser.add_argument("--max-stitches", type=int, default=10000, help="safety limit for generated vertices")
+    parser.add_argument("--version", action="version", version="%(prog)s 1.0.0")
     args = parser.parse_args()
     if args.max_stitch_length < 0 or not math.isfinite(args.max_stitch_length):
         parser.error("--max-stitch-length must be finite and nonnegative")
-    rows = args.mask.read_text(encoding="utf-8").splitlines()
     try:
+        rows = args.mask.read_text(encoding="utf-8").splitlines()
         points = plan(rows, args.spacing, args.max_stitches)
-        rendered = svg(points, len(rows[0]), len(rows), args.max_stitch_length)
-    except ValueError as exc:
+        rendered = svg(points, len(rows[0]) if rows else 0, len(rows), args.max_stitch_length)
+        args.output.write_text(rendered, encoding="utf-8")
+    except (OSError, UnicodeError, ValueError) as exc:
         parser.error(str(exc))
-    args.output.write_text(rendered, encoding="utf-8")
     print(f"Wrote {len(points)} stitch points to {args.output}")
 
 if __name__ == "__main__":
