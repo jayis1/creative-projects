@@ -12,5 +12,12 @@ class ModelTests(unittest.TestCase):
     def test_seed_reproducible(self):
         m=CausalGraph({'x':{'noise':1}})
         self.assertEqual(m.sample(10,42),m.sample(10,42))
+    def test_exact_expected_values_do_intervention(self):
+        m=CausalGraph({'x':{'intercept':2,'noise':99},'y':{'intercept':1,'parents':{'x':3}}})
+        self.assertEqual(m.expected_values(), {'x':2.0,'y':7.0})
+        self.assertEqual(m.expected_values({'x':4}), {'x':4.0,'y':13.0})
+    def test_unknown_intervention_rejected(self):
+        with self.assertRaisesRegex(ValueError,'known variables'):
+            CausalGraph({'x':{}}).expected_values({'missing':1})
 
 if __name__=='__main__': unittest.main()

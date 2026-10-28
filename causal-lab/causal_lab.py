@@ -59,6 +59,22 @@ class CausalGraph:
             rows.append(row)
         return rows
 
+    def expected_values(self, interventions=None):
+        """Return exact means under the model's zero-mean noise assumptions."""
+        interventions = interventions or {}
+        if not isinstance(interventions, dict) or set(interventions) - set(self.equations):
+            raise ValueError("interventions must map known variables to numeric values")
+        if any(not isinstance(v, (int, float)) for v in interventions.values()):
+            raise ValueError("intervention values must be numeric")
+        values = {}
+        for n in self.order:
+            if n in interventions:
+                values[n] = float(interventions[n])
+            else:
+                eq = self.equations[n]
+                values[n] = eq["intercept"] + sum(w * values[p] for p, w in eq["parents"].items())
+        return values
+
     @staticmethod
     def means(rows):
         return {k: sum(r[k] for r in rows)/len(rows) for k in rows[0]}

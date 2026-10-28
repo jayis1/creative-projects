@@ -26,4 +26,10 @@ The demo compares average outcomes for a small observational model and the inter
 python3 causal_lab.py --model model.json --count 1000 --seed 7 --do study=4
 ```
 
-Output is JSON rows. Sample count is limited to 1..1,000,000. Variables and coefficient values are numeric. No user-provided code is evaluated. Results assume independent Gaussian disturbances and linear additive equations; confounding, hidden variables, nonlinear functions, and parameter learning are outside scope.
+You can also compute the exact expected values without Monte Carlo noise:
+
+```sh
+python3 -c "from causal_lab import CausalGraph; m=CausalGraph({'study':{'intercept':2},'score':{'intercept':10,'parents':{'study':3}}}); print(m.expected_values({'study':4}))"
+```
+
+`expected_values()` propagates means in topological order (Gaussian disturbances have zero mean) and handles interventions with the same edge-cut semantics. For repeated simulations, `means(rows)` summarizes sampled rows. Sample count is limited to 1..1,000,000. Variables and coefficient values are numeric. No user-provided code is evaluated. Results assume independent Gaussian disturbances and linear additive equations; confounding, hidden variables, nonlinear functions, and parameter learning are outside scope.
