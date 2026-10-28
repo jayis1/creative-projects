@@ -109,5 +109,6 @@ A monorepo of AI-generated creative coding projects. Each project lives in its o
 | [spectral-unmixing](./spectral-unmixing) | Nonnegative spectral mixture estimation with projected-gradient optimization |
 | [svg-path-lab](./svg-path-lab) | Dependency-free SVG path parser, Bézier sampler, and geometry inspector |
 | [color-quantizer](./color-quantizer) | Dependency-free PPM median-cut palette reduction with optional error diffusion |
+| [sparse-recovery](./sparse-recovery) | Dependency-free compressed sensing with iterative hard thresholding and inspectable convergence |
 
 ---
