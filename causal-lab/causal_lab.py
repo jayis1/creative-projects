@@ -88,15 +88,25 @@ def demo():
     print(json.dumps({'observational_means':model.means(obs),'do_study_4_means':model.means(treated)},indent=2))
 
 def main(argv=None):
-    p=argparse.ArgumentParser(description=__doc__); p.add_argument('--demo',action='store_true'); p.add_argument('--model'); p.add_argument('--count',type=int,default=1); p.add_argument('--seed',type=int,default=0); p.add_argument('--do',action='append',default=[],metavar='NAME=VALUE')
+    p=argparse.ArgumentParser(description=__doc__); p.add_argument('--demo',action='store_true'); p.add_argument('--model'); p.add_argument('--count',type=int,default=1); p.add_argument('--seed',type=int,default=0); p.add_argument('--do',action='append',default=[],metavar='NAME=VALUE'); p.add_argument('--expected',action='store_true',help='return exact expected values instead of sampled rows (requires --model)')
     a=p.parse_args(argv)
     try:
-        if a.demo or not a.model: demo(); return 0
+        if a.demo or not a.model:
+            if a.expected:
+                p.error('--expected requires --model')
+            demo()
+            return 0
         with open(a.model,encoding='utf8') as f: model=CausalGraph(json.load(f))
         interventions={}
         for item in a.do:
-            k,v=item.split('=',1); interventions[k]=float(v)
-        print(json.dumps(model.sample(a.count,a.seed,interventions)))
+            if '=' not in item:
+                raise ValueError(f"invalid intervention {item!r}; expected NAME=VALUE")
+            k,v=item.split('=',1)
+            if not k:
+                raise ValueError('intervention name must not be empty')
+            interventions[k]=float(v)
+        result = model.expected_values(interventions) if a.expected else model.sample(a.count,a.seed,interventions)
+        print(json.dumps(result))
         return 0
     except (ValueError, OSError, json.JSONDecodeError) as e:
         p.error(str(e))

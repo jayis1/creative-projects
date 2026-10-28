@@ -2,6 +2,19 @@ import unittest
 from causal_lab import CausalGraph
 
 class ModelTests(unittest.TestCase):
+    def test_cli_expected_values_are_exact_json(self):
+        import json
+        import subprocess
+        import sys
+        from pathlib import Path
+
+        script = Path(__file__).parents[1] / "causal_lab.py"
+        result = subprocess.run(
+            [sys.executable, str(script), "--model", str(Path(__file__).parents[1] / "example.json"), "--expected", "--do", "study=4"],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout), {"study": 4.0, "score": 22.0})
     def test_order_and_intervention(self):
         m=CausalGraph({'x':{'intercept':1},'y':{'parents':{'x':2}}})
         self.assertEqual(m.sample(seed=3)[0], {'x':1.0,'y':2.0})
