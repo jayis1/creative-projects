@@ -1,3 +1,5 @@
+import json
+import subprocess
 import sys
 import unittest
 from pathlib import Path
@@ -15,6 +17,13 @@ class MutationTests(unittest.TestCase):
         self.assertEqual(len(edits), 2)
         start, end, replacement, _ = edits[0]
         self.assertEqual(source[:start] + replacement + source[end:], 'if a != b:\n    return False\n')
+
+    def test_runner_json_and_timeout_options(self):
+        root = Path(__file__).resolve().parents[1]
+        proc = subprocess.run([sys.executable, str(root / "mutation_lab.py"), str(Path(__file__).resolve()), "--tests", str(Path(__file__).parent), "--json", "--timeout", "5"], capture_output=True, text=True, timeout=30)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        result = json.loads(proc.stdout.strip().splitlines()[-1])
+        self.assertEqual(result["total"], result["killed"] + result["survived"])
 
 if __name__ == "__main__":
     unittest.main()

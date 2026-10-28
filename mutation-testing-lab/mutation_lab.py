@@ -2,6 +2,7 @@
 """Small, safe mutation-testing runner for Python modules."""
 import argparse
 import ast
+import json
 import os
 from pathlib import Path
 import shutil
@@ -36,7 +37,7 @@ def candidates(source):
     return result
 
 
-def run(target, tests, verbose=False):
+def run(target, tests, verbose=False, timeout=20, json_output=False):
     target, tests = target.resolve(), tests.resolve()
     if not target.is_file() or target.suffix != ".py":
         raise ValueError("target must be an existing .py file")
@@ -62,14 +63,17 @@ def run(target, tests, verbose=False):
             shutil.copytree(tests, root / "tests")
             env = os.environ.copy()
             env["PYTHONPATH"] = str(root) + os.pathsep + env.get("PYTHONPATH", "")
-            proc = subprocess.run([sys.executable, "-m", "unittest", "discover", "-s", "tests"], cwd=root, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=20)
+            proc = subprocess.run([sys.executable, "-m", "unittest", "discover", "-s", "tests"], cwd=root, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=timeout)
         dead = proc.returncode != 0
         killed += int(dead)
         survived += int(not dead)
         if verbose:
             print(f"{index}: {original}->{replacement}: {'KILLED' if dead else 'SURVIVED'}")
     total = killed + survived
-    print(f"Mutation score: {killed}/{total} killed ({killed / total:.1%})" if total else "No syntactically valid mutants")
+    if json_output:
+        print(json.dumps({"killed": killed, "survived": survived, "total": total, "score": killed / total if total else None}, sort_keys=True))
+    else:
+        print(f"Mutation score: {killed}/{total} killed ({killed / total:.1%})" if total else "No syntactically valid mutants")
     return 0 if total else 2
 
 
@@ -78,9 +82,13 @@ def main(argv=None):
     parser.add_argument("target", type=Path)
     parser.add_argument("--tests", type=Path, required=True)
     parser.add_argument("-v", "--verbose", action="store_true")
+    parser.add_argument("--timeout", type=float, default=20.0, help="seconds allowed for each test run (default: 20)")
+    parser.add_argument("--json", action="store_true", help="emit machine-readable summary")
     args = parser.parse_args(argv)
+    if args.timeout <= 0:
+        parser.error("--timeout must be positive")
     try:
-        return run(args.target, args.tests, args.verbose)
+        return run(args.target, args.tests, args.verbose, args.timeout, args.json)
     except (OSError, ValueError, SyntaxError, subprocess.TimeoutExpired) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2

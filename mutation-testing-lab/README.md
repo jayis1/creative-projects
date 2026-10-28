@@ -1,15 +1,25 @@
 # Mutation Testing Lab
 
-A dependency-free Python mutation-testing runner for small Python modules. It creates temporary source variants (comparison-operator and boolean-literal mutations), executes a supplied unittest suite against each variant in an isolated temporary copy, and reports killed/surviving mutants. Useful for finding tests that execute code but fail to detect meaningful behavioral changes.
+A dependency-free Python mutation-testing runner for measuring whether unit tests detect behavioral changes. It makes safe source variants in temporary copies, executes a test suite against each, and reports killed versus surviving mutants. The original source is never changed.
 
-## How it works
+## Algorithm
 
-The tokenizer identifies eligible operators outside comments and strings. Each mutation is applied to a temporary copy of the target module; unittest runs with that temporary directory first on `PYTHONPATH`. A nonzero suite exit kills a mutant; a passing suite means it survived. The original file is never modified.
+Python's tokenizer identifies supported comparison operators, boolean operators, and boolean literals while skipping strings/comments. Each token is replaced in isolation. The variant is syntax-checked and tested with `unittest`; a nonzero test result kills that mutant. Timeouts and malformed input are reported as errors. `--json` emits a machine-readable summary; `--timeout` bounds each test run.
 
 ## Usage
 
 `python3 mutation_lab.py path/to/module.py --tests path/to/tests -v`
 
-Run the included test suite: `python3 -m unittest discover -s tests -v`
+JSON report: `python3 mutation_lab.py path/to/module.py --tests path/to/tests --json`
 
-Initial scope is deliberately conservative: `<`, `<=`, `>`, `>=`, `==`, `!=`, `and`, `or`, `True`, and `False`. Tests must be importable by unittest discovery.
+Run tests: `python3 -m unittest discover -s mutation-testing-lab/tests -v`
+
+Supported token replacements: `<`, `<=`, `>`, `>=`, `==`, `!=`, `and`, `or`, `True`, and `False`. The target module should be a single self-contained Python file importable by the test suite. Test discovery is run from an isolated temporary directory; no shell is used.
+
+## Limitations
+
+Mutations that are syntactically invalid are skipped. A test failure counts as killed even if caused by an unrelated test/environment failure, so inspect failures in verbose mode when diagnosing results. This is an educational, bounded tool, not a replacement for mature mutation-testing frameworks.
+
+## Known Issues (Resolved)
+
+- The first version's tests could not import the runner from repository-root invocation; the tests now add their project root to `sys.path` and pass under the documented command.
