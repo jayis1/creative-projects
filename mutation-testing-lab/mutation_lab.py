@@ -48,12 +48,16 @@ def run(target, tests, verbose=False, timeout=20, json_output=False):
     edits = candidates(source)
     if not edits:
         raise ValueError("no supported mutation operators found")
-    killed = survived = 0
+    killed = survived = skipped = 0
+    results = []
     for index, (start, end, replacement, original) in enumerate(edits, 1):
         mutated = source[:start] + replacement + source[end:]
+        line = source.count("\n", 0, start) + 1
         try:
             ast.parse(mutated, filename=str(target))
         except SyntaxError:
+            skipped += 1
+            results.append({"index": index, "line": line, "original": original, "replacement": replacement, "status": "SKIPPED_SYNTAX"})
             continue
         with tempfile.TemporaryDirectory(prefix="mutation-lab-") as tmp:
             root = Path(tmp)
@@ -67,13 +71,14 @@ def run(target, tests, verbose=False, timeout=20, json_output=False):
         dead = proc.returncode != 0
         killed += int(dead)
         survived += int(not dead)
+        results.append({"index": index, "line": line, "original": original, "replacement": replacement, "status": "KILLED" if dead else "SURVIVED"})
         if verbose:
             print(f"{index}: {original}->{replacement}: {'KILLED' if dead else 'SURVIVED'}")
     total = killed + survived
     if json_output:
-        print(json.dumps({"killed": killed, "survived": survived, "total": total, "score": killed / total if total else None}, sort_keys=True))
+        print(json.dumps({"killed": killed, "survived": survived, "skipped_syntax": skipped, "total": total, "score": killed / total if total else None, "mutants": results}, sort_keys=True))
     else:
-        print(f"Mutation score: {killed}/{total} killed ({killed / total:.1%})" if total else "No syntactically valid mutants")
+        print(f"Mutation score: {killed}/{total} killed ({killed / total:.1%}); {skipped} skipped (syntax error)" if total else f"No syntactically valid mutants ({skipped} skipped)")
     return 0 if total else 2
 
 

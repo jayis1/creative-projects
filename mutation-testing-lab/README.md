@@ -4,7 +4,7 @@ A dependency-free Python mutation-testing runner for measuring whether unit test
 
 ## Algorithm
 
-Python's tokenizer identifies supported comparison operators, boolean operators, and boolean literals while skipping strings/comments. Each token is replaced in isolation. The variant is syntax-checked and tested with `unittest`; a nonzero test result kills that mutant. Timeouts and malformed input are reported as errors. `--json` emits a machine-readable summary; `--timeout` bounds each test run.
+Python's tokenizer identifies supported comparison operators, boolean operators, and boolean literals while skipping strings/comments. Each token is replaced in isolation. The variant is syntax-checked and tested with `unittest`; a nonzero test result kills that mutant. Invalid variants are counted as `SKIPPED_SYNTAX`, not included in the score. `--json` emits totals plus per-mutant status, source line, and replacement; `--timeout` bounds each test run.
 
 ## Usage
 

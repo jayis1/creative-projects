@@ -27,6 +27,10 @@ class MutationTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         result = json.loads(proc.stdout.strip().splitlines()[-1])
         self.assertEqual(result["total"], result["killed"] + result["survived"])
+        self.assertIn("skipped_syntax", result)
+        self.assertEqual(len(result["mutants"]), result["total"] + result["skipped_syntax"])
+        self.assertTrue(all(item["status"] in {"KILLED", "SURVIVED", "SKIPPED_SYNTAX"} for item in result["mutants"]))
+        self.assertTrue(all(isinstance(item["line"], int) and item["line"] > 0 for item in result["mutants"]))
 
 if __name__ == "__main__":
     unittest.main()
