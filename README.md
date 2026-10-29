@@ -115,5 +115,6 @@ A monorepo of AI-generated creative coding projects. Each project lives in its o
 | [causal-lab](./causal-lab) | Linear structural causal model simulator with seeded sampling and do-interventions |
 | [mutation-testing-lab](./mutation-testing-lab) | Dependency-free Python mutation testing for measuring unit-test sensitivity |
 | [fair-draw](./fair-draw) | Round-robin tournament fixtures with pairing validation and home/away fairness metrics |
+| [ics-scheduler](./ics-scheduler) | Bounded UTC iCalendar recurrence, import/export, and overlap detection |
 
 ---

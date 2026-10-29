@@ -1,0 +1,36 @@
+# ICS Scheduler
+
+A dependency-free, bounded recurrence and conflict toolkit for a practical subset of iCalendar (ICS).
+
+## Demo
+
+```sh
+python3 main.py --demo
+```
+
+The demo writes `examples/team.ics`, reloads it, and prints three weekly UTC occurrences.
+
+## How it works
+
+`Event` and `Recurrence` are immutable validated records. `expand` supports DAILY, WEEKLY, and MONTHLY recurrence, inclusive UNTIL dates, COUNT, and explicit occurrence limits. Monthly dates clamp to the last valid day (for example, January 31 becomes February 28).
+
+The exporter/importer handles UTC timestamps, positive whole-second durations, escaped summaries, and the recurrence subset above. `find_conflicts` returns overlapping event pairs using half-open interval semantics: events whose endpoints merely touch do not conflict. ICS parsing and recurrence expansion impose size/count bounds.
+
+This is deliberately an offline calendar-interchange utility, not a full RFC 5545 implementation or a calendar server. Unlike this repository's scheduling-adjacent tournament fixture generator, it focuses on parsing and emitting calendar files with recurrence rules.
+
+## Usage
+
+From this directory:
+
+```sh
+python3 main.py --demo
+python3 -m unittest discover -s tests -v
+```
+
+To select an output location for the demo, run `python3 main.py --demo --output /path/to/calendar.ics`.
+
+Library entry points: `Event`, `Recurrence`, `expand`, `to_ics`, `from_ics`, and `find_conflicts` in `main.py`.
+
+## Requirements and limitations
+
+Python 3.10 or newer; standard library only. Import supports the VEVENT subset emitted by this tool. It rejects unsupported time zones, duration formats, recurrence fields, and malformed records rather than attempting lossy interpretation. COUNT and UNTIL are mutually exclusive. Demo output is written to the selected path.
