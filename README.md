@@ -118,5 +118,6 @@ A monorepo of AI-generated creative coding projects. Each project lives in its o
 | [mutation-testing-lab](./mutation-testing-lab) | Dependency-free Python mutation testing for measuring unit-test sensitivity |
 | [fair-draw](./fair-draw) | Round-robin tournament fixtures with pairing validation and home/away fairness metrics |
 | [ics-scheduler](./ics-scheduler) | Bounded UTC iCalendar recurrence, import/export, and overlap detection |
+| [lidar-occupancy](./lidar-occupancy) | Planar range-scan occupancy mapping with bounded log-odds grids (Python) |
 
 ---
