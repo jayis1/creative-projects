@@ -51,6 +51,26 @@ def write_pgm(grid: list[list[float]], path: str | Path) -> None:
     target.write_text(f"P2\n{len(grid[0])} {len(grid)}\n255\n" + "\n".join(rows) + "\n", encoding="ascii")
 
 
+def write_ppm(grid: list[list[float]], path: str | Path) -> None:
+    """Write a dependency-free RGB elevation map using a simple terrain ramp."""
+    _validate_grid(grid)
+    target = Path(path)
+    pixels = []
+    for row in grid:
+        colors = []
+        for value in row:
+            value = max(0.0, min(1.0, value))
+            if value < .5:
+                t = value * 2
+                rgb = (int(18 + 35*t), int(45 + 120*t), int(100 - 45*t))
+            else:
+                t = (value - .5) * 2
+                rgb = (int(53 + 150*t), int(165 + 70*t), int(55 + 190*t))
+            colors.extend(map(str, rgb))
+        pixels.append(" ".join(colors))
+    target.write_text(f"P3\n{len(grid[0])} {len(grid)}\n255\n" + "\n".join(pixels) + "\n", encoding="ascii")
+
+
 def erode(grid: list[list[float]], iterations: int, talus: float = .08, rate: float = .25) -> list[list[float]]:
     if isinstance(iterations, bool) or not isinstance(iterations, int) or not 0 <= iterations <= 10000:
         raise ValueError("iterations must be an integer in [0, 10000]")
@@ -69,12 +89,14 @@ def main() -> int:
     parser.add_argument("--talus", type=float, default=.08)
     parser.add_argument("--rate", type=float, default=.25)
     parser.add_argument("--output", default="terrain.pgm")
+    parser.add_argument("--format", choices=("pgm", "ppm"), default="pgm", help="grayscale or color output")
     args = parser.parse_args()
     if not 1 <= args.width <= 512 or not 1 <= args.height <= 512:
         parser.error("width and height must be in [1, 512]")
     try:
         result = erode(generate(args.width, args.height, args.seed), args.iterations, args.talus, args.rate)
-        write_pgm(result, args.output)
+        writer = write_ppm if args.format == "ppm" else write_pgm
+        writer(result, args.output)
     except (ValueError, OSError) as exc:
         parser.error(str(exc))
     print(f"Wrote {args.width}x{args.height} terrain to {args.output}")

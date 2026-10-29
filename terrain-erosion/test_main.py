@@ -2,7 +2,7 @@ import math
 import tempfile
 import unittest
 from pathlib import Path
-from main import generate, thermal_step, erode, write_pgm
+from main import generate, thermal_step, erode, write_pgm, write_ppm
 
 class TerrainTests(unittest.TestCase):
     def test_generation_is_seeded_and_bounded(self):
@@ -17,6 +17,14 @@ class TerrainTests(unittest.TestCase):
         self.assertAlmostEqual(before, sum(map(sum, result)))
         self.assertLess(result[1][1], 1.)
         self.assertTrue(any(result[y][x] > 0 for x, y in ((0, 1), (2, 1), (1, 0), (1, 2))))
+
+    def test_color_ppm_header_and_pixel_count(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'color.ppm'
+            write_ppm([[0.0, .5, 1.0]], path)
+            lines = path.read_text().splitlines()
+            self.assertEqual(lines[:3], ['P3', '3 1', '255'])
+            self.assertEqual(len(lines[3].split()), 9)
 
     def test_invalid_grids_and_controls(self):
         for bad in ([], [[1], [1, 2]], [[math.nan]]):
