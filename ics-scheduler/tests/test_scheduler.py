@@ -28,6 +28,10 @@ class SchedulerTests(unittest.TestCase):
     def test_rejects_duplicate_and_missing_fields(self):
         with self.assertRaises(ValueError): from_ics("BEGIN:VEVENT\nDTSTART:20260101T000000Z\nDTSTART:20260101T000000Z\nEND:VEVENT")
         with self.assertRaises(ValueError): from_ics("BEGIN:VEVENT\nDTSTART:20260101T000000Z\nEND:VEVENT")
+    def test_rejects_unknown_summary_escape(self):
+        text = "BEGIN:VEVENT\nDTSTART:20260101T000000Z\nDURATION:PT60S\nSUMMARY:bad\\qescape\nEND:VEVENT"
+        with self.assertRaisesRegex(ValueError, "unsupported escape"):
+            from_ics(text)
     def test_calendar_check_reports_expanded_overlaps(self):
         from main import check_calendar
         from tempfile import TemporaryDirectory

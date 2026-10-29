@@ -32,6 +32,10 @@ To select an output location for the demo, run `python3 main.py --demo --output 
 
 Library entry points: `Event`, `Recurrence`, `expand`, `to_ics`, `from_ics`, and `find_conflicts` in `main.py`.
 
+## Known Issues (Resolved)
+
+- Imported SUMMARY values with unknown backslash escapes were silently altered (for example, `\\q` became `q`). The parser now rejects unsupported escapes with `ValueError`; regression test: `test_rejects_unknown_summary_escape` (observed failing before the fix, passing afterward).
+
 ## Requirements and limitations
 
 Python 3.10 or newer; standard library only. Import supports the VEVENT subset emitted by this tool. It rejects unsupported time zones, duration formats, recurrence fields, and malformed records rather than attempting lossy interpretation. COUNT and UNTIL are mutually exclusive. Demo output is written to the selected path.

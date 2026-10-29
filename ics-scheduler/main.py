@@ -43,6 +43,8 @@ def _unescape(value: str) -> str:
             i += 1
             if i >= len(value):
                 raise ValueError("trailing escape in SUMMARY")
+            if value[i] not in "\\;,nN":
+                raise ValueError(f"unsupported escape: \\{value[i]}")
             result.append("\n" if value[i] in "nN" else value[i])
         else:
             result.append(value[i])
