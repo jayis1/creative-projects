@@ -14,6 +14,14 @@ class TilingTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             TilingSolver([(0,0)], [[(0,0)],[(0,0)]])
 
+    def test_duplicate_piece_cells_rejected(self):
+        with self.assertRaises(ValueError):
+            TilingSolver([(0,0)], [[(0,0),(0,0)]])
+
+    def test_generator_board_is_supported(self):
+        board = ((r,c) for r,c in [(0,0),(0,1)])
+        self.assertEqual(len(TilingSolver(board, [[(0,0)],[(0,0)]]).solve()), 1)
+
     def test_duplicate_board_cell_rejected(self):
         with self.assertRaises(ValueError):
             TilingSolver([(0,0),(0,0)], [[(0,0)],[(0,0)]])

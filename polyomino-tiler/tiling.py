@@ -47,13 +47,17 @@ class TilingSolver:
     """Solve a board tiling where every board cell and piece is used once."""
 
     def __init__(self, board: Iterable[tuple[int, int]], pieces: Iterable[Iterable[tuple[int, int]]], *, reflections: bool = True):
-        self.board = tuple(sorted(set(board)))
+        raw_board = tuple(board)
+        self.board = tuple(sorted(set(raw_board)))
         if not self.board:
             raise ValueError("board must contain at least one cell")
-        if len(self.board) != len(tuple(board)):
+        if len(self.board) != len(raw_board):
             raise ValueError("board contains duplicate cells")
         self.cell_index = {cell: i for i, cell in enumerate(self.board)}
-        self.pieces = tuple(normalize(p) for p in pieces)
+        raw_pieces = tuple(tuple(piece) for piece in pieces)
+        if any(len(set(piece)) != len(piece) for piece in raw_pieces):
+            raise ValueError("piece contains duplicate cells")
+        self.pieces = tuple(normalize(piece) for piece in raw_pieces)
         if not self.pieces or any(not p for p in self.pieces):
             raise ValueError("at least one non-empty piece is required")
         if sum(map(len, self.pieces)) != len(self.board):

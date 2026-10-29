@@ -27,4 +27,4 @@ pieces = [[(0, 0)], [(0, 0)]]
 solutions = TilingSolver(board, pieces).solve(limit=2)
 ```
 
-Pass `reflections=False` to disallow mirror images. Piece identities are distinct, even when shapes are identical. `render(board, solution)` prints piece labels; boards may be disconnected or sparse.
+Pass `reflections=False` to disallow mirror images. `solve(limit=...)` bounds result accumulation, and constructor validation rejects duplicate board or piece coordinates and area mismatches. The constructor also accepts one-shot iterables such as generators.
