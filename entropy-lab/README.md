@@ -8,7 +8,7 @@ A dependency-free Shannon entropy and symbol-frequency analyzer for UTF-8 text. 
 printf 'abracadabra' | python3 entropy_lab.py
 ```
 
-Expected: `Symbols: 11  distinct: 5` and an entropy value of `2.040374 bits/symbol`.
+Expected: `Symbols: 11  distinct: 5` and an entropy value of `2.040373 bits/symbol`.
 
 ## How it works
 
@@ -21,6 +21,10 @@ python3 entropy_lab.py sample.txt --top 5
 python3 -m unittest discover -s . -p 'test_*.py'
 ```
 
-`--top` controls how many frequent symbols are shown. Empty input reports zero entropy. Malformed UTF-8 and unreadable files produce an argparse error. Entropy measures single-symbol distribution only; it does not model context or predict actual encoded size.
+`--top` controls how many frequent symbols are shown. Empty input reports zero entropy. `--json` emits machine-readable output; `--window N` reports the mean entropy of consecutive, non-overlapping windows (including a final short window). `--window` and `--top` must be non-negative. Malformed UTF-8 and unreadable files produce an argparse error. Entropy measures single-symbol distribution only; it does not model context or predict actual encoded size.
+
+```sh
+printf 'aabb' | python3 entropy_lab.py --json --window 2
+```
 
 Alternatives considered: event-log anomaly scoring, word-frequency Zipf plotting, byte-level protocol histograms.
