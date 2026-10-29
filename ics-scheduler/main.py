@@ -189,6 +189,22 @@ def find_conflicts(events: list[Event]) -> list[tuple[Event, Event]]:
     return conflicts
 
 
+def check_calendar(path: Path) -> int:
+    """Print conflicts found after expanding the calendar's supported recurrences."""
+    events = from_ics(path.read_text(encoding="utf-8"))
+    occurrences = []
+    for event in events:
+        occurrences.extend(expand(event, limit=MAX_OCCURRENCES - len(occurrences)))
+    conflicts = find_conflicts(occurrences)
+    if not conflicts:
+        print(f"No conflicts across {len(occurrences)} occurrences")
+        return 0
+    for first, second in conflicts:
+        print(f"CONFLICT {first.start.isoformat()} [{first.summary}] / {second.start.isoformat()} [{second.summary}]")
+    print(f"{len(conflicts)} conflict(s) across {len(occurrences)} occurrences")
+    return 1
+
+
 def demo(path: Path) -> None:
     event = Event(datetime(2026, 1, 5, 9, tzinfo=UTC), timedelta(minutes=30), "Planning, sync", Recurrence("WEEKLY", count=3))
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -200,8 +216,14 @@ def demo(path: Path) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--demo", action="store_true")
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--demo", action="store_true")
+    mode.add_argument("--check", type=Path, metavar="ICS", help="expand supported recurrence and report overlaps")
     parser.add_argument("--output", type=Path, default=Path(__file__).parent / "examples/team.ics")
     args = parser.parse_args()
     if args.demo: demo(args.output)
-    else: parser.error("select --demo")
+    elif args.check:
+        try:
+            raise SystemExit(check_calendar(args.check))
+        except (OSError, ValueError) as exc:
+            parser.error(str(exc))

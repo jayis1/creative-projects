@@ -14,7 +14,7 @@ The demo writes `examples/team.ics`, reloads it, and prints three weekly UTC occ
 
 `Event` and `Recurrence` are immutable validated records. `expand` supports DAILY, WEEKLY, and MONTHLY recurrence, inclusive UNTIL dates, COUNT, and explicit occurrence limits. Monthly dates clamp to the last valid day (for example, January 31 becomes February 28).
 
-The exporter/importer handles UTC timestamps, positive whole-second durations, escaped summaries, and the recurrence subset above. `find_conflicts` returns overlapping event pairs using half-open interval semantics: events whose endpoints merely touch do not conflict. ICS parsing and recurrence expansion impose size/count bounds.
+The exporter/importer handles UTC timestamps, positive whole-second durations, escaped summaries, and the recurrence subset above. `find_conflicts` returns overlapping event pairs using half-open interval semantics: events whose endpoints merely touch do not conflict. The `--check ICS` command expands every event's supported recurrence, reports the exact overlapping pairings, and exits with status 1 when conflicts are present (0 for a clean calendar). ICS parsing and recurrence expansion impose size/count bounds.
 
 This is deliberately an offline calendar-interchange utility, not a full RFC 5545 implementation or a calendar server. Unlike this repository's scheduling-adjacent tournament fixture generator, it focuses on parsing and emitting calendar files with recurrence rules.
 
@@ -24,6 +24,7 @@ From this directory:
 
 ```sh
 python3 main.py --demo
+python3 main.py --check examples/team.ics
 python3 -m unittest discover -s tests -v
 ```
 
