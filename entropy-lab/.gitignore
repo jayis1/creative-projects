@@ -1,0 +1,9 @@
+# Entropy Lab is dependency-free; keep local test artifacts out of Git.
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+dist/
+build/
+*.egg-info/

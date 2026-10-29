@@ -14,7 +14,10 @@ def analyze(text: str) -> dict:
     counts = Counter(text)
     total = len(text)
     entropy = -sum((n / total) * math.log2(n / total) for n in counts.values()) if total else 0.0
+    normalized_entropy = entropy / math.log2(len(counts)) if len(counts) > 1 else 0.0
     return {"length": total, "distinct": len(counts), "entropy": entropy,
+            "normalized_entropy": normalized_entropy,
+            "effective_symbols": 2 ** entropy,
             "frequencies": counts}
 
 
@@ -47,6 +50,8 @@ def main(argv=None) -> int:
         return 0
     print(f"Symbols: {result['length']}  distinct: {result['distinct']}")
     print(f"Shannon entropy: {result['entropy']:.6f} bits/symbol")
+    print(f"Normalized entropy: {result['normalized_entropy']:.6f} (0–1)")
+    print(f"Effective symbols: {result['effective_symbols']:.6f}")
     if args.window:
         print(f"Mean {args.window}-symbol window entropy: {result['mean_window_entropy']:.6f} bits/symbol")
     for char, count in result["frequencies"].most_common(args.top):
