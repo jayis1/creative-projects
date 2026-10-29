@@ -2,6 +2,7 @@
 from __future__ import annotations
 import argparse
 import math
+import numbers
 import random
 from pathlib import Path
 
@@ -39,8 +40,9 @@ def thermal_step(grid: list[list[float]], talus: float = .08, rate: float = .25)
 def _validate_grid(grid: list[list[float]]) -> None:
     if not grid or not grid[0] or any(len(row) != len(grid[0]) for row in grid):
         raise ValueError("height field must be a non-empty rectangle")
-    if any(not math.isfinite(v) for row in grid for v in row):
-        raise ValueError("height field values must be finite")
+    if any(isinstance(v, bool) or not isinstance(v, numbers.Real) or not math.isfinite(v)
+           for row in grid for v in row):
+        raise ValueError("height field values must be finite real numbers (not booleans)")
 
 
 def write_pgm(grid: list[list[float]], path: str | Path) -> None:

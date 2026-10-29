@@ -26,6 +26,11 @@ class TerrainTests(unittest.TestCase):
             self.assertEqual(lines[:3], ['P3', '3 1', '255'])
             self.assertEqual(len(lines[3].split()), 9)
 
+    def test_rejects_non_numeric_height_values(self):
+        for bad in ([["ridge"]], [[True]]):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                thermal_step(bad)
+
     def test_invalid_grids_and_controls(self):
         for bad in ([], [[1], [1, 2]], [[math.nan]]):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
