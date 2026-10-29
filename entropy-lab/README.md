@@ -27,4 +27,12 @@ python3 -m unittest discover -s . -p 'test_*.py'
 printf 'aabb' | python3 entropy_lab.py --json --window 2
 ```
 
+## Known Issues (Resolved)
+
+No implementation bugs were confirmed in the bounded source review. Adversarial regression coverage now checks empty input, Unicode, invalid API types, negative CLI bounds, and window processing with a short final chunk; all pass. No fixes are claimed from this review.
+
+## Limitations
+
+This is zero-order character entropy, not a compressor or contextual language model. Unicode is counted by code point, not grapheme cluster.
+
 Alternatives considered: event-log anomaly scoring, word-frequency Zipf plotting, byte-level protocol histograms.

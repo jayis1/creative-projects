@@ -17,6 +17,17 @@ class EntropyTests(unittest.TestCase):
         data = json.loads(proc.stdout)
         self.assertAlmostEqual(data['mean_window_entropy'], 0.0)
         self.assertEqual(data['window_size'], 2)
+    def test_window_includes_partial_final_chunk_and_empty_input(self):
+        import json, subprocess, sys
+        def run(text):
+            proc = subprocess.run([sys.executable, 'entropy_lab.py', '--json', '--window', '2'],
+                                  input=text, text=True, capture_output=True, check=True)
+            return json.loads(proc.stdout)
+        self.assertAlmostEqual(run('aab')['mean_window_entropy'], 0.0)
+        self.assertEqual(run('')['mean_window_entropy'], 0.0)
+    def test_invalid_analysis_type(self):
+        with self.assertRaises(TypeError):
+            analyze(None)  # type: ignore[arg-type]
     def test_window_rejects_negative(self):
         import subprocess, sys
         proc = subprocess.run([sys.executable, 'entropy_lab.py', '--window', '-1'],
