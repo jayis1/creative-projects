@@ -111,6 +111,47 @@ class Grid:
                 error += dx
                 y0 += sy
 
+    def integrate_scan(self, origin: tuple[float, float], beams: list[tuple[float, float]],
+                       max_range: float, free_delta: float = -0.4,
+                       occupied_delta: float = 0.85) -> None:
+        """Integrate (angle, measured_range) beams; zero range is a valid hit.
+
+        Measurements beyond max_range are clamped and treated as no-return
+        beams. Input count is bounded to prevent accidental unbounded work.
+        """
+        if not math.isfinite(max_range) or max_range <= 0:
+            raise ValueError("max_range must be finite and positive")
+        if len(beams) > 100_000:
+            raise ValueError("scan exceeds 100,000 beams")
+        self.world_to_cell(*origin)  # validate finite coordinates
+        for angle, distance in beams:
+            if not math.isfinite(angle) or not math.isfinite(distance) or distance < 0:
+                raise ValueError("beam angles must be finite and ranges nonnegative")
+            hit = distance <= max_range
+            traced_distance = min(distance, max_range)
+            endpoint = (origin[0] + traced_distance * math.cos(angle),
+                        origin[1] + traced_distance * math.sin(angle))
+            self.trace_ray(origin, endpoint, hit=hit, free_delta=free_delta,
+                           occupied_delta=occupied_delta)
+
+    def summary(self) -> dict[str, int | float]:
+        """Return occupancy counts and the observed log-odds range."""
+        values = [value for row in self.cells for value in row]
+        return {"width": self.width, "height": self.height,
+                "resolution": self.resolution,
+                "occupied": sum(value > 0 for value in values),
+                "free": sum(value < 0 for value in values),
+                "unknown": sum(value == 0 for value in values),
+                "min_log_odds": min(values), "max_log_odds": max(values)}
+
+    def to_json(self) -> str:
+        """Serialize map metadata and cells as deterministic JSON."""
+        import json
+        return json.dumps({"width": self.width, "height": self.height,
+                           "resolution": self.resolution,
+                           "origin": [self.origin_x, self.origin_y],
+                           "cells": self.cells}, sort_keys=True, separators=(",", ":"))
+
     def render(self, threshold: float = 0.0) -> str:
         """Render top row first as ASCII: # occupied, . free, _ unknown."""
         if not math.isfinite(threshold):

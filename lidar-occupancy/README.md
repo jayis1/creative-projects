@@ -47,8 +47,9 @@ Run tests with `python3 -m unittest discover -s . -p 'test_*.py' -v`.
 
 ## Enhancements
 
-Phase 2 adds configurable inverse-sensor-model updates, multi-beam scan ingestion, and map export/summary modes.
+- `integrate_scan()` ingests angle/range beams, clamps no-return beams to a maximum range, and bounds scans to 100,000 beams.
+- Per-scan free and occupied log-odds increments are configurable through both ray and scan APIs.
+- `summary()` reports occupied/free/unknown counts and evidence limits; `to_json()` provides deterministic metadata and cell export.
+- ASCII rendering uses `#` for occupied, `.` for free, and `_` for unknown cells.
 
 ## Known Issues (Resolved)
-
-Added after the Phase 3 regression audit; only reproducible issues will be listed.
