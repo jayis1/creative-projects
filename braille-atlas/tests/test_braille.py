@@ -23,6 +23,11 @@ class BrailleTests(unittest.TestCase):
             path.write_bytes(b"P2\n# hi\n2 1\n255\n0 255\n")
             self.assertEqual(read_pgm(path).pixels, (0, 255))
 
+    def test_dither_is_deterministic(self):
+        image = PGM(4, 4, 255, (128,) * 16)
+        self.assertEqual(render(image, dither=True), render(image, dither=True))
+        self.assertNotEqual(render(image), render(image, dither=True))
+
     def test_invalid_threshold(self):
         with self.assertRaises(ValueError):
             render(PGM(1, 1, 1, (0,)), 1.1)

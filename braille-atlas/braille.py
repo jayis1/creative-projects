@@ -62,13 +62,28 @@ def read_pgm(path: str | Path) -> PGM:
     return PGM(width, height, maximum, pixels)
 
 
-def render(image: PGM, threshold: float = 0.5, invert: bool = False) -> str:
-    """Render 2x4 pixel blocks; dark samples become Braille dots."""
+def render(image: PGM, threshold: float = 0.5, invert: bool = False, dither: bool = False) -> str:
+    """Render 2x4 pixel blocks; optionally apply Floyd–Steinberg error diffusion."""
     if not 0.0 <= threshold <= 1.0:
         raise ValueError("threshold must be between 0 and 1")
     # Unicode Braille dot layout: columns top-to-bottom are 1,2,3,7 and 4,5,6,8.
     bits = ((0, 0, 1), (0, 1, 2), (0, 2, 4), (1, 0, 8),
             (1, 1, 16), (1, 2, 32), (0, 3, 64), (1, 3, 128))
+    # Floyd–Steinberg diffusion makes grayscale gradients survive the 1-bit output.
+    samples = [value / image.maximum for value in image.pixels]
+    if dither:
+        for y in range(image.height):
+            for x in range(image.width):
+                index = y * image.width + x
+                old = samples[index]
+                new = 0.0 if old < threshold else 1.0
+                error = old - new
+                samples[index] = new
+                for dx, dy, weight in ((1, 0, 7 / 16), (-1, 1, 3 / 16), (0, 1, 5 / 16), (1, 1, 1 / 16)):
+                    nx, ny = x + dx, y + dy
+                    if 0 <= nx < image.width and ny < image.height:
+                        ni = ny * image.width + nx
+                        samples[ni] = min(1.0, max(0.0, samples[ni] + error * weight))
     rows = []
     for y in range(0, image.height, 4):
         line = []
@@ -77,7 +92,7 @@ def render(image: PGM, threshold: float = 0.5, invert: bool = False) -> str:
             for dx, dy, bit in bits:
                 px, py = x + dx, y + dy
                 if px < image.width and py < image.height:
-                    dark = image.pixels[py * image.width + px] / image.maximum < threshold
+                    dark = samples[py * image.width + px] < threshold
                     if dark != invert:
                         mask |= bit
             line.append(chr(0x2800 + mask))
