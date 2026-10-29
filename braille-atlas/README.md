@@ -24,6 +24,10 @@ The bundled demo prints two Braille cells. Input is limited to 16 MB and one mil
 - Initial implementation supports ASCII P2 and binary P5 PGM, threshold selection, and inversion.
 - Added optional Floyd–Steinberg error diffusion for grayscale gradients; the default threshold renderer remains unchanged.
 
+## Known Issues (Resolved)
+
+- P2 pixel data previously failed when a comment appeared after a pixel value on the same line. `test_ascii_pgm` now covers inline-comment parsing and confirms all samples are retained.
+
 ## Limitations
 
 No color image decoding, resizing, or automatic contrast enhancement; output depends on a terminal/font with Braille glyph support.

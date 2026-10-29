@@ -22,6 +22,8 @@ class BrailleTests(unittest.TestCase):
             path = Path(tmp) / "x.pgm"
             path.write_bytes(b"P2\n# hi\n2 1\n255\n0 255\n")
             self.assertEqual(read_pgm(path).pixels, (0, 255))
+            path.write_bytes(b"P2\n2 1\n255\n0 # inline comment\n255\n")
+            self.assertEqual(read_pgm(path).pixels, (0, 255))
 
     def test_dither_is_deterministic(self):
         image = PGM(4, 4, 255, (128,) * 16)

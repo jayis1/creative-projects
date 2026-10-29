@@ -40,11 +40,12 @@ def read_pgm(path: str | Path) -> PGM:
     if width < 1 or height < 1 or width * height > 1_000_000 or not 1 <= maximum <= 65535:
         raise ValueError("PGM dimensions or maximum outside supported range")
     if tokens[0] == b"P2":
-        rest = data[i:].split(b"#", 1)[0].split()
-        if len(rest) != width * height:
+        cleaned = b" ".join(line.split(b"#", 1)[0] for line in data[i:].splitlines())
+        values = cleaned.split()
+        if len(values) != width * height:
             raise ValueError("wrong number of PGM pixels")
         try:
-            pixels = tuple(map(int, rest))
+            pixels = tuple(map(int, values))
         except ValueError as exc:
             raise ValueError("invalid PGM pixel") from exc
     else:
