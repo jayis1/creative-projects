@@ -18,6 +18,10 @@ The demo constructs a 4×5 rectangle and twenty monominoes, reports the number o
 
 Each board cell and each piece is an exact-cover constraint. A placement covers its cells and consumes its piece. The solver branches on the uncovered cell with the fewest currently legal placements, pruning dead ends early. Coordinates are integer `(row, column)` pairs; reflections are enabled by default.
 
+## Known Issues (Resolved)
+
+- Negative-coordinate boards previously generated no placements because translation anchors started at zero. `test_negative_coordinate_board_tiles` reproduced the failure; placement bounds now include negative anchors and the regression test passes.
+
 ## API
 
 ```python

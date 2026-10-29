@@ -65,12 +65,20 @@ class TilingSolver:
         self.all_cells = (1 << len(self.board)) - 1
         self.placements: list[Placement] = []
         self.by_cell: list[list[int]] = [[] for _ in self.board]
+        min_row = min(r for r, _ in self.board)
+        max_row = max(r for r, _ in self.board)
+        min_col = min(c for _, c in self.board)
+        max_col = max(c for _, c in self.board)
         for pi, piece in enumerate(self.pieces):
             for shape in orientations(piece, reflections):
-                height = max(r for r, _ in shape) + 1
-                width = max(c for _, c in shape) + 1
-                for dr in range(max(r for r, _ in self.board) + 1):
-                    for dc in range(max(c for _, c in self.board) + 1):
+                min_shape_row = min(r for r, _ in shape)
+                max_shape_row = max(r for r, _ in shape)
+                min_shape_col = min(c for _, c in shape)
+                max_shape_col = max(c for _, c in shape)
+                # Include negative anchors so translated shapes can cover boards
+                # whose coordinate origin is not (0, 0).
+                for dr in range(min_row - max_shape_row, max_row - min_shape_row + 1):
+                    for dc in range(min_col - max_shape_col, max_col - min_shape_col + 1):
                         cells = tuple((dr+r, dc+c) for r, c in shape)
                         if all(cell in self.cell_index for cell in cells):
                             mask = sum(1 << self.cell_index[cell] for cell in cells)

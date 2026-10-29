@@ -22,6 +22,11 @@ class TilingTests(unittest.TestCase):
         board = ((r,c) for r,c in [(0,0),(0,1)])
         self.assertEqual(len(TilingSolver(board, [[(0,0)],[(0,0)]]).solve()), 1)
 
+    def test_negative_coordinate_board_tiles(self):
+        board = [(-1,-1)]
+        solution = TilingSolver(board, [[(0,0)]]).solve()
+        self.assertEqual(len(solution), 1)
+
     def test_duplicate_board_cell_rejected(self):
         with self.assertRaises(ValueError):
             TilingSolver([(0,0),(0,0)], [[(0,0)],[(0,0)]])
