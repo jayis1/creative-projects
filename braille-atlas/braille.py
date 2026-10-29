@@ -12,6 +12,29 @@ class PGM:
     maximum: int
     pixels: tuple[int, ...]
 
+    def __post_init__(self) -> None:
+        if self.width < 1 or self.height < 1 or self.width * self.height > 1_000_000:
+            raise ValueError("PGM dimensions outside supported range")
+        if not 1 <= self.maximum <= 65535:
+            raise ValueError("PGM maximum must be between 1 and 65535")
+        if len(self.pixels) != self.width * self.height:
+            raise ValueError("pixel count does not match PGM dimensions")
+        if any(not isinstance(pixel, int) or pixel < 0 or pixel > self.maximum for pixel in self.pixels):
+            raise ValueError("pixel outside declared grayscale range")
+
+
+def resize(image: PGM, width: int) -> PGM:
+    """Resize to a pixel width using nearest-neighbor sampling, preserving aspect ratio."""
+    if width < 1 or width > 1_000_000:
+        raise ValueError("width must be between 1 and 1000000")
+    height = max(1, round(image.height * width / image.width))
+    pixels = tuple(
+        image.pixels[min(image.height - 1, y * image.height // height) * image.width
+                     + min(image.width - 1, x * image.width // width)]
+        for y in range(height) for x in range(width)
+    )
+    return PGM(width, height, image.maximum, pixels)
+
 
 def read_pgm(path: str | Path) -> PGM:
     """Read binary or ASCII PGM (P5/P2), rejecting malformed and oversized files."""

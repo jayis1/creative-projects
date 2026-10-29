@@ -4,13 +4,32 @@ import unittest
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from pathlib import Path
-from braille import PGM, read_pgm, render
+from braille import PGM, read_pgm, render, resize
 
 
 class BrailleTests(unittest.TestCase):
     def test_dot_layout_and_partial_tile(self):
         self.assertEqual(render(PGM(2, 4, 1, (0, 1, 1, 1, 1, 1, 1, 1))), "⠁")
         self.assertEqual(render(PGM(1, 1, 1, (0,))), "⠁")
+
+    def test_resize_preserves_aspect_ratio_and_samples(self):
+        image = PGM(2, 2, 255, (0, 64, 128, 255))
+        smaller = resize(image, 1)
+        self.assertEqual((smaller.width, smaller.height, smaller.pixels), (1, 1, (0,)))
+        larger = resize(image, 4)
+        self.assertEqual((larger.width, larger.height), (4, 4))
+        self.assertEqual(larger.pixels[0], 0)
+        self.assertEqual(larger.pixels[-1], 255)
+
+    def test_pgm_rejects_inconsistent_pixels(self):
+        with self.assertRaisesRegex(ValueError, "pixel count"):
+            PGM(2, 2, 255, (0, 255))
+        with self.assertRaisesRegex(ValueError, "pixel outside"):
+            PGM(1, 1, 1, (2,))
+
+    def test_invalid_resize_width(self):
+        with self.assertRaisesRegex(ValueError, "width"):
+            resize(PGM(1, 1, 1, (0,)), 0)
 
     def test_threshold_and_invert(self):
         image = PGM(1, 1, 255, (128,))

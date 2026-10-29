@@ -15,12 +15,14 @@ python3 cli.py --demo
 python3 cli.py examples/sample.pgm --threshold 0.4
 python3 cli.py photo.pgm --invert
 python3 cli.py photo.pgm --dither
+python3 cli.py photo.pgm --width 80
 ```
 
-The bundled demo prints two Braille cells. Input is limited to 16 MB and one million pixels. PGM is a simple portable grayscale format; convert other formats externally.
+The optional `--width` flag rescales the input with nearest-neighbor sampling while preserving its aspect ratio, so large images can fit a terminal. Input is limited to 16 MB and one million pixels. PGM is a simple portable grayscale format; convert other formats externally.
 
 ## Changelog
 
+- Added nearest-neighbor resizing via `--width` and validation for directly constructed PGM images.
 - Initial implementation supports ASCII P2 and binary P5 PGM, threshold selection, and inversion.
 - Added optional Floyd–Steinberg error diffusion for grayscale gradients; the default threshold renderer remains unchanged.
 
