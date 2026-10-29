@@ -53,3 +53,5 @@ Run tests with `python3 -m unittest discover -s . -p 'test_*.py' -v`.
 - ASCII rendering uses `#` for occupied, `.` for free, and `_` for unknown cells.
 
 ## Known Issues (Resolved)
+
+- An in-map ray endpoint was initially treated as a hit even when the measured endpoint lay beyond the grid; this falsely marked the clipped map edge as occupied. Regression test: `test_out_of_map_hit_does_not_invent_boundary_obstacle`. Clipped out-of-map endpoints now only update traversed cells as free space.

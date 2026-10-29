@@ -48,6 +48,11 @@ class GridTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             grid.integrate_scan((1.0, 1.0), [(0.0, 1.0)] * 100_001, 2.0)
 
+    def test_out_of_map_hit_does_not_invent_boundary_obstacle(self):
+        grid = Grid.create(3, 1)
+        grid.trace_ray((0.2, 0.2), (20.2, 0.2), hit=True)
+        self.assertEqual(grid.cells[0], [-0.4, -0.4, -0.4])
+
     def test_rejects_invalid_dimensions_and_coordinates(self):
         for args in ((0, 1), (1, -1), (2001, 1000)):
             with self.assertRaises(ValueError):

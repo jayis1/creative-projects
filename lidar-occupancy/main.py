@@ -49,6 +49,7 @@ class Grid:
             raise ValueError("updates must be finite")
         first = self.world_to_cell(*start)
         last = self.world_to_cell(*end)
+        endpoint_inside = last is not None
         if first is None:
             raise ValueError("sensor origin is outside the map")
         if last is None:
@@ -63,7 +64,7 @@ class Grid:
         cells = self._bresenham(first, last)
         endpoint = cells[-1] if cells else None
         for col, row in cells:
-            is_hit = hit and (col, row) == endpoint
+            is_hit = hit and endpoint_inside and (col, row) == endpoint
             self.cells[row][col] = max(-5.0, min(5.0, self.cells[row][col] +
                                                 (occupied_delta if is_hit else free_delta)))
 
