@@ -5,7 +5,7 @@ A monorepo of AI-generated creative coding projects. Each project lives in its o
 ## Projects
 
 | Project | Description |
-|---------|-------------|
+| [polyomino-tiler](./polyomino-tiler) | Exact-cover polyomino tiler in Python: run `python3 main.py --demo` |
 | [braille-atlas](./braille-atlas) | Dependency-free PGM grayscale-to-Unicode Braille renderer with threshold and inversion modes |
 | [generative-poetry](./generative-poetry) | Procedural poetry engine: haiku, limerick, free verse, acrostic, sonnet — syllable counting, phonetic rhyme detection, 5 themes (nature/city/space/autumn/sea), seed-reproducible, CLI, 52 tests, pip-installable |
 | [finite-element-solver](./finite-element-solver) | 2D truss finite element analysis toolkit: direct stiffness method, JSON/TOML models, named load cases, self-weight, summaries, CLI, examples, 15 tests, 4 bugs fixed |
