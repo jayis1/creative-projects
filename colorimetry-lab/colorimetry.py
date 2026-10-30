@@ -55,4 +55,11 @@ def delta_e76(first: tuple[float, float, float], second: tuple[float, float, flo
         if any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v)
                for v in color):
             raise ValueError(f"{label} Lab components must be finite numbers")
-    return math.sqrt(sum((float(a) - float(b)) ** 2 for a, b in zip(first, second)))
+    differences = [float(a) - float(b) for a, b in zip(first, second)]
+    # Finite coordinates can still overflow during subtraction; never emit inf as a valid distance.
+    if any(not math.isfinite(value) for value in differences):
+        raise ValueError("Lab distance exceeds the finite float range")
+    distance = math.hypot(*differences)
+    if not math.isfinite(distance):
+        raise ValueError("Lab distance exceeds the finite float range")
+    return distance

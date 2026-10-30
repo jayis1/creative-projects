@@ -47,9 +47,13 @@ python3 main.py 1 0 0 --compare 0 0 1
 
 CIE76 is useful for simple comparisons but is not perceptually uniform in all regions; use a newer formula where that precision is required.
 
+## Known Issues (Resolved)
+
+- `delta_e76` could return positive infinity when subtracting two individually finite but extreme Lab coordinates overflowed. The root cause was unchecked floating-point subtraction and squaring. The function now detects non-finite differences/results and raises `ValueError`; regression test: `test_delta_e76_rejects_unrepresentable_distance` (observed failing before the fix and passing afterward).
+
 ## Limitations
 
-Inputs are normalized sRGB, not 8-bit integer RGB; no ICC profiles, chromatic adaptation, CIEDE2000, or gamut mapping are included. XYZ input is D65-relative and nonnegative.
+Inputs are normalized sRGB, not 8-bit integer RGB; no ICC profiles, chromatic adaptation, CIEDE2000, or gamut mapping are included. XYZ input is D65-relative and nonnegative. Floating-point distances beyond the representable range are rejected.
 
 ## Development
 

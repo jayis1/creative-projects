@@ -32,6 +32,11 @@ class ConversionTests(unittest.TestCase):
         self.assertEqual(delta_e76((0, 0, 0), (3, 4, 0)), 5.0)
         self.assertEqual(delta_e76((1, 2, 3), (1, 2, 3)), 0.0)
 
+    def test_delta_e76_rejects_unrepresentable_distance(self):
+        from colorimetry import delta_e76
+        with self.assertRaises(ValueError):
+            delta_e76((1.7e308, 0, 0), (-1.7e308, 0, 0))
+
 
 if __name__ == "__main__":
     unittest.main()
