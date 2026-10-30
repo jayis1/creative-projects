@@ -120,6 +120,7 @@ A monorepo of AI-generated creative coding projects. Each project lives in its o
 | [ics-scheduler](./ics-scheduler) | Bounded UTC iCalendar recurrence, import/export, and overlap detection |
 | [lidar-occupancy](./lidar-occupancy) | Planar range-scan occupancy mapping with bounded log-odds grids (Python) |
 | [terrain-erosion](./terrain-erosion) | Seeded thermal-slump height-field simulation; writes PGM terrain maps |
+| [colorimetry-lab](./colorimetry-lab) | Color science: normalized sRGB to D65 XYZ and CIE Lab conversions (Python) |
 
 
 ---
