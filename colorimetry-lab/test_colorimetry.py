@@ -27,6 +27,11 @@ class ConversionTests(unittest.TestCase):
             with self.subTest(rgb=rgb), self.assertRaises(ValueError):
                 srgb_to_xyz(rgb)
 
+    def test_delta_e76_known_distance(self):
+        from colorimetry import delta_e76
+        self.assertEqual(delta_e76((0, 0, 0), (3, 4, 0)), 5.0)
+        self.assertEqual(delta_e76((1, 2, 3), (1, 2, 3)), 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()

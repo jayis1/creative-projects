@@ -45,3 +45,14 @@ def xyz_to_lab(xyz: tuple[float, float, float]) -> tuple[float, float, float]:
 
 def rgb_to_lab(rgb: tuple[float, float, float]) -> tuple[float, float, float]:
     return xyz_to_lab(srgb_to_xyz(rgb))
+
+
+def delta_e76(first: tuple[float, float, float], second: tuple[float, float, float]) -> float:
+    """Return Euclidean CIE76 difference between two L*a*b* coordinates."""
+    if len(first) != 3 or len(second) != 3:
+        raise ValueError("each Lab color must contain exactly three components")
+    for label, color in (("first", first), ("second", second)):
+        if any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v)
+               for v in color):
+            raise ValueError(f"{label} Lab components must be finite numbers")
+    return math.sqrt(sum((float(a) - float(b)) ** 2 for a, b in zip(first, second)))

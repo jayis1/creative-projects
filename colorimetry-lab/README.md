@@ -31,13 +31,25 @@ With no channels, the CLI demonstrates sRGB red. Example output (rounded here on
 Library use:
 
 ```python
-from colorimetry import rgb_to_lab
-print(rgb_to_lab((1.0, 0.0, 0.0)))
+from colorimetry import rgb_to_lab, delta_e76
+red = rgb_to_lab((1.0, 0.0, 0.0))
+blue = rgb_to_lab((0.0, 0.0, 1.0))
+print(delta_e76(red, blue))
 ```
+
+## Phase 2: perceptual comparisons
+
+The CLI now supports an output-affecting comparison mode; it emits the second color's Lab coordinates and Euclidean CIE76 distance alongside the first color's conversion. Before this phase there was no `--compare` option; now this command runs successfully:
+
+```sh
+python3 main.py 1 0 0 --compare 0 0 1
+```
+
+CIE76 is useful for simple comparisons but is not perceptually uniform in all regions; use a newer formula where that precision is required.
 
 ## Limitations
 
-Inputs are normalized sRGB, not 8-bit integer RGB; no ICC profiles, chromatic adaptation, perceptual color-difference metric, or gamut mapping are included in the initial release. XYZ input is D65-relative and nonnegative.
+Inputs are normalized sRGB, not 8-bit integer RGB; no ICC profiles, chromatic adaptation, CIEDE2000, or gamut mapping are included. XYZ input is D65-relative and nonnegative.
 
 ## Development
 
