@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
 import math
 from dataclasses import dataclass
@@ -101,7 +102,10 @@ def main(argv=None) -> int:
     try:
         if values is None:
             import sys
-            stream = Path(args.input).open(encoding="utf-8") if args.input else sys.stdin
+            stream = (gzip.open(args.input, "rt", encoding="utf-8")
+                      if args.input and args.input.endswith(".gz")
+                      else Path(args.input).open(encoding="utf-8") if args.input
+                      else sys.stdin)
             try:
                 for line_number, line in enumerate(stream, 1):
                     if line.strip():

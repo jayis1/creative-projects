@@ -31,6 +31,22 @@ class SketchTests(unittest.TestCase):
             self.assertEqual(main(['--jsonl', '--quantiles', '0.5']), 0)
         self.assertIn('2.0', output.getvalue())
 
+    def test_gzip_jsonl_cli_streaming(self):
+        import gzip
+        import json
+        import subprocess
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(suffix=".jsonl.gz") as source:
+            with gzip.open(source.name, "wt", encoding="utf-8") as stream:
+                stream.write("1\n2\n3\n")
+            result = subprocess.run(
+                [sys.executable, str(Path(__file__).resolve().parents[1] / "quantile_sketch.py"),
+                 source.name, "--jsonl", "--quantiles", "0.5"],
+                capture_output=True, text=True, check=True,
+            )
+        self.assertEqual(json.loads(result.stdout)["quantiles"]["0.5"], 2.0)
+
     def test_duplicate_values_preserve_median(self):
         sketch = QuantileSketch(0.01)
         sketch.extend([4] * 500 + [9] * 500)
