@@ -53,8 +53,10 @@ def voice_lead(chords: list[str], low: int = 48, high: int = 72) -> list[tuple[i
     """
     if not chords:
         return []
-    if not isinstance(low, int) or not isinstance(high, int) or low > high:
-        raise ValueError("register bounds must be integers with low <= high")
+    if (not isinstance(low, int) or isinstance(low, bool)
+            or not isinstance(high, int) or isinstance(high, bool)
+            or low < 0 or high > 127 or low > high):
+        raise ValueError("register bounds must be MIDI notes 0..127 with low <= high")
     candidates = [_candidates(chord, low, high) for chord in chords]
     if any(not options for options in candidates):
         raise ValueError("register contains no valid voicing for a chord")

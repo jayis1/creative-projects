@@ -30,6 +30,11 @@ class ChordVoicerTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             voice_lead(["C/F#"])
 
+    def test_register_must_stay_within_midi_range(self):
+        for bounds in ((-1, 60), (60, 128)):
+            with self.subTest(bounds=bounds), self.assertRaises(ValueError):
+                voice_lead(["C"], low=bounds[0], high=bounds[1])
+
 
 if __name__ == "__main__":
     unittest.main()
