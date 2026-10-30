@@ -1,12 +1,28 @@
 import unittest
 
-from main import make_terrain, render_ascii, route_flow
+from main import load_terrain, make_terrain, render_ascii, route_flow
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 
 class RunoffTests(unittest.TestCase):
     def test_rejects_unrepresentably_large_integer_elevation(self):
         with self.assertRaises(ValueError):
             route_flow([[10**10000]])
+
+    def test_load_terrain_json_validates_grid(self):
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "terrain.json"
+            path.write_text("[[3, 2], [2, 0]]", encoding="utf-8")
+            self.assertEqual(load_terrain(path), [[3, 2], [2, 0]])
+
+    def test_load_terrain_rejects_malformed_or_invalid_data(self):
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "terrain.json"
+            for payload in ("{bad", "[[1], [1, 2]]", "[]"):
+                path.write_text(payload, encoding="utf-8")
+                with self.subTest(payload=payload), self.assertRaises(ValueError):
+                    load_terrain(path)
 
     def test_deterministic_terrain(self):
         self.assertEqual(make_terrain(8, 5, 11), make_terrain(8, 5, 11))

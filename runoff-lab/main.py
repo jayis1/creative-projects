@@ -40,6 +40,16 @@ def _validate_grid(grid: list[list[float]]) -> tuple[int, int]:
     return width, len(grid)
 
 
+def load_terrain(path: Path) -> list[list[float]]:
+    """Load and validate a rectangular elevation grid from a JSON file."""
+    try:
+        grid = json.loads(path.read_text(encoding="utf-8"))
+        _validate_grid(grid)
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        raise ValueError(f"cannot load terrain from {path}: {exc}") from exc
+    return grid
+
+
 def route_flow(grid: list[list[float]], connectivity: int = 4) -> tuple[list[list[int | None]], list[list[float]]]:
     """Assign each cell to its steepest lower cardinal neighbor (D8 facets not used).
 
@@ -103,22 +113,31 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--rain", type=float, default=1.0, help="rainfall contribution per cell")
     parser.add_argument("--connectivity", type=int, choices=(4, 8), default=4)
     parser.add_argument("--stream-threshold", type=float, default=0.0, help="show only cells reaching this contributing area")
+    parser.add_argument("--terrain", type=Path, help="read a rectangular elevation grid from JSON instead of generating terrain")
     parser.add_argument("--output", type=Path, help="write JSON flow report (does not overwrite)")
     parser.add_argument("--demo", action="store_true", help="print a small flow-accumulation map")
     args = parser.parse_args(argv)
-    if not (1 <= args.width <= 512 and 1 <= args.height <= 512 and args.width * args.height <= 262144):
-        parser.error("dimensions must be 1..512 and at most 262144 cells")
+    if args.terrain:
+        try:
+            grid = load_terrain(args.terrain)
+        except ValueError as exc:
+            parser.error(str(exc))
+        height, width = len(grid), len(grid[0])
+    else:
+        if not (1 <= args.width <= 512 and 1 <= args.height <= 512 and args.width * args.height <= 262144):
+            parser.error("dimensions must be 1..512 and at most 262144 cells")
+        grid = make_terrain(args.width, args.height, args.seed)
+        width, height = args.width, args.height
     if not math.isfinite(args.rain) or args.rain <= 0:
         parser.error("--rain must be finite and greater than zero")
     if not math.isfinite(args.stream_threshold) or args.stream_threshold < 0:
         parser.error("--stream-threshold must be finite and non-negative")
-    grid = make_terrain(args.width, args.height, args.seed)
     downstream, counts = route_flow(grid, args.connectivity)
     weighted = [[v * args.rain for v in row] for row in counts]
     if args.demo or not args.output:
         print(render_ascii(grid, weighted, args.stream_threshold))
     if args.output:
-        payload = {"width": args.width, "height": args.height, "seed": args.seed,
+        payload = {"width": width, "height": height, "seed": args.seed if not args.terrain else None,
                    "rain_per_cell": args.rain, "accumulation": weighted,
                    "downstream": downstream}
         try:
