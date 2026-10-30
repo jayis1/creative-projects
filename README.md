@@ -125,6 +125,7 @@ A monorepo of AI-generated creative coding projects. Each project lives in its o
 | [runoff-lab](./runoff-lab) | Seeded rainfall-runoff routing with drainage graph and flow-accumulation maps (Python) |
 | [weave-lab](./weave-lab) | Weaving-draft generator with warp/weft float analysis (Python) |
 | [quantile-sketch](./quantile-sketch) | Streaming Greenwald–Khanna quantile estimator with bounded rank error (Python) |
+| [chord-voicer](./chord-voicer) | Dynamic-programming chord inversion search for smooth, register-bounded MIDI voice leading (Python) |
 
 
 ---
