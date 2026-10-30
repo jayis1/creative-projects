@@ -10,9 +10,7 @@ A dependency-free streaming quantile estimator for large numeric streams. The Gr
 
 Provide a JSON numeric array either in a file or on stdin:
 
-`python3 quantile_sketch.py samples.json --epsilon 0.01 --quantiles 0.5 0.95 0.99`
-
-`printf '[7,1,9,3]' | python3 quantile_sketch.py --quantiles 0.5`
+`python3 quantile_sketch.py samples.jsonl --jsonl --epsilon 0.01 --quantiles 0.5 0.95 0.99` reads one JSON number per non-empty line incrementally; omit the filename to read stdin. Invalid records report their line number. For JSON-array input use `python3 quantile_sketch.py samples.json --quantiles 0.5 0.95 0.99`.
 
 Smaller epsilon gives tighter rank bounds at a higher memory cost. The sketch accepts finite numeric observations; values are not retained as a raw stream. API: `QuantileSketch(epsilon)`, `insert`, `extend`, `quantile`, and `summary_size`.
 

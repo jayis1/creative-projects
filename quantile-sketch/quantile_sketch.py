@@ -78,9 +78,12 @@ def main(argv=None) -> int:
     parser.add_argument("--epsilon", type=float, default=0.01)
     parser.add_argument("--quantiles", type=float, nargs="+", default=[0, .25, .5, .75, .9, .99, 1])
     parser.add_argument("--demo", action="store_true", help="summarize a deterministic sample")
+    parser.add_argument("--jsonl", action="store_true", help="read one JSON number per input line without buffering the stream")
     args = parser.parse_args(argv)
     if args.demo:
         values = [((i * 7919) % 10007) / 100 for i in range(10000)]
+    elif args.jsonl:
+        values = None
     else:
         try:
             text = Path(args.input).read_text(encoding="utf-8") if args.input else __import__("sys").stdin.read()
@@ -91,7 +94,21 @@ def main(argv=None) -> int:
             parser.error(str(exc))
     sketch = QuantileSketch(args.epsilon)
     try:
-        sketch.extend(values)
+        if values is None:
+            import sys
+            stream = Path(args.input).open(encoding="utf-8") if args.input else sys.stdin
+            try:
+                for line_number, line in enumerate(stream, 1):
+                    if line.strip():
+                        try:
+                            sketch.insert(json.loads(line))
+                        except (json.JSONDecodeError, TypeError, ValueError) as exc:
+                            raise ValueError(f"invalid JSON number on line {line_number}: {exc}") from exc
+            finally:
+                if stream is not sys.stdin:
+                    stream.close()
+        else:
+            sketch.extend(values)
         result = {str(q): sketch.quantile(q) for q in args.quantiles}
     except (TypeError, ValueError) as exc:
         parser.error(str(exc))

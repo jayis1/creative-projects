@@ -21,6 +21,21 @@ class SketchTests(unittest.TestCase):
         self.assertLess(sketch.summary_size, 10000)
         self.assertEqual(sketch.n, 10000)
 
+    def test_jsonl_cli_streaming(self):
+        import contextlib
+        import io
+        from unittest.mock import patch
+        from quantile_sketch import main
+        output = io.StringIO()
+        with patch('sys.stdin', io.StringIO('1\n2\n3\n')), contextlib.redirect_stdout(output):
+            self.assertEqual(main(['--jsonl', '--quantiles', '0.5']), 0)
+        self.assertIn('2.0', output.getvalue())
+
+    def test_duplicate_values_preserve_median(self):
+        sketch = QuantileSketch(0.01)
+        sketch.extend([4] * 500 + [9] * 500)
+        self.assertIn(sketch.quantile(.5), (4.0, 9.0))
+
     def test_invalid_values_and_empty(self):
         with self.assertRaises(ValueError):
             QuantileSketch(0).quantile(.5)
