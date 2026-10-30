@@ -49,10 +49,14 @@ def floats(draft: list[list[int]]) -> dict[str, int]:
             run = run + 1 if value == previous else 1
             best = max(best, run)
             previous = value
-        return best
+        # Doubling reveals runs that cross the repeat boundary; never exceed one repeat.
+        return min(best, len(values))
 
-    warp = max(longest([draft[r][c] for r in range(rows)]) for c in range(cols))
-    weft = max(longest(row) for row in draft)
+    def circular_longest(values):
+        return min(longest(values + values), len(values))
+
+    warp = max(circular_longest([draft[r][c] for r in range(rows)]) for c in range(cols))
+    weft = max(circular_longest(row) for row in draft)
     return {"warp": warp, "weft": weft, "worst": max(warp, weft)}
 
 

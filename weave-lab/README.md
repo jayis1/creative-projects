@@ -23,3 +23,7 @@ Twill assigns a cell according to `(row + step * column) modulo size`; plain wea
 - `python3 -m unittest -v`: run unit tests.
 
 Invalid parameters produce a clear CLI error. Library validation supports rectangular binary drafts up to 256 by 256. Stdlib only; Python 3.9+.
+
+## Known Issues (Resolved)
+
+- `floats()` originally stopped at the edge of a stored row/column, under-reporting a continuous float that crossed into the next periodic repeat. Regression test: `test_float_wraps_across_periodic_repeat_boundary` failed with 2 where the correct run is 3; circular doubled scanning now reports 3 and caps measurements at one repeat.
