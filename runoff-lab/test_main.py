@@ -4,6 +4,10 @@ from main import make_terrain, render_ascii, route_flow
 
 
 class RunoffTests(unittest.TestCase):
+    def test_rejects_unrepresentably_large_integer_elevation(self):
+        with self.assertRaises(ValueError):
+            route_flow([[10**10000]])
+
     def test_deterministic_terrain(self):
         self.assertEqual(make_terrain(8, 5, 11), make_terrain(8, 5, 11))
         self.assertNotEqual(make_terrain(8, 5, 11), make_terrain(8, 5, 12))

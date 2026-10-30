@@ -31,7 +31,11 @@ def _validate_grid(grid: list[list[float]]) -> tuple[int, int]:
         raise ValueError("grid exceeds the 512x512 cell limit")
     for row in grid:
         for value in row:
-            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+            try:
+                finite = math.isfinite(value)
+            except (OverflowError, TypeError):
+                finite = False
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not finite:
                 raise ValueError("elevations must be finite numbers (not booleans)")
     return width, len(grid)
 

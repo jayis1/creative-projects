@@ -34,4 +34,8 @@ Dimensions are limited to 512 per side and 262,144 cells total. JSON output uses
 
 ## Testing
 
-Uses only Python 3 standard library. No installation required.
+Uses only Python 3 standard library. Run `python3 -m unittest -v`; no installation required.
+
+## Known Issues (Resolved)
+
+- A Python integer too large to convert to a finite float raised `OverflowError` during grid validation instead of the documented validation error. `_validate_grid` now catches overflow from `math.isfinite` and rejects the value with `ValueError`; `test_rejects_unrepresentably_large_integer_elevation` reproduced the failure before the fix and passes afterward.
