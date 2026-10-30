@@ -18,6 +18,10 @@ Smaller epsilon gives tighter rank bounds at a higher memory cost. The sketch ac
 
 Each sorted summary entry stores a representative value, a minimum rank increment `g`, and a rank uncertainty `delta`. Insertions maintain order; periodic compression merges adjacent tuples only when their combined rank uncertainty fits the `2 * epsilon * n` threshold. A query walks cumulative rank bounds and returns an estimate within the configured rank-error budget.
 
+## Known Issues (Resolved)
+
+No reproducible implementation defects were found in the Phase 3 source review. Regression coverage now checks rank-error behavior over a permuted 10,000-item stream; no bug fixes are claimed.
+
 ## Limitations
 
 The command-line interface reads a JSON array into memory before summarizing, while the Python API supports true incremental ingestion. This is an approximate rank guarantee, not a bound on numeric-value error. Python 3.10+, standard library only.

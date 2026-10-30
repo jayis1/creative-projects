@@ -36,6 +36,17 @@ class SketchTests(unittest.TestCase):
         sketch.extend([4] * 500 + [9] * 500)
         self.assertIn(sketch.quantile(.5), (4.0, 9.0))
 
+    def test_rank_error_across_permuted_stream(self):
+        values = [(i * 7919) % 10007 for i in range(10000)]
+        sketch = QuantileSketch(0.01)
+        sketch.extend(values)
+        ordered = sorted(values)
+        for q in (0.01, .1, .25, .5, .75, .9, .99):
+            estimate = sketch.quantile(q)
+            rank = sum(value < estimate for value in values)
+            target = q * (len(values) - 1)
+            self.assertLessEqual(abs(rank - target), .02 * len(values), (q, rank, target))
+
     def test_invalid_values_and_empty(self):
         with self.assertRaises(ValueError):
             QuantileSketch(0).quantile(.5)
