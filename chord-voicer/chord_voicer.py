@@ -21,11 +21,28 @@ def chord_tones(symbol: str) -> tuple[int, ...]:
     return tuple((PITCH_CLASSES[root] + interval) % 12 for interval in QUALITIES[quality])
 
 
+def _parse_chord(symbol: str) -> tuple[tuple[int, ...], int | None]:
+    """Parse a chord with an optional slash-bass pitch class."""
+    if symbol.count("/") > 1:
+        raise ValueError(f"unsupported chord: {symbol!r}")
+    base, sep, bass = symbol.partition("/")
+    tones = chord_tones(base)
+    if not sep:
+        return tones, None
+    if bass not in PITCH_CLASSES:
+        raise ValueError(f"unsupported slash bass: {bass!r}")
+    bass_pc = PITCH_CLASSES[bass]
+    if bass_pc not in tones:
+        raise ValueError("slash bass must be a chord tone")
+    return tones, bass_pc
+
+
 def _candidates(symbol: str, low: int, high: int) -> list[tuple[int, ...]]:
-    pcs = chord_tones(symbol)
+    pcs, bass = _parse_chord(symbol)
     pools = [[note for note in range(low, high + 1) if note % 12 == pc] for pc in pcs]
     return sorted({tuple(sorted(notes)) for notes in itertools.product(*pools)
-                   if len(set(notes)) == len(notes)})
+                   if len(set(notes)) == len(notes)
+                   and (bass is None or min(notes) % 12 == bass)})
 
 
 def voice_lead(chords: list[str], low: int = 48, high: int = 72) -> list[tuple[int, ...]]:
@@ -56,14 +73,24 @@ def voice_lead(chords: list[str], low: int = 48, high: int = 72) -> list[tuple[i
     return list(min(costs.values(), key=lambda value: (value[0], value[1]))[1])
 
 
+def total_motion(voicings: list[tuple[int, ...]]) -> int:
+    """Return summed absolute semitone travel between adjacent voicings."""
+    return sum(sum(abs(a - b) for a, b in zip(left, right))
+               for left, right in zip(voicings, voicings[1:]))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("chords", nargs="*", default=["C", "F", "G", "C"])
     parser.add_argument("--low", type=int, default=48)
     parser.add_argument("--high", type=int, default=72)
+    parser.add_argument("--stats", action="store_true", help="show total semitone travel")
     args = parser.parse_args()
-    for symbol, notes in zip(args.chords, voice_lead(args.chords, args.low, args.high)):
+    voicings = voice_lead(args.chords, args.low, args.high)
+    for symbol, notes in zip(args.chords, voicings):
         print(f"{symbol}: {' '.join(map(str, notes))}")
+    if args.stats:
+        print(f"Total motion: {total_motion(voicings)} semitones")
 
 
 if __name__ == "__main__":
