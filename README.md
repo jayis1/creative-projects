@@ -121,6 +121,7 @@ A monorepo of AI-generated creative coding projects. Each project lives in its o
 | [lidar-occupancy](./lidar-occupancy) | Planar range-scan occupancy mapping with bounded log-odds grids (Python) |
 | [terrain-erosion](./terrain-erosion) | Seeded thermal-slump height-field simulation; writes PGM terrain maps |
 | [colorimetry-lab](./colorimetry-lab) | Color science: normalized sRGB to D65 XYZ and CIE Lab conversions (Python) |
+| [runoff-lab](./runoff-lab) | Seeded rainfall-runoff routing with drainage graph and flow-accumulation maps (Python) |
 
 
 ---
