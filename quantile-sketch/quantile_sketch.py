@@ -25,6 +25,8 @@ class QuantileSketch:
         self._summary: list[_Tuple] = []
 
     def insert(self, value: float) -> None:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError("observations must be JSON/Python numbers, not booleans or strings")
         value = float(value)
         if not math.isfinite(value):
             raise ValueError("observations must be finite numbers")
@@ -92,7 +94,10 @@ def main(argv=None) -> int:
                 raise ValueError("input JSON must be an array")
         except (OSError, json.JSONDecodeError, ValueError) as exc:
             parser.error(str(exc))
-    sketch = QuantileSketch(args.epsilon)
+    try:
+        sketch = QuantileSketch(args.epsilon)
+    except ValueError as exc:
+        parser.error(str(exc))
     try:
         if values is None:
             import sys

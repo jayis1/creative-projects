@@ -54,6 +54,30 @@ class SketchTests(unittest.TestCase):
             QuantileSketch().quantile(.5)
         with self.assertRaises(ValueError):
             QuantileSketch().insert(float('nan'))
+        for value in (True, "4"):
+            with self.assertRaises(ValueError):
+                QuantileSketch().insert(value)  # type: ignore[arg-type]
+
+    def test_cli_reports_invalid_jsonl_record_and_epsilon(self):
+        import contextlib
+        import io
+        from unittest.mock import patch
+        from quantile_sketch import main
+
+        errors = io.StringIO()
+        with patch('sys.stdin', io.StringIO('1\ntrue\n')), contextlib.redirect_stderr(errors):
+            with self.assertRaises(SystemExit) as result:
+                main(['--jsonl', '--quantiles', '0.5'])
+        self.assertEqual(result.exception.code, 2)
+        self.assertIn('line 2', errors.getvalue())
+        self.assertIn('JSON/Python numbers', errors.getvalue())
+
+        errors = io.StringIO()
+        with contextlib.redirect_stderr(errors):
+            with self.assertRaises(SystemExit) as result:
+                main(['--demo', '--epsilon', '0.5'])
+        self.assertEqual(result.exception.code, 2)
+        self.assertIn('between 0 and 0.5', errors.getvalue())
 
 
 if __name__ == '__main__':

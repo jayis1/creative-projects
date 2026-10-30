@@ -12,7 +12,7 @@ Provide a JSON numeric array either in a file or on stdin:
 
 `python3 quantile_sketch.py samples.jsonl --jsonl --epsilon 0.01 --quantiles 0.5 0.95 0.99` reads one JSON number per non-empty line incrementally; omit the filename to read stdin. Invalid records report their line number. For JSON-array input use `python3 quantile_sketch.py samples.json --quantiles 0.5 0.95 0.99`.
 
-Smaller epsilon gives tighter rank bounds at a higher memory cost. The sketch accepts finite numeric observations; values are not retained as a raw stream. API: `QuantileSketch(epsilon)`, `insert`, `extend`, `quantile`, and `summary_size`.
+Smaller epsilon gives tighter rank bounds at a higher memory cost. The sketch accepts finite numeric observations; booleans and numeric-looking strings are rejected rather than silently coerced. CLI validation errors (including invalid epsilon values and malformed JSONL records) exit with argparse's actionable error message. Values are not retained as a raw stream. API: `QuantileSketch(epsilon)`, `insert`, `extend`, `quantile`, and `summary_size`.
 
 ## How it works
 
