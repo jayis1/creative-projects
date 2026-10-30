@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import itertools
+import json
 
 PITCH_CLASSES = {"C": 0, "C#": 1, "Db": 1, "D": 2, "D#": 3, "Eb": 3,
                  "E": 4, "F": 5, "F#": 6, "Gb": 6, "G": 7, "G#": 8,
@@ -81,18 +82,43 @@ def total_motion(voicings: list[tuple[int, ...]]) -> int:
                for left, right in zip(voicings, voicings[1:]))
 
 
+def _note_name(note: int) -> str:
+    """Return a pitch-class name with its MIDI octave number."""
+    names = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
+    return f"{names[note % 12]}{note // 12 - 1}"
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("chords", nargs="*", default=["C", "F", "G", "C"])
     parser.add_argument("--low", type=int, default=48)
     parser.add_argument("--high", type=int, default=72)
     parser.add_argument("--stats", action="store_true", help="show total semitone travel")
+    parser.add_argument("--format", choices=("text", "json"), default="text",
+                        help="output format (default: text)")
     args = parser.parse_args()
-    voicings = voice_lead(args.chords, args.low, args.high)
+    try:
+        voicings = voice_lead(args.chords, args.low, args.high)
+    except ValueError as exc:
+        parser.error(str(exc))
+
+    motion = total_motion(voicings)
+    if args.format == "json":
+        result = {
+            "chords": [
+                {"symbol": symbol, "midi": list(notes),
+                 "note_names": [_note_name(note) for note in notes]}
+                for symbol, notes in zip(args.chords, voicings)
+            ],
+            "total_motion_semitones": motion,
+        }
+        print(json.dumps(result, indent=2))
+        return
+
     for symbol, notes in zip(args.chords, voicings):
         print(f"{symbol}: {' '.join(map(str, notes))}")
     if args.stats:
-        print(f"Total motion: {total_motion(voicings)} semitones")
+        print(f"Total motion: {motion} semitones")
 
 
 if __name__ == "__main__":

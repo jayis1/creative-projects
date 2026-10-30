@@ -33,18 +33,29 @@ Set inclusive bounds using `--low` and `--high`; `--stats` reports total movemen
 python3 chord_voicer.py --stats C/E F G
 ```
 
+For downstream tools, select JSON output. Each chord includes the original symbol, sorted MIDI notes, and note names with MIDI octave numbering; the response also includes progression motion:
+
+```sh
+python3 chord_voicer.py --format json C/E F G
+```
+
+The command prints valid JSON to standard output. Unsupported chords and invalid MIDI bounds produce a concise CLI error and exit status 2 rather than a traceback.
+
 Run tests:
 
 ```sh
 python3 -m unittest discover -s tests -v
 ```
 
-## Phase 2 enhancements
+## Recent improvements
 
-- Slash-bass inversions (for example `C/E`) are constrained to put the specified chord tone in the bass.
-- `--stats` and `total_motion()` report summed semitone travel.
-- Added strict slash-bass validation and regression tests.
+- Added slash-bass inversions (for example `C/E`), constrained to put the specified chord tone in the bass.
+- Added `--stats` and `total_motion()` for summed semitone travel.
+- Added JSON output (`--format json`) with MIDI numbers, note names, and total motion for DAW or script integration.
+- Added CLI-friendly validation errors and regression tests for invalid chords, bass notes, and MIDI bounds.
 
-## Known Issues (Resolved)
+## Limitations
 
-- The initial register validation allowed negative and above-127 note numbers, although output is labeled as MIDI. A regression test first reproduced both invalid bounds being accepted; the solver now rejects values outside the MIDI note domain (0–127).
+- Only major, minor, diminished, augmented, dominant seventh, and minor seventh chord qualities are supported.
+- Slash bass must be one of the chord's existing tones; non-chord bass notes and extensions are not modeled.
+- The optimizer assigns sorted pitches to voices and minimizes semitone travel; it does not model instrument-specific fingering or voice-crossing preferences.
