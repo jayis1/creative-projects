@@ -20,6 +20,21 @@ class RunoffTests(unittest.TestCase):
         self.assertTrue(all(v is None for row in d for v in row))
         self.assertEqual(a, [[1.0, 1.0], [1.0, 1.0]])
 
+    def test_diagonal_routing_reaches_lower_corner(self):
+        grid = [[3.0, 2.0], [2.0, 0.0]]
+        four, _ = route_flow(grid, 4)
+        eight, _ = route_flow(grid, 8)
+        self.assertEqual(four[0][0], 1)
+        self.assertEqual(eight[0][0], 3)
+
+    def test_stream_threshold_selects_channel_cells(self):
+        grid = [[3.0, 2.0], [2.0, 0.0]]
+        _, accumulation = route_flow(grid)
+        image = render_ascii(grid, accumulation, stream_threshold=3)
+        self.assertEqual(image.count("#"), 1)
+        with self.assertRaises(ValueError):
+            render_ascii(grid, accumulation, stream_threshold=-1)
+
     def test_ascii_shape(self):
         grid = [[3, 2], [2, 1]]
         _, a = route_flow(grid)
