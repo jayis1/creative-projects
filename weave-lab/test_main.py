@@ -1,5 +1,5 @@
 import unittest
-from main import floats, render, twill, validate_draft
+from main import floats, plain_weave, render, twill, validate_draft
 
 
 class DraftTests(unittest.TestCase):
@@ -12,6 +12,9 @@ class DraftTests(unittest.TestCase):
         draft = [[1, 0, 1], [0, 1, 0]]
         self.assertEqual(floats(draft), {"warp": 1, "weft": 1, "worst": 1})
         self.assertEqual(render(draft), "█·█\n·█·")
+
+    def test_plain_weave_checkerboard(self):
+        self.assertEqual(plain_weave(3), [[0, 1, 0], [1, 0, 1], [0, 1, 0]])
 
     def test_bounds(self):
         with self.assertRaises(ValueError):

@@ -11,6 +11,12 @@ def twill(size: int, step: int = 1) -> list[list[int]]:
     return [[int((row + step * col) % size < step) for col in range(size)] for row in range(size)]
 
 
+def plain_weave(size: int) -> list[list[int]]:
+    """Return a checkerboard plain-weave repeat."""
+    _validate(size, 1)
+    return [[(row + col) % 2 for col in range(size)] for row in range(size)]
+
+
 def _validate(size: int, step: int) -> None:
     if not isinstance(size, int) or isinstance(size, bool) or not 2 <= size <= 64:
         raise ValueError("size must be an integer from 2 to 64")
@@ -59,10 +65,11 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--size", type=int, default=8)
     parser.add_argument("--step", type=int, default=1)
+    parser.add_argument("--pattern", choices=("twill", "plain"), default="twill", help="weave structure (default: twill)")
     parser.add_argument("--json", type=Path, help="write generated draft as JSON")
     args = parser.parse_args(argv)
     try:
-        draft = twill(args.size, args.step)
+        draft = plain_weave(args.size) if args.pattern == "plain" else twill(args.size, args.step)
     except ValueError as exc:
         parser.error(str(exc))
     print(render(draft))
