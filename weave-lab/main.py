@@ -2,6 +2,7 @@
 """Generate and inspect compact binary weaving drafts."""
 import argparse
 import json
+from math import gcd
 from pathlib import Path
 
 
@@ -15,6 +16,18 @@ def plain_weave(size: int) -> list[list[int]]:
     """Return a checkerboard plain-weave repeat."""
     _validate(size, 1)
     return [[(row + col) % 2 for col in range(size)] for row in range(size)]
+
+
+def satin_weave(size: int, step: int = 2) -> list[list[int]]:
+    """Return a satin repeat with one warp-over cell per row and column.
+
+    The progression must be coprime to the repeat size so each row and
+    column gets exactly one warp-over cell.
+    """
+    _validate(size, step)
+    if gcd(size, step) != 1:
+        raise ValueError("satin step and size must be coprime")
+    return [[int((row + step * col) % size == 0) for col in range(size)] for row in range(size)]
 
 
 def _validate(size: int, step: int) -> None:
@@ -69,11 +82,15 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--size", type=int, default=8)
     parser.add_argument("--step", type=int, default=1)
-    parser.add_argument("--pattern", choices=("twill", "plain"), default="twill", help="weave structure (default: twill)")
+    parser.add_argument("--pattern", choices=("twill", "plain", "satin"), default="twill", help="weave structure (default: twill)")
     parser.add_argument("--json", type=Path, help="write generated draft as JSON")
     args = parser.parse_args(argv)
     try:
-        draft = plain_weave(args.size) if args.pattern == "plain" else twill(args.size, args.step)
+        draft = (
+            plain_weave(args.size) if args.pattern == "plain"
+            else satin_weave(args.size, args.step) if args.pattern == "satin"
+            else twill(args.size, args.step)
+        )
     except ValueError as exc:
         parser.error(str(exc))
     print(render(draft))

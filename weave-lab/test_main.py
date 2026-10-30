@@ -1,5 +1,5 @@
 import unittest
-from main import floats, plain_weave, render, twill, validate_draft
+from main import floats, plain_weave, render, satin_weave, twill, validate_draft
 
 
 class DraftTests(unittest.TestCase):
@@ -18,6 +18,16 @@ class DraftTests(unittest.TestCase):
 
     def test_float_wraps_across_periodic_repeat_boundary(self):
         self.assertEqual(floats([[1, 1, 0, 1]]), {"warp": 1, "weft": 3, "worst": 3})
+
+    def test_satin_has_one_warp_over_per_row_and_column(self):
+        draft = satin_weave(5, 2)
+        self.assertEqual([sum(row) for row in draft], [1] * 5)
+        self.assertEqual([sum(draft[r][c] for r in range(5)) for c in range(5)], [1] * 5)
+        self.assertEqual(floats(draft), {"warp": 4, "weft": 4, "worst": 4})
+
+    def test_satin_rejects_non_coprime_progression(self):
+        with self.assertRaisesRegex(ValueError, "coprime"):
+            satin_weave(6, 2)
 
     def test_bounds(self):
         with self.assertRaises(ValueError):
