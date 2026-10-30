@@ -84,13 +84,20 @@ def main(argv=None):
     parser.add_argument("--order", type=int, default=2)
     parser.add_argument("--duration", type=float, default=0.12)
     parser.add_argument("--rate", type=int, default=4000)
+    parser.add_argument("--absorption", nargs=6, type=float, default=(0.2,) * 6, metavar=("X0", "X1", "Y0", "Y1", "Z0", "Z1"), help="energy absorption for each room wall")
+    parser.add_argument("--summary", action="store_true", help="show Sabine RT60 estimate and arrival count")
     parser.add_argument("--json", action="store_true", help="print arrival records as JSON")
     args = parser.parse_args(argv)
-    room = Room(tuple(args.room), tuple(args.source), tuple(args.receiver), (0.2,) * 6)
+    room = Room(tuple(args.room), tuple(args.source), tuple(args.receiver), tuple(args.absorption))
     try:
         _, arrivals = impulse_response(room, args.order, args.duration, args.rate)
     except ValueError as exc:
         parser.error(str(exc))
+    if args.summary:
+        surface = 2 * (args.room[0] * args.room[1] + args.room[0] * args.room[2] + args.room[1] * args.room[2])
+        mean_absorption = sum(a * s for a, s in zip(room.absorption, (args.room[1]*args.room[2],)*2 + (args.room[0]*args.room[2],)*2 + (args.room[0]*args.room[1],)*2)) / surface
+        rt60 = 0.161 * (args.room[0] * args.room[1] * args.room[2]) / (surface * mean_absorption) if mean_absorption else math.inf
+        print(f"Sabine RT60 estimate: {rt60:.3f} s; early arrivals: {len(arrivals)}")
     if args.json:
         print(json.dumps([{"time_s": round(t, 6), "amplitude": round(a, 6), "image": list(i)} for t, a, i in arrivals], indent=2))
     else:

@@ -1,5 +1,7 @@
+import contextlib
+import io
 import unittest
-from main import Room, impulse_response
+from main import Room, impulse_response, main
 
 class AcousticRoomTests(unittest.TestCase):
     def setUp(self):
@@ -22,6 +24,13 @@ class AcousticRoomTests(unittest.TestCase):
         outside = Room((6, 5, 3), (7, 1, 1), (4, 3, 1), (0.2,) * 6)
         with self.assertRaises(ValueError):
             impulse_response(outside)
+
+    def test_summary_and_custom_wall_absorption(self):
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            self.assertEqual(main(["--summary", "--absorption", "0.1", "0.3", "0.2", "0.4", "0.5", "0.6"]), 0)
+        self.assertIn("Sabine RT60 estimate:", output.getvalue())
+        self.assertIn("arrivals=125", output.getvalue())
 
 if __name__ == "__main__":
     unittest.main()

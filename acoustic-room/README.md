@@ -19,7 +19,7 @@ time (ms)   amplitude     image
    15.70     0.16609   (1, 2, 2)
 ```
 
-Generate machine-readable arrivals with `python3 main.py --order 3 --json`; make the room 8×6×3 metres with `--room 8 6 3`.
+Run `python3 main.py --summary --absorption 0.1 0.3 0.2 0.4 0.5 0.6` to estimate Sabine RT60 using six wall-specific energy absorption coefficients (ordered X0, X1, Y0, Y1, Z0, Z1). `--summary` prints the estimate and number of early arrivals; the estimate assumes a diffuse field and is a rough room-level metric. Generate machine-readable arrivals with `python3 main.py --order 3 --json`; make the room 8×6×3 metres with `--room 8 6 3`.
 
 ## How it works
 
