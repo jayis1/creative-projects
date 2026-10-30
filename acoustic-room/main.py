@@ -30,9 +30,10 @@ def validate(room: Room) -> None:
 def _axis_images(source: float, length: float, order: int):
     # Each integer image index has a corresponding number of wall crossings.
     for image_index in range(-order, order + 1):
-        position = 2 * image_index * length + (source if image_index % 2 == 0 else 2 * length - source)
+        # Even tiles preserve orientation; odd tiles mirror the source.
+        position = image_index * length + source if image_index % 2 == 0 else (image_index + 1) * length - source
         reflections = abs(image_index)
-        yield position, reflections
+        yield position, reflections, image_index
 
 
 def impulse_response(room: Room, order: int = 2, duration: float = 0.25, sample_rate: int = 8000):
@@ -44,29 +45,32 @@ def impulse_response(room: Room, order: int = 2, duration: float = 0.25, sample_
         raise ValueError("duration must be in (0, 10] seconds")
     if not isinstance(sample_rate, int) or not 100 <= sample_rate <= 192000:
         raise ValueError("sample rate must be an integer in [100, 192000]")
-    axes = [_axis_images(room.source[i], room.dimensions[i], order) for i in range(3)]
-    sequences = [list(axis) for axis in axes]
+    sequences = [list(_axis_images(room.source[i], room.dimensions[i], order)) for i in range(3)]
     arrivals = []
     dt = 1.0 / sample_rate
     count = math.ceil(duration * sample_rate)
-    for ix, (x, rx) in enumerate(sequences[0]):
-        for iy, (y, ry) in enumerate(sequences[1]):
-            for iz, (z, rz) in enumerate(sequences[2]):
+    for x, rx, ix in sequences[0]:
+        for y, ry, iy in sequences[1]:
+            for z, rz, iz in sequences[2]:
                 distance = math.dist((x, y, z), room.receiver)
                 time = distance / room.speed
-                if time >= duration or distance == 0:
+                if distance >= duration * room.speed or distance == 0:
                     continue
-                # parity determines which of the two opposing walls was crossed
+                # Each signed image index identifies both path length and side.
                 hits = (rx, ry, rz)
+                image_indices = (ix, iy, iz)
                 coeffs = room.absorption
                 gain = 1.0
                 for axis, n in enumerate(hits):
                     near, far = (axis * 2, axis * 2 + 1)
                     for bounce in range(n):
-                        wall = near if (ix, iy, iz)[axis] % 2 == 0 else far
+                        # Positive images bounce off the far wall first; negative
+                        # images begin at the near wall, alternating thereafter.
+                        direction = image_indices[axis]
+                        wall = (far if direction > 0 else near) if bounce % 2 == 0 else (near if direction > 0 else far)
                         gain *= math.sqrt(1.0 - coeffs[wall])
                 amplitude = gain / max(distance, 1e-9)
-                arrivals.append((time, amplitude, (ix, iy, iz)))
+                arrivals.append((time, amplitude, image_indices))
     arrivals.sort(key=lambda a: (a[0], a[2]))
     samples = [0.0] * count
     for time, amplitude, _ in arrivals:

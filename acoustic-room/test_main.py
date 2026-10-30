@@ -1,5 +1,6 @@
 import contextlib
 import io
+import math
 import unittest
 from main import Room, impulse_response, main
 
@@ -16,7 +17,20 @@ class AcousticRoomTests(unittest.TestCase):
         _, direct = impulse_response(self.room, 0, 0.1, 4000)
         _, reflected = impulse_response(self.room, 2, 0.1, 4000)
         self.assertGreater(len(reflected), len(direct))
-        self.assertEqual(reflected, sorted(reflected))
+        self.assertEqual(reflected, sorted(reflected, key=lambda arrival: (arrival[0], arrival[2])))
+
+    def test_negative_image_uses_near_wall_absorption(self):
+        room = Room((6, 5, 3), (1, 1, 1.5), (1, 1, 1.5), (0.1, 0.9, 0.0, 0.0, 0.0, 0.0))
+        _, arrivals = impulse_response(room, 1, 0.05, 4000)
+        by_image = {image: amplitude for _, amplitude, image in arrivals}
+        self.assertAlmostEqual(by_image[(-1, 0, 0)], math.sqrt(0.9) / 2.0)
+
+    def test_two_bounces_attenuate_by_both_opposing_walls(self):
+        room = Room((6, 5, 3), (1, 1, 1.5), (1, 1, 1.5), (0.1, 0.9, 0.0, 0.0, 0.0, 0.0))
+        _, arrivals = impulse_response(room, 2, 0.05, 4000)
+        by_image = {image: amplitude for _, amplitude, image in arrivals}
+        expected = math.sqrt(0.9 * 0.1) / 12.0
+        self.assertAlmostEqual(by_image[(2, 0, 0)], expected)
 
     def test_rejects_invalid_inputs(self):
         with self.assertRaises(ValueError):
