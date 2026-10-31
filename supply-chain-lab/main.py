@@ -29,7 +29,10 @@ class Node:
     def receive(self, day: int) -> None:
         arrived = sum(q for due, q in self.pipeline if due <= day)
         self.pipeline = [(due, q) for due, q in self.pipeline if due > day]
-        self.stock += arrived
+        # Receipts first satisfy already-promised units; only the remainder is sellable stock.
+        applied_to_backlog = min(arrived, self.backlog)
+        self.backlog -= applied_to_backlog
+        self.stock += arrived - applied_to_backlog
 
     def fulfill(self, demand: int) -> int:
         served = min(self.stock, demand)

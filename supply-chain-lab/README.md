@@ -29,3 +29,7 @@ The output is JSON with one daily record and one summary per node. All quantitie
 ## Limits and assumptions
 
 This is an educational deterministic policy model, not a demand forecaster. Input traces are finite and explicitly supplied; all supply is unconstrained at the upstream boundary. The seed is reserved for future stochastic demand modes.
+
+## Known Issues (Resolved)
+
+- Replenishment arrivals previously increased on-hand stock without paying down outstanding customer backlog, overstating sellable inventory. Receipts now satisfy backlog first; a regression test demonstrated the old failure and verifies the corrected stock/backlog values.

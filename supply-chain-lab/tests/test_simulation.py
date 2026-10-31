@@ -15,6 +15,12 @@ class BaselineTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             Node('bad', 0, 4, 3, 1)
 
+    def test_receipt_fulfills_existing_backlog_first(self):
+        node = Node('store', 1, 2, 8, 0, pipeline=[(1, 5)], backlog=4)
+        node.receive(1)
+        self.assertEqual(node.stock, 1)
+        self.assertEqual(node.backlog, 0)
+
     def test_csv_report_is_exportable(self):
         import subprocess
         script = Path(__file__).resolve().parents[1] / 'main.py'
