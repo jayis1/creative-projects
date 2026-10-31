@@ -65,6 +65,8 @@ def plan(width, height, parts, allow_rotation=True):
 
 def waste_summary(width, height, placements):
     """Return used area, leftover area, and utilization fraction."""
+    if type(width) is not int or type(height) is not int or width <= 0 or height <= 0:
+        raise LayoutError("sheet dimensions must be positive integers")
     used = sum(p.width * p.height for p in placements)
     total = width * height
     return {"used": used, "waste": total-used, "utilization": used/total}

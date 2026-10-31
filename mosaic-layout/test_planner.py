@@ -9,7 +9,7 @@ from planner import Part, LayoutError, plan, waste_summary
 class PlannerTests(unittest.TestCase):
     def test_layout_nonoverlap_and_area(self):
         parts = [Part("A", 6, 4), Part("B", 4, 4), Part("C", 2, 4)]
-        placed, free = plan(10, 8, parts)
+        placed, _ = plan(10, 8, parts)
         self.assertEqual(len(placed), 3)
         for i, a in enumerate(placed):
             for b in placed[i+1:]:
@@ -37,6 +37,12 @@ class PlannerTests(unittest.TestCase):
         report = json.loads(result.stdout)
         self.assertEqual(report["summary"]["used"], 15)
         self.assertEqual(report["placements"][0]["name"], "panel")
+
+    def test_waste_summary_rejects_invalid_sheet_dimensions(self):
+        with self.assertRaises(LayoutError):
+            waste_summary(0, 5, [])
+        with self.assertRaises(LayoutError):
+            waste_summary(-1, 5, [])
 
 
 if __name__ == "__main__":

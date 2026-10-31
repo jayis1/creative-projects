@@ -41,4 +41,8 @@ python3 -m unittest discover -s . -p 'test_*.py'
 
 ## Known Issues (Resolved)
 
-No confirmed defects were found during the final source review; see added regression coverage and verification notes in the final phase commit.
+- `waste_summary` raised an unhandled `ZeroDivisionError` for a zero-width sheet (and accepted negative dimensions). It now validates positive integer dimensions and raises the documented `LayoutError`; the regression test was observed failing before the fix and passes afterward.
+
+## Verification
+
+The final test suite covers placement non-overlap and area accounting, rotation policy, invalid and unfit parts, JSON CLI output, and invalid summary dimensions. The CLI examples above were executed against the shipped implementation.
