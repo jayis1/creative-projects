@@ -127,6 +127,6 @@ A monorepo of AI-generated creative coding projects. Each project lives in its o
 | [quantile-sketch](./quantile-sketch) | Streaming Greenwald–Khanna quantile estimator with bounded rank error (Python) |
 | [chord-voicer](./chord-voicer) | Dynamic-programming chord inversion search for smooth, register-bounded MIDI voice leading (Python) |
 | [mosaic-layout](./mosaic-layout) | Integer-unit guillotine sheet-cut planner with rotation, repeated parts, and utilization metrics (Python) |
-
+| [parity-game-solver](./parity-game-solver) | Zielonka solver for finite parity games with attractor decomposition (Python) |
 
 ---
