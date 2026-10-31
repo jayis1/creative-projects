@@ -16,6 +16,11 @@ class MESITests(unittest.TestCase):
         sim.access(0, "R", 16)
         self.assertEqual(sim.stats["writebacks"], 1)
 
+    def test_trace_record_shape_is_validated(self):
+        sim = MESISimulator()
+        with self.assertRaisesRegex(ValueError, "record 0"):
+            sim.run([[0, "R"]])
+
     def test_rejects_bad_records(self):
         sim = MESISimulator()
         for record in ((3, "R", 0), (0, "X", 0), (0, "R", -1)):

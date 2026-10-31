@@ -91,7 +91,12 @@ class MESISimulator:
 
     def run(self, trace):
         """Consume iterable of (core, operation, byte_address) records."""
-        return [self.access(*record) for record in trace]
+        results = []
+        for index, record in enumerate(trace):
+            if not isinstance(record, (list, tuple)) or len(record) != 3:
+                raise ValueError(f"trace record {index} must contain core, operation, address")
+            results.append(self.access(*record))
+        return results
 
     def report(self):
         return {"cores": len(self.caches), "stats": dict(sorted(self.stats.items())),
