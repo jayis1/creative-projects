@@ -1,4 +1,8 @@
+import json
+import subprocess
+import sys
 import unittest
+from pathlib import Path
 from planner import Part, LayoutError, plan, waste_summary
 
 
@@ -13,16 +17,26 @@ class PlannerTests(unittest.TestCase):
         stats = waste_summary(10, 8, placed)
         self.assertEqual(stats["used"] + stats["waste"], 80)
 
-    def test_rotation(self):
+    def test_rotation_and_no_rotation(self):
         placed, _ = plan(3, 5, [Part("wide", 5, 3)])
         self.assertTrue(placed[0].rotated)
-        self.assertEqual((placed[0].width, placed[0].height), (3, 5))
+        with self.assertRaises(LayoutError):
+            plan(3, 5, [Part("wide", 5, 3)], allow_rotation=False)
 
     def test_invalid_and_unfit(self):
         with self.assertRaises(LayoutError):
             plan(0, 5, [])
         with self.assertRaises(LayoutError):
             plan(2, 2, [Part("large", 3, 3)])
+        with self.assertRaises(LayoutError):
+            plan(8, 8, [Part("bad", 1, 1, 0)])
+
+    def test_cli_json_report(self):
+        script = Path(__file__).with_name("main.py")
+        result = subprocess.run([sys.executable, str(script), "5", "3", "panel:5:3", "--json"], check=True, capture_output=True, text=True)
+        report = json.loads(result.stdout)
+        self.assertEqual(report["summary"]["used"], 15)
+        self.assertEqual(report["placements"][0]["name"], "panel")
 
 
 if __name__ == "__main__":

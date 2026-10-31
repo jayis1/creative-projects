@@ -23,7 +23,15 @@ strip: x=8, y=0, 2x4
 Utilization: 60.0% (waste: 32)
 ```
 
-Use `name:width:height:quantity` to request repeated parts. The CLI prints each placement and sheet utilization.
+Use `name:width:height:quantity` to request repeated parts. Add `--no-rotate` to prohibit rotation, or `--json` for a machine-readable report containing sheet dimensions, placements, free rectangles, and area statistics. The CLI rejects malformed dimensions and parts with a concise usage error.
+
+Example JSON invocation:
+
+```sh
+python3 main.py 5 3 panel:5:3 --json
+```
+
+The JSON summary reports `used`, `waste`, and `utilization`; the output is deterministic for identical inputs.
 
 ## Testing
 
