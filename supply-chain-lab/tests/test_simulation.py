@@ -15,5 +15,13 @@ class BaselineTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             Node('bad', 0, 4, 3, 1)
 
+    def test_csv_report_is_exportable(self):
+        import subprocess
+        script = Path(__file__).resolve().parents[1] / 'main.py'
+        scenario = Path(__file__).resolve().parents[1] / 'examples/basic.json'
+        run = subprocess.run([sys.executable, str(script), str(scenario), '--format', 'csv'], capture_output=True, text=True, check=True, timeout=5)
+        self.assertIn('name,ending_stock,backlog', run.stdout)
+        self.assertIn('warehouse,', run.stdout)
+
 if __name__ == '__main__':
     unittest.main()

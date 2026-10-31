@@ -11,6 +11,7 @@ Each node has on-hand stock, outstanding replenishment orders, a lead time, a re
 ```sh
 python3 main.py examples/basic.json
 python3 main.py examples/basic.json --output report.json
+python3 main.py examples/basic.json --format csv --output report.csv
 python3 -m unittest discover -s tests -v
 ```
 

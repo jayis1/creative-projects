@@ -2,6 +2,8 @@
 """Discrete-event inventory simulator for periodic-review supply chains."""
 from __future__ import annotations
 import argparse
+import csv
+import io
 import json
 import random
 from dataclasses import dataclass, field
@@ -88,7 +90,8 @@ def load_scenario(path: str) -> tuple[Chain, list[int]]:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("scenario", help="JSON scenario file")
-    parser.add_argument("--output", "-o", help="write JSON report to this path")
+    parser.add_argument("--output", "-o", help="write report to this path")
+    parser.add_argument("--format", choices=("json", "csv"), default="json", help="report format (default: json)")
     args = parser.parse_args(argv)
     try:
         chain, demand = load_scenario(args.scenario)
@@ -96,6 +99,13 @@ def main(argv=None) -> int:
     except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
         parser.error(str(exc))
     text = json.dumps(result, indent=2, sort_keys=True)
+    if args.format == "csv":
+        buffer = io.StringIO(newline="")
+        fields = ("name", "ending_stock", "backlog", "shortage_units", "holding_stock_days", "ordered_units", "in_transit")
+        writer = csv.DictWriter(buffer, fieldnames=fields)
+        writer.writeheader()
+        writer.writerows(result["nodes"])
+        text = buffer.getvalue().rstrip("\n")
     if args.output:
         Path(args.output).write_text(text + "\n", encoding="utf-8")
     else:
