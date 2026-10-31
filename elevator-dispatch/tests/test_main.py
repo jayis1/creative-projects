@@ -1,6 +1,6 @@
 import unittest
 
-from main import Request, simulate, validate_requests
+from main import Request, simulate, summarize, validate_requests
 
 
 class DispatchTests(unittest.TestCase):
@@ -28,6 +28,15 @@ class DispatchTests(unittest.TestCase):
             validate_requests([Request(0, 0, 0)], 3)
         with self.assertRaises(ValueError):
             validate_requests([Request(0, 0, 3)], 3)
+
+    def test_summary_metrics_and_empty_case(self):
+        rows = simulate([Request(0, 0, 5), Request(1, 2, 8)], cars=2)
+        self.assertEqual(summarize(rows, 2), {
+            "request_count": 2, "total_wait": 2, "average_wait": 1.0,
+            "maximum_wait": 2, "car_requests": [1, 1],
+        })
+        self.assertEqual(summarize([], 2)["average_wait"], 0.0)
+        self.assertEqual(summarize([], 2)["maximum_wait"], 0)
 
     def test_car_count_bounds(self):
         with self.assertRaises(ValueError):

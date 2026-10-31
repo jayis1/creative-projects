@@ -93,6 +93,19 @@ def parse_input(path: Path) -> tuple[int, int, list[Request]]:
     return floors, cars, requests
 
 
+def summarize(results: Iterable[Result], cars: int) -> dict[str, object]:
+    """Return fleet-level service metrics without changing assignment results."""
+    rows = list(results)
+    waits = [row.wait for row in rows]
+    return {
+        "request_count": len(rows),
+        "total_wait": sum(waits),
+        "average_wait": (sum(waits) / len(waits)) if waits else 0.0,
+        "maximum_wait": max(waits, default=0),
+        "car_requests": [sum(row.car == i for row in rows) for i in range(cars)],
+    }
+
+
 def demo() -> list[Result]:
     return simulate([Request(0, 0, 5), Request(1, 2, 8), Request(4, 9, 1), Request(6, 3, 7)])
 
@@ -103,16 +116,20 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--demo", action="store_true", help="run a built-in scenario")
     parser.add_argument("--floors", type=int, default=10, help="number of floors for demo")
     parser.add_argument("--cars", type=int, default=2, help="elevator count for demo")
+    parser.add_argument("--summary", action="store_true", help="print aggregate service metrics instead of per-request rows")
     args = parser.parse_args(argv)
     try:
+        floors = args.floors
+        car_count = args.cars
         if args.demo:
-            rows = simulate([Request(0, 0, 5), Request(1, 2, 8), Request(4, 9, 1), Request(6, 3, 7)], args.floors, args.cars)
+            rows = simulate([Request(0, 0, 5), Request(1, 2, 8), Request(4, 9, 1), Request(6, 3, 7)], floors, car_count)
         elif args.input:
-            floors, cars, requests = parse_input(args.input)
-            rows = simulate(requests, floors, cars)
+            floors, car_count, requests = parse_input(args.input)
+            rows = simulate(requests, floors, car_count)
         else:
             parser.error("provide an input file or --demo")
-        print(json.dumps([asdict(row) for row in rows], indent=2))
+        output = summarize(rows, car_count) if args.summary else [asdict(row) for row in rows]
+        print(json.dumps(output, indent=2))
         return 0
     except ValueError as exc:
         parser.error(str(exc))

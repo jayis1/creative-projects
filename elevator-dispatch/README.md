@@ -29,7 +29,7 @@ Read a JSON scenario:
 }
 ```
 
-Save as `scenario.json` and run `python3 main.py scenario.json`. Output is JSON; each row includes the original request, assigned car, pickup and arrival times, wait, and ride duration.
+Save as `scenario.json` and run `python3 main.py scenario.json`. Output is JSON; each row includes the original request, assigned car, pickup and arrival times, wait, and ride duration. Add `--summary` to report request count, total/average/maximum wait, and per-car assignment counts instead. For example, `python3 main.py --demo --summary` prints aggregate metrics.
 
 ## Validation and limits
 
