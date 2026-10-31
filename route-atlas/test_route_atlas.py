@@ -1,5 +1,8 @@
+import json
+import tempfile
 import unittest
-from route_atlas import Network, Trip, format_time
+from pathlib import Path
+from route_atlas import Network, Trip, format_time, journey_dict, load_network, main
 
 
 class RouteTests(unittest.TestCase):
@@ -44,6 +47,27 @@ class RouteTests(unittest.TestCase):
         for args in [("", "B", 0), ("A", "B", -1), ("A", "B", 0, -1)]:
             with self.assertRaises(ValueError):
                 self.net.route(*args)
+
+    def test_json_loading_export_and_cli(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "feed.json"
+            path.write_text(json.dumps({"trips": [{"id": "x", "stops": ["A", "B"], "times": [4, 9]}]}))
+            network = load_network(path)
+            journey = network.route("A", "B", 0)
+            self.assertIsNotNone(journey)
+            assert journey is not None
+            self.assertEqual(journey_dict(journey)["arrival"], 9)
+            self.assertEqual(main([str(path), "--from-stop", "A", "--to-stop", "B", "--json"]), 0)
+
+    def test_bad_json_schedule_and_missing_file(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "feed.json"
+            for text in ('{', '{"trips":[],"extra":1}', '{"trips":[{"stops":["A","B"],"times":[true,3]}]}'):
+                path.write_text(text)
+                with self.assertRaises(ValueError):
+                    load_network(path)
+            with self.assertRaises(ValueError):
+                load_network(Path(folder) / "missing.json")
 
     def test_clock_format(self):
         self.assertEqual(format_time(1501), "01:01 (+1d)")

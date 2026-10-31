@@ -37,6 +37,28 @@ print(journey.arrival, journey.legs)
 
 `route()` returns `None` when no connection is found within the transfer bound. An origin-to-itself query returns an empty journey at the requested time. Invalid schedule values and search limits raise `ValueError`.
 
+## JSON timetable and CLI
+
+A schedule is an object with one `trips` array; each trip has an optional string `id`, a `stops` array, and a `times` array:
+
+```json
+{"trips":[{"id":"R1","stops":["A","B","C"],"times":[480,492,510]}]}
+```
+
+Run a query and receive a human-readable itinerary:
+
+```sh
+python3 route_atlas.py sample_network.json --from-stop A --to-stop D --depart 475 --max-transfers 2
+```
+
+Use `--json` for machine-readable results. Invalid JSON, malformed trips, missing files, and invalid query values produce an argparse error. Inputs are capped at 100,000 trips; this limits schedule loading, while callers should still use appropriate feed sizes.
+
+## Changelog
+
+- Added strict JSON timetable loading and a runnable query CLI.
+- Added JSON journey serialization and bounded input validation.
+- Added sample timetable and tests for import, export, CLI routing, and malformed files.
+
 ## Limits
 
 This compact reference implementation rescans all trips per transfer round; it is best for small and medium schedule sets, not production-scale feeds. Walking transfers, calendars, service exceptions, fares, and vehicle capacity are outside its model. Schedule data must be pre-expanded into concrete trips.
