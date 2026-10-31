@@ -131,5 +131,6 @@ A monorepo of AI-generated creative coding projects. Each project lives in its o
 | [calendar-weaver](./calendar-weaver) | Constraint-based calendar conflict detector and free-slot planner for recurring events |
 | [route-atlas](./route-atlas) | Time-dependent earliest-arrival routing across scheduled transit trips with bounded transfers (Python) |
 | [cache-coherence-lab](./cache-coherence-lab) | Trace-driven MESI multicore cache simulator with invariant checks, invalidations, and dirty writebacks (Python) |
+| [elevator-dispatch](./elevator-dispatch) | Deterministic multi-car elevator dispatch simulator with JSON scenarios and wait-time metrics (Python) |
 
 ---
