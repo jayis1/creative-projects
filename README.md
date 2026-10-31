@@ -128,5 +128,6 @@ A monorepo of AI-generated creative coding projects. Each project lives in its o
 | [chord-voicer](./chord-voicer) | Dynamic-programming chord inversion search for smooth, register-bounded MIDI voice leading (Python) |
 | [mosaic-layout](./mosaic-layout) | Integer-unit guillotine sheet-cut planner with rotation, repeated parts, and utilization metrics (Python) |
 | [parity-game-solver](./parity-game-solver) | Zielonka solver for finite parity games with attractor decomposition (Python) |
+| [calendar-weaver](./calendar-weaver) | Constraint-based calendar conflict detector and free-slot planner for recurring events (Python) |
 
 ---
