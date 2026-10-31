@@ -24,12 +24,13 @@ class MESISimulator:
 
     def access(self, core: int, op: str, address: int) -> str:
         """Apply one read (R) or write (W); return resulting MESI state."""
-        if not isinstance(core, int) or not 0 <= core < len(self.caches):
+        if type(core) is not int or not 0 <= core < len(self.caches):
             raise ValueError("core index out of range")
         if op not in ("R", "W"):
             raise ValueError("operation must be R or W")
-        if not isinstance(address, int) or address < 0:
+        if type(address) is not int or address < 0:
             raise ValueError("address must be a nonnegative integer")
+        self.stats["reads" if op == "R" else "writes"] += 1
         tag = self._tag(address)
         cache = self.caches[core]
         state = cache.lines.get(tag, "I")

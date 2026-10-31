@@ -28,6 +28,18 @@ class MESITests(unittest.TestCase):
         self.assertEqual(sim.stats["writebacks"], 1)
         self.assertEqual(sim.stats["invalidations"], 1)
 
+    def test_operation_totals_match_trace_length(self):
+        sim = MESISimulator()
+        sim.run([[0, "R", 0], [1, "W", 16], [0, "R", 32]])
+        self.assertEqual(sim.report()["stats"]["reads"], 2)
+        self.assertEqual(sim.report()["stats"]["writes"], 1)
+
+    def test_boolean_indices_and_addresses_are_rejected(self):
+        sim = MESISimulator()
+        for record in ((True, "R", 0), (0, "R", True)):
+            with self.subTest(record=record), self.assertRaises(ValueError):
+                sim.access(*record)
+
     def test_rejects_bad_records(self):
         sim = MESISimulator()
         for record in ((3, "R", 0), (0, "X", 0), (0, "R", -1)):
