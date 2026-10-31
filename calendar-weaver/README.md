@@ -1,20 +1,46 @@
 # Calendar Weaver
 
-A dependency-free recurring-event planner that detects collisions and searches weekly schedules for available slots.
+A dependency-free recurring-event planner that detects collisions and searches weekly schedules for available slots. Unlike a textbook weekly timetable, it clips each weekday recurrence to inclusive date bounds and supports direct JSON input for real schedules.
 
-It expands weekday recurrence rules over a bounded date range, treats intervals as half-open (back-to-back events are valid), and reports conflicts or available windows.
+It expands weekday recurrence rules over a bounded date range, treats intervals as half-open (back-to-back events are valid), and reports conflicts or available windows. Dates are local wall-clock dates, weekdays use Monday=0, and times use 24-hour `HH:MM`.
 
-## Usage
+## Quick demo
+
+From this directory:
 
 ```sh
-python3 main.py --demo
+python3 main.py
 ```
 
-The demo schedules recurring focus blocks and prints conflicts plus candidate free windows. Event times use local wall-clock minutes after midnight; dates are ISO `YYYY-MM-DD`.
+Expected output:
+
+```text
+Conflicts:
+  2026-11-02: Focus 09:00-10:30 overlaps Review 10:00-10:45
+Free slots Monday: 10:45-17:00
+```
+
+## JSON input
+
+Provide a JSON array with one object per recurring event:
+
+```json
+[
+  {"name":"Planning", "start_date":"2026-11-02", "end_date":"2026-11-30", "weekdays":[0,2], "start":"09:30", "duration":45}
+]
+```
+
+Run collision analysis for a bounded period and show free windows on a date:
+
+```sh
+python3 main.py --input events.json --from 2026-11-02 --to 2026-11-30 --day 2026-11-02
+```
+
+`--help` lists all options. Invalid JSON shapes, dates, times, or event constraints produce a command-line error. The expansion horizon is limited to 10 years.
 
 ## Design
 
-Each event has an inclusive start/end date, a set of ISO weekdays (Monday=0), start minute and positive duration. Expansion is bounded by the requested horizon. Pairwise collision checks operate on expanded occurrences and preserve event identity, making the output useful for resolving conflicts.
+Each event has a name, inclusive start/end dates, a set of ISO weekdays, start time and positive duration. Occurrences are expanded only on matching dates; conflict detection reports overlapping intervals for distinct event names. Free-slot search clips occupied time to a configurable workday window.
 
 ## Testing
 
@@ -22,4 +48,4 @@ Run `python3 -m unittest discover -v` from this directory.
 
 ## Limits
 
-No timezone/DST conversion, external calendar import or persistence. All recurrence is weekly and local-time only.
+No timezone/DST conversion, external calendar import, persistence, or multi-day events. All recurrence is weekly and local-time only.
