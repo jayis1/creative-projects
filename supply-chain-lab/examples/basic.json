@@ -1,0 +1,1 @@
+{"seed":17,"demand":[3,5,2,7,1,4],"nodes":[{"name":"warehouse","lead_time":2,"reorder_point":4,"order_up_to":12,"stock":8},{"name":"store","lead_time":1,"reorder_point":3,"order_up_to":9,"stock":5}]}
