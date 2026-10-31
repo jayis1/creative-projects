@@ -35,10 +35,12 @@ class Result:
 
 
 def validate_requests(requests: Iterable[Request], floors: int) -> list[Request]:
-    if floors < 2:
-        raise ValueError("floors must be at least 2")
+    if type(floors) is not int or floors < 2:
+        raise ValueError("floors must be an integer of at least 2")
     items = list(requests)
     for index, item in enumerate(items):
+        if any(type(value) is not int for value in (item.time, item.origin, item.destination)):
+            raise ValueError(f"request {index}: time and floors must be integers")
         if item.time < 0:
             raise ValueError(f"request {index}: time must be nonnegative")
         if not 0 <= item.origin < floors or not 0 <= item.destination < floors:
@@ -51,11 +53,10 @@ def validate_requests(requests: Iterable[Request], floors: int) -> list[Request]
 def simulate(requests: Iterable[Request], floors: int = 10, cars: int = 2) -> list[Result]:
     """Assign each request to the car minimizing estimated pickup time.
 
-    Cars are modeled as returning to their starting floor after each trip; this
-    deliberately bounded model makes dispatch choices reproducible and clear.
+    Cars remain at their destination floor after a trip and cannot accept another request until arrival; this deliberately bounded model makes dispatch choices reproducible and clear.
     """
-    if cars < 1 or cars > 64:
-        raise ValueError("cars must be between 1 and 64")
+    if type(cars) is not int or cars < 1 or cars > 64:
+        raise ValueError("cars must be an integer between 1 and 64")
     work = validate_requests(requests, floors)
     fleet = [Car() for _ in range(cars)]
     results: list[Result] = []

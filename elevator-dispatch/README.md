@@ -35,6 +35,10 @@ Save as `scenario.json` and run `python3 main.py scenario.json`. Output is JSON;
 
 Times must be nonnegative integers, floors must be in range, and a request must travel between distinct floors. The simulator supports 1–64 cars. Input files are read-only and no shell commands or external dependencies are used. The simplified model does not simulate passenger capacity, multi-stop routes, door dwell, or car movement while idle.
 
+## Known Issues (Resolved)
+
+- The public Python API previously accepted fractional request times and floor counts (and boolean car counts), which could yield non-integral scheduling results or treat `True` as one car. `test_direct_api_rejects_non_integer_values` reproduced the invalid acceptance before the fix; the API now requires exact integers for times, floors, and car counts.
+
 ## Testing
 
-Run `python3 -m unittest discover -s tests -v` from this directory.
+Run `python3 -m unittest discover -s tests -v` from this directory. The suite covers assignment timing, chronological ordering, empty schedules, invalid bounds/types, and aggregate metrics.

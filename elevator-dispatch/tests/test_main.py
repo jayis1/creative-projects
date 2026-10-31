@@ -38,6 +38,15 @@ class DispatchTests(unittest.TestCase):
         self.assertEqual(summarize([], 2)["average_wait"], 0.0)
         self.assertEqual(summarize([], 2)["maximum_wait"], 0)
 
+    def test_direct_api_rejects_non_integer_values(self):
+        for bad_request in (Request(0.5, 0, 1), Request(0, True, 1)):
+            with self.subTest(request=bad_request), self.assertRaises(ValueError):
+                simulate([bad_request])
+        with self.assertRaises(ValueError):
+            simulate([], floors=3.5)
+        with self.assertRaises(ValueError):
+            simulate([], cars=True)
+
     def test_car_count_bounds(self):
         with self.assertRaises(ValueError):
             simulate([], cars=0)
