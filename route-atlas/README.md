@@ -59,6 +59,12 @@ Use `--json` for machine-readable results. Invalid JSON, malformed trips, missin
 - Added JSON journey serialization and bounded input validation.
 - Added sample timetable and tests for import, export, CLI routing, and malformed files.
 
+## Known Issues (Resolved)
+
+- The source and tests were reviewed for malformed schedule values, empty/unreachable searches, transfer-limit behavior, midnight rollover, and bounded work.
+- `Trip` previously accepted truthy non-string stop labels and non-string trip IDs from direct Python callers. Added explicit type checks; `test_trip_rejects_non_string_stops_and_ids` reproduced both failures before the fix and now passes.
+- Search previously accepted arbitrarily large `max_transfers`, allowing avoidable unbounded round scans. Capped the value at 100; `test_transfer_bound_is_capped` reproduced the missing rejection before the fix and now passes.
+
 ## Limits
 
 This compact reference implementation rescans all trips per transfer round; it is best for small and medium schedule sets, not production-scale feeds. Walking transfers, calendars, service exceptions, fares, and vehicle capacity are outside its model. Schedule data must be pre-expanded into concrete trips.

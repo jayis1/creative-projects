@@ -22,8 +22,10 @@ class Trip:
             raise ValueError("times must be non-negative integer minutes")
         if any(a > b for a, b in zip(self.times, self.times[1:])):
             raise ValueError("trip times must be nondecreasing")
-        if any(not s for s in self.stops):
-            raise ValueError("stop names must be non-empty")
+        if any(not isinstance(s, str) or not s for s in self.stops):
+            raise ValueError("stop names must be non-empty strings")
+        if not isinstance(self.trip_id, str):
+            raise ValueError("trip_id must be a string")
 
 
 @dataclass(frozen=True)
@@ -68,8 +70,8 @@ class Network:
             raise ValueError("origin and destination must be non-empty")
         if not isinstance(departure, int) or isinstance(departure, bool) or departure < 0:
             raise ValueError("departure must be a non-negative integer minute")
-        if not isinstance(max_transfers, int) or isinstance(max_transfers, bool) or max_transfers < 0:
-            raise ValueError("max_transfers must be a non-negative integer")
+        if not isinstance(max_transfers, int) or isinstance(max_transfers, bool) or not 0 <= max_transfers <= 100:
+            raise ValueError("max_transfers must be an integer from 0 through 100")
         if origin == destination:
             return Journey(origin, destination, departure, departure, ())
         # labels map reachable stop to arrival and complete leg sequence.

@@ -69,6 +69,16 @@ class RouteTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 load_network(Path(folder) / "missing.json")
 
+    def test_trip_rejects_non_string_stops_and_ids(self):
+        with self.assertRaises(ValueError):
+            Trip(("A", 7), (1, 2))
+        with self.assertRaises(ValueError):
+            Trip(("A", "B"), (1, 2), 4)
+
+    def test_transfer_bound_is_capped(self):
+        with self.assertRaises(ValueError):
+            self.net.route("A", "E", 0, max_transfers=101)
+
     def test_clock_format(self):
         self.assertEqual(format_time(1501), "01:01 (+1d)")
         with self.assertRaises(ValueError):
