@@ -67,7 +67,10 @@ class Chain:
             raise ValueError("demand must be a non-empty list of non-negative integers")
         rng = random.Random(self.seed)
         daily = []
+        total_demand = sum(demand)
+        fully_served_days = 0
         for day, customer_demand in enumerate(demand):
+            previous_shortage = self.nodes[-1].shortage
             for node in self.nodes:
                 node.receive(day)
             flow = customer_demand
@@ -77,11 +80,21 @@ class Chain:
             for i in range(len(self.nodes) - 1, -1, -1):
                 downstream_need = customer_demand if i == len(self.nodes)-1 else self.nodes[i+1].orders
                 self.nodes[i].review(day, downstream_need)
-            daily.append({"day": day, "demand": customer_demand, "unfilled": self.nodes[-1].backlog})
-        return {"seed": self.seed, "days": len(demand), "daily": daily,
-                "nodes": [{"name": n.name, "ending_stock": n.stock, "backlog": n.backlog,
-                           "shortage_units": n.shortage, "holding_stock_days": n.holding,
-                           "ordered_units": n.orders, "in_transit": sum(q for _, q in n.pipeline)} for n in self.nodes]}
+            daily_shortfall = self.nodes[-1].shortage - previous_shortage
+            if daily_shortfall == 0:
+                fully_served_days += 1
+            daily.append({"day": day, "demand": customer_demand, "unfilled_demand": daily_shortfall,
+                          "backlog": self.nodes[-1].backlog})
+        node_results = [{"name": n.name, "ending_stock": n.stock, "backlog": n.backlog,
+                         "shortage_units": n.shortage,
+                         "fill_rate": 1.0 if total_demand == 0 else 1 - n.shortage / total_demand,
+                         "holding_stock_days": n.holding,
+                         "ordered_units": n.orders, "in_transit": sum(q for _, q in n.pipeline)} for n in self.nodes]
+        return {"seed": self.seed, "days": len(demand), "total_demand": total_demand,
+                "customer_fill_rate": 1.0 if total_demand == 0 else 1 - self.nodes[-1].shortage / total_demand,
+                "fully_served_days": fully_served_days,
+                "service_level": fully_served_days / len(demand),
+                "daily": daily, "nodes": node_results}
 
 def load_scenario(path: str) -> tuple[Chain, list[int]]:
     data = json.loads(Path(path).read_text(encoding="utf-8"))
@@ -104,7 +117,7 @@ def main(argv=None) -> int:
     text = json.dumps(result, indent=2, sort_keys=True)
     if args.format == "csv":
         buffer = io.StringIO(newline="")
-        fields = ("name", "ending_stock", "backlog", "shortage_units", "holding_stock_days", "ordered_units", "in_transit")
+        fields = ("name", "ending_stock", "backlog", "shortage_units", "fill_rate", "holding_stock_days", "ordered_units", "in_transit")
         writer = csv.DictWriter(buffer, fieldnames=fields)
         writer.writeheader()
         writer.writerows(result["nodes"])

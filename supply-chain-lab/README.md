@@ -24,7 +24,7 @@ A scenario contains named nodes ordered supplier-to-customer and daily customer 
 ]}
 ```
 
-The output is JSON with one daily record and one summary per node. All quantities are integer units; lead times are whole simulated days. No external dependencies or network access are required.
+The output is JSON with one daily record and one summary per node. The top-level `customer_fill_rate` is the share of demanded units served; `service_level` is the share of days with no newly unfilled demand. Daily `unfilled_demand` is distinct from the cumulative `backlog`. Node summaries also include fill rate. A zero-demand horizon reports a fill rate of 1.0. All quantities are integer units; lead times are whole simulated days. No external dependencies or network access are required.
 
 ## Limits and assumptions
 

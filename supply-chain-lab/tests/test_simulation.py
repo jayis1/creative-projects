@@ -21,6 +21,20 @@ class BaselineTests(unittest.TestCase):
         self.assertEqual(node.stock, 1)
         self.assertEqual(node.backlog, 0)
 
+    def test_report_distinguishes_daily_shortfall_from_backlog(self):
+        chain = Chain([Node('store', 1, 0, 1, 0)])
+        result = chain.run([3, 0])
+        self.assertEqual([day['unfilled_demand'] for day in result['daily']], [3, 0])
+        self.assertEqual([day['backlog'] for day in result['daily']], [3, 0])
+        self.assertEqual(result['customer_fill_rate'], 0.0)
+        self.assertEqual(result['service_level'], 0.5)
+
+    def test_zero_demand_has_perfect_fill_rate(self):
+        result = Chain([Node('store', 1, 0, 1, 0)]).run([0, 0])
+        self.assertEqual(result['customer_fill_rate'], 1.0)
+        self.assertEqual(result['service_level'], 1.0)
+        self.assertEqual(result['total_demand'], 0)
+
     def test_csv_report_is_exportable(self):
         import subprocess
         script = Path(__file__).resolve().parents[1] / 'main.py'
