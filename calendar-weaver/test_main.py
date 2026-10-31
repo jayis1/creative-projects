@@ -5,7 +5,7 @@ import sys
 import tempfile
 from pathlib import Path
 from datetime import date, timedelta
-from main import Event, expand, conflicts, free_slots, load_events
+from main import Event, expand, conflicts, free_slots, load_events, parse_clock
 
 MON = date(2026, 11, 2)
 def event(name, start, duration, days=frozenset({0}), span=7):
@@ -35,5 +35,9 @@ class CalendarTests(unittest.TestCase):
     def test_cli_help(self):
         result=subprocess.run([sys.executable,'main.py','--help'],capture_output=True,text=True,check=True)
         self.assertIn('--input',result.stdout)
+
+    def test_clock_rejects_non_padded_hour(self):
+        with self.assertRaises(ValueError):
+            parse_clock('9:00')
 
 if __name__ == '__main__': unittest.main()

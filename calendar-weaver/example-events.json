@@ -1,0 +1,4 @@
+[
+  {"name":"Focus", "start_date":"2026-11-02", "end_date":"2026-11-30", "weekdays":[0,2,4], "start":"09:00", "duration":90},
+  {"name":"Review", "start_date":"2026-11-02", "end_date":"2026-11-30", "weekdays":[0], "start":"10:00", "duration":45}
+]

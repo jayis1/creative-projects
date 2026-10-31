@@ -69,8 +69,10 @@ def clock(minute): return f"{minute//60:02d}:{minute%60:02d}"
 
 def parse_clock(value):
     """Parse strict 24-hour HH:MM wall-clock text into minutes after midnight."""
+    if not isinstance(value, str) or len(value) != 5 or value[2] != ":" or not (value[:2] + value[3:]).isdigit():
+        raise ValueError(f"invalid time {value!r}; expected HH:MM")
     try:
-        hour, minute = (int(part) for part in value.split(":"))
+        hour, minute = int(value[:2]), int(value[3:])
     except (AttributeError, TypeError, ValueError) as exc:
         raise ValueError(f"invalid time {value!r}; expected HH:MM") from exc
     if not 0 <= hour < 24 or not 0 <= minute < 60:

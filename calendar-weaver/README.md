@@ -33,7 +33,7 @@ Provide a JSON array with one object per recurring event:
 Run collision analysis for a bounded period and show free windows on a date:
 
 ```sh
-python3 main.py --input events.json --from 2026-11-02 --to 2026-11-30 --day 2026-11-02
+python3 main.py --input example-events.json --from 2026-11-02 --to 2026-11-30 --day 2026-11-02
 ```
 
 `--help` lists all options. Invalid JSON shapes, dates, times, or event constraints produce a command-line error. The expansion horizon is limited to 10 years.
@@ -45,6 +45,10 @@ Each event has a name, inclusive start/end dates, a set of ISO weekdays, start t
 ## Testing
 
 Run `python3 -m unittest discover -v` from this directory.
+
+## Known Issues (Resolved)
+
+- The JSON time parser accepted `9:00` even though the documented format is strict `HH:MM`. The CLI now rejects non-zero-padded or malformed time strings; `test_clock_rejects_non_padded_hour` reproduced the defect before the fix and passes afterward.
 
 ## Limits
 
