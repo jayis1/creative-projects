@@ -22,6 +22,8 @@ Example trace: `[[0,"R",0],[1,"R",0],[0,"W",0],[1,"R",0]]`. The CLI prints JSON 
 
 The standard-library suite covers read sharing, writer invalidation, dirty eviction, malformed record shapes, and rejected access arguments.
 
-## Planned next steps
+## Known Issues (Resolved)
 
-Bug review of state transitions, eviction interactions, and trace/API edge cases.
+- A write miss that invalidated another core's Modified line failed to count its required dirty intervention/writeback. The `test_writer_invalidating_modified_peer_counts_writeback` test reproduced a zero count before the fix; the write-miss invalidation path now records it.
+
+No other reproducible defects were found in this review. The implementation is an educational simplified snooping model, not a cycle-accurate hardware simulator.

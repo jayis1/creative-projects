@@ -50,7 +50,8 @@ class MESISimulator:
                             self.stats["writebacks"] += 1
             else:
                 for peer in peers:
-                    peer.lines.pop(tag)
+                    if peer.lines.pop(tag) == "M":
+                        self.stats["writebacks"] += 1
                 self.stats["invalidations"] += len(peers)
                 state = "M"
         else:

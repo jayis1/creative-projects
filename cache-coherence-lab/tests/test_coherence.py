@@ -21,6 +21,13 @@ class MESITests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "record 0"):
             sim.run([[0, "R"]])
 
+    def test_writer_invalidating_modified_peer_counts_writeback(self):
+        sim = MESISimulator()
+        sim.access(0, "W", 0)
+        sim.access(1, "W", 0)
+        self.assertEqual(sim.stats["writebacks"], 1)
+        self.assertEqual(sim.stats["invalidations"], 1)
+
     def test_rejects_bad_records(self):
         sim = MESISimulator()
         for record in ((3, "R", 0), (0, "X", 0), (0, "R", -1)):
