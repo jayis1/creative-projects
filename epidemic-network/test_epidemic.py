@@ -2,6 +2,28 @@ import unittest
 from main import Epidemic
 
 class EpidemicTests(unittest.TestCase):
+    def test_random_network_is_seeded_and_degree_bounded(self):
+        a = Epidemic(24, contacts_per_person=3, topology="random", seed=12)
+        b = Epidemic(24, contacts_per_person=3, topology="random", seed=12)
+        self.assertEqual(a.people, b.people)
+        self.assertTrue(all(len(p.contacts) <= 3 for p in a.people))
+
+    def test_intervention_reduces_transmission_after_start_day(self):
+        sim = Epidemic(30, contacts_per_person=4, beta=1, incubation_days=1,
+                       infectious_days=5, intervention_day=0, beta_multiplier=0)
+        sim.run(12)
+        self.assertEqual(sim.summary()["ever_infected"], 1)
+
+    def test_summary_reports_peak_and_attack_rate(self):
+        sim = Epidemic(10, contacts_per_person=0)
+        sim.run(12)
+        self.assertEqual(sim.summary()["peak_infectious"], 1)
+        self.assertEqual(sim.summary()["attack_rate"], .1)
+
+    def test_invalid_topology_and_intervention(self):
+        with self.assertRaises(ValueError): Epidemic(10, topology="unknown")
+        with self.assertRaises(ValueError): Epidemic(10, beta_multiplier=2)
+
     def test_seed_reproduces_history(self):
         a = Epidemic(30, seed=9).run(40)
         b = Epidemic(30, seed=9).run(40)
