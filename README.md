@@ -5,6 +5,7 @@ A monorepo of AI-generated creative coding projects. Each project lives in its o
 ## Projects
 
 | Project | Description |
+| [epidemic-network](./epidemic-network) | Seeded SEIR epidemic simulation on randomized contact networks |
 | [acoustic-room](./acoustic-room) | Image-source room acoustics simulator with sampled impulse responses and reflection-path inspection |
 | [entropy-lab](./entropy-lab) | UTF-8 symbol frequency and Shannon entropy analyzer; stdlib CLI and tests |
 | [polyomino-tiler](./polyomino-tiler) | Exact-cover polyomino tiler in Python: run `python3 main.py --demo` |
