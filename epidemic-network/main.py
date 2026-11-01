@@ -17,6 +17,9 @@ class Epidemic:
                  incubation_days: int = 3, infectious_days: int = 5, seed: int = 1,
                  topology: str = "ring", intervention_day: int | None = None,
                  beta_multiplier: float = 1.0):
+        discrete = (population, contacts_per_person, incubation_days, infectious_days)
+        if any(type(value) is not int for value in discrete): raise ValueError("population, degree, and stage durations must be integers")
+        if intervention_day is not None and type(intervention_day) is not int: raise ValueError("intervention_day must be an integer")
         if population < 2: raise ValueError("population must be at least 2")
         if not 0 <= contacts_per_person < population: raise ValueError("contacts_per_person must be in [0, population)")
         if not 0 <= beta <= 1: raise ValueError("beta must be between 0 and 1")
@@ -83,7 +86,7 @@ class Epidemic:
         return self.history[-1].copy()
 
     def run(self, max_days: int = 365) -> list[dict[str, int]]:
-        if max_days < 0: raise ValueError("max_days must be non-negative")
+        if type(max_days) is not int or max_days < 0: raise ValueError("max_days must be a non-negative integer")
         for _ in range(max_days):
             if not any(s in ("E", "I") for s in self.state): break
             self.step()

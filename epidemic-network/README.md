@@ -36,9 +36,12 @@ history = sim.run(max_days=60)
 print(sim.summary())
 ```
 
-Invalid population, degree, transmission probability, stage duration, topology, intervention day, multiplier, or negative run limits raise `ValueError`.
+Invalid population, degree, stage durations, intervention day, and run limits must be integers; invalid ranges or unknown topology raise `ValueError` rather than leaking lower-level type errors.
+
+## Known Issues (Resolved)
+
+- Floating-point values for discrete parameters (population, contact degree, stage durations, intervention day, and run-day limit) previously caused inconsistent validation: some produced `TypeError` deeper in graph construction or iteration, while others silently passed. The API now rejects them consistently with `ValueError`. Regression coverage: `test_non_integer_discrete_parameters_raise_value_error` and `test_run_requires_integer_day_limit`.
 
 ## Planned
 
 - Add repeated-seed ensemble analysis with uncertainty summaries.
-- Add a focused regression and adversarial edge-case review.

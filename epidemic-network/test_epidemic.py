@@ -24,6 +24,16 @@ class EpidemicTests(unittest.TestCase):
         with self.assertRaises(ValueError): Epidemic(10, topology="unknown")
         with self.assertRaises(ValueError): Epidemic(10, beta_multiplier=2)
 
+    def test_non_integer_discrete_parameters_raise_value_error(self):
+        for kwargs in ({"population": 5.5}, {"population": 8, "contacts_per_person": 2.5},
+                       {"population": 8, "incubation_days": 1.5},
+                       {"population": 8, "intervention_day": 2.5}):
+            with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
+                Epidemic(**kwargs)
+
+    def test_run_requires_integer_day_limit(self):
+        with self.assertRaises(ValueError): Epidemic(8).run(2.5)
+
     def test_seed_reproduces_history(self):
         a = Epidemic(30, seed=9).run(40)
         b = Epidemic(30, seed=9).run(40)
