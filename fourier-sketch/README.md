@@ -24,7 +24,7 @@ Run:
 python3 main.py drawing.json drawing.svg --terms 4 --samples 300
 ```
 
-`--terms` controls retained Fourier vectors (default 12); `--samples` controls SVG polyline smoothness (default 400). Coordinates are closed periodically; the first point need not be duplicated. A straight-line or constant sketch is allowed. Input coordinates must be finite numeric pairs.
+`--terms` controls retained Fourier vectors (default 12); `--samples` controls SVG polyline smoothness (default 400). Add `--resample 128` to first make 128 uniformly spaced samples along the input polyline, reducing speed bias from unevenly spaced sketch points. Input coordinates must be finite numeric pairs; a repeated-point or degenerate stroke is supported.
 
 ## Library examples
 

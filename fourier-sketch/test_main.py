@@ -2,7 +2,7 @@ import math
 import tempfile
 import unittest
 from pathlib import Path
-from main import Term, dft, reconstruct, select_terms, validate_points, write_svg
+from main import Term, dft, reconstruct, resample_polyline, select_terms, validate_points, write_svg
 
 class FourierSketchTests(unittest.TestCase):
     def test_square_round_trip_with_all_terms(self):
@@ -26,6 +26,14 @@ class FourierSketchTests(unittest.TestCase):
     def test_term_selection_is_deterministic(self):
         terms = [Term(2, 0, 1), Term(0, 1, 0), Term(-1, 2, 0)]
         self.assertEqual([t.frequency for t in select_terms(terms, 2)], [-1, 0])
+
+    def test_arc_length_resampling_is_uniform_and_wraps(self):
+        result = resample_polyline([[0, 0], [4, 0], [4, 2]], 4)
+        expected = [[0, 0], [1.5, 0], [3, 0], [4, 0.5]]
+        for actual, target in zip(result, expected):
+            self.assertAlmostEqual(actual[0], target[0])
+            self.assertAlmostEqual(actual[1], target[1])
+        self.assertEqual(len(resample_polyline([[1, 2], [1, 2]], 3)), 3)
 
 if __name__ == "__main__":
     unittest.main()

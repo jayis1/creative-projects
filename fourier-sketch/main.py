@@ -85,16 +85,41 @@ def write_svg(points, path, *, width=640, height=480, padding=24):
     coords = " ".join(f"{ox+scale*x:.3f},{height-(oy+scale*y):.3f}" for x, y in zip(xs, ys))
     Path(path).write_text(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}"><polyline fill="none" stroke="#1261a0" stroke-width="2" points="{coords}"/></svg>\n', encoding="utf-8")
 
+def resample_polyline(points, count):
+    """Resample an open polyline uniformly by arc length; repeated points are safe."""
+    samples = validate_points(points)
+    if isinstance(count, bool) or not isinstance(count, int) or count < 2:
+        raise ValueError("resample count must be an integer >= 2")
+    segments = list(zip(samples, samples[1:]))
+    lengths = [abs(b-a) for a, b in segments]
+    total = sum(lengths)
+    if total == 0:
+        return [[samples[0].real, samples[0].imag] for _ in range(count)]
+    result = []
+    for i in range(count):
+        distance = total * i / count
+        for (a, b), length in zip(segments, lengths):
+            if distance <= length or (a, b) == segments[-1]:
+                z = a if length == 0 else a + (b-a) * (distance / length)
+                result.append([z.real, z.imag])
+                break
+            distance -= length
+    return result
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("input", type=Path, help="JSON file containing a points array")
     parser.add_argument("output", type=Path, help="output SVG path")
     parser.add_argument("--terms", type=int, default=12, help="largest Fourier terms to retain")
     parser.add_argument("--samples", type=int, default=400, help="output curve samples")
+    parser.add_argument("--resample", type=int, help="uniformly resample input by arc length before analysis")
     args = parser.parse_args(argv)
     try:
         obj = json.loads(args.input.read_text(encoding="utf-8"))
         points = validate_points(obj["points"] if isinstance(obj, dict) else obj)
+        if args.resample is not None:
+            points = resample_polyline(points, args.resample)
         chosen = select_terms(dft(points), args.terms)
         write_svg(reconstruct(chosen, args.samples), args.output)
     except (OSError, json.JSONDecodeError, KeyError, ValueError) as exc:
