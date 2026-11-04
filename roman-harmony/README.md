@@ -37,4 +37,9 @@ print(classify_cadence(chords))  # authentic
 
 ## Phase 1 implementation
 
-Includes pure-Python note parsing, major/natural-minor diatonic chord construction, triad quality alterations, seventh chords, inversions, validation, JSON/text CLI, and unit tests.
+Includes pure-Python note parsing, major/natural-minor scale-degree roots and function labels, case-driven major/minor chord quality with explicit diminished/augmented markers, seventh chords, inversions, validation, JSON/text CLI, and unit tests.
+
+## Known Issues (Resolved)
+
+- Roman-numeral case did not consistently control triad quality: uppercase `VI` in C major and uppercase `V` in A minor incorrectly inherited a minor quality from the diatonic scale table. A regression test reproduced the issue before correction; quality is now derived consistently from numeral case, with explicit `°`/`o`/`+` markers taking precedence. Verified by `test_uppercase_numeral_means_major_quality` and the complete unit suite.
+- A first-pass regression assertion revealed that major-key dominant `V7` incorrectly received a major seventh. The implementation now assigns the expected minor seventh for `V7`; verified by the F-major `V7` test (`C E G A#`).

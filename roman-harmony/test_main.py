@@ -24,6 +24,10 @@ class HarmonyTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             pitch_class("H")
 
+    def test_uppercase_numeral_means_major_quality(self):
+        self.assertEqual(analyze("VI").quality, "major")
+        self.assertEqual(analyze("V", "A", "minor").quality, "major")
+
     def test_cadence_classification(self):
         self.assertEqual(classify_cadence(progression(["V", "I"])), "authentic")
         self.assertEqual(classify_cadence(progression(["IV", "I"])), "plagal")

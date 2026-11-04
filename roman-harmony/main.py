@@ -5,7 +5,6 @@ import argparse
 import json
 import re
 from dataclasses import asdict, dataclass
-from pathlib import Path
 
 PITCHES = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
 NATURAL = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
@@ -48,14 +47,13 @@ def analyze(token: str, key: str = "C", mode: str = "major") -> Chord:
     degree = degree_map[numeral]
     if mode == "major":
         scale = (0, 2, 4, 5, 7, 9, 11)
-        qualities = ("major", "minor", "minor", "major", "major", "minor", "diminished")
         functions = ("tonic", "supertonic", "mediant", "subdominant", "dominant", "submediant", "leading-tone")
     else:
         scale = (0, 2, 3, 5, 7, 8, 10)
-        qualities = ("minor", "diminished", "major", "minor", "minor", "major", "major")
         functions = ("tonic", "supertonic", "mediant", "subdominant", "dominant", "submediant", "subtonic")
     root = (pitch_class(key) + scale[degree] + (1 if accidental == "#" else -1 if accidental == "b" else 0)) % 12
-    quality = "diminished" if marker in {"°", "o"} else "augmented" if marker == "+" else ("minor" if roman.islower() and qualities[degree] == "major" else qualities[degree])
+    # Roman-numeral case explicitly encodes chord quality; symbols take precedence.
+    quality = "diminished" if marker in {"°", "o"} else "augmented" if marker == "+" else ("minor" if roman.islower() else "major")
     intervals = {"major": (0, 4, 7), "minor": (0, 3, 7), "diminished": (0, 3, 6), "augmented": (0, 4, 8)}[quality]
     notes = tuple(note_name(root + interval) for interval in intervals)
     if extension == "7":
