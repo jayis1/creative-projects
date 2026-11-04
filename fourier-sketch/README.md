@@ -24,7 +24,7 @@ Run:
 python3 main.py drawing.json drawing.svg --terms 4 --samples 300
 ```
 
-`--terms` controls retained Fourier vectors (default 12); `--samples` controls SVG polyline smoothness (default 400). Add `--resample 128` to first make 128 uniformly spaced samples along the input polyline, reducing speed bias from unevenly spaced sketch points. Input coordinates must be finite numeric pairs; a repeated-point or degenerate stroke is supported.
+`--terms` controls retained Fourier vectors (default 12); `--samples` controls SVG polyline smoothness (default 400). Add `--resample 128` to first make 128 uniformly spaced samples around the closed stroke, including its final-to-first segment; this reduces speed bias from unevenly spaced sketch points. Input coordinates must be finite numeric pairs; a repeated-point or degenerate stroke is supported.
 
 ## Library examples
 
@@ -34,7 +34,12 @@ terms = dft([[0, 0], [1, 0], [1, 1], [0, 1]])
 curve = reconstruct(select_terms(terms, 3), 200)
 ```
 
-Run tests with `python3 -m unittest -v` from this directory. The suite checks exact DFT reconstruction, deterministic coefficient selection, finite SVG output for degenerate geometry, and invalid coordinates.
+Run tests with `python3 -m unittest -v` from this directory. The suite checks exact DFT reconstruction, deterministic coefficient selection, finite SVG output for degenerate geometry, invalid coordinates, and periodic arc-length resampling.
+
+## Known Issues (Resolved)
+
+- Arc-length resampling originally omitted the closing segment, so the Fourier series received unevenly distributed samples and a discontinuity at the stroke boundary. A square regression case reproduced the defect; resampling now includes the closing edge by default. Pass `closed=False` to the library function only when an open stroke is intentionally desired.
+- The CLI prevalidated JSON coordinates into complex values, then the DFT validator rejected those complex values. The end-to-end CLI regression test reproduced the failure; validation now happens at the DFT/resampling boundary without converting the source data twice.
 
 ## Limitations
 

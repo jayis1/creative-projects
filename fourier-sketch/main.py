@@ -85,12 +85,16 @@ def write_svg(points, path, *, width=640, height=480, padding=24):
     coords = " ".join(f"{ox+scale*x:.3f},{height-(oy+scale*y):.3f}" for x, y in zip(xs, ys))
     Path(path).write_text(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}"><polyline fill="none" stroke="#1261a0" stroke-width="2" points="{coords}"/></svg>\n', encoding="utf-8")
 
-def resample_polyline(points, count):
-    """Resample an open polyline uniformly by arc length; repeated points are safe."""
+def resample_polyline(points, count, *, closed=True):
+    """Uniformly resample a stroke by arc length (closed by default for Fourier use)."""
     samples = validate_points(points)
+    if not isinstance(closed, bool):
+        raise ValueError("closed must be a boolean")
     if isinstance(count, bool) or not isinstance(count, int) or count < 2:
         raise ValueError("resample count must be an integer >= 2")
     segments = list(zip(samples, samples[1:]))
+    if closed:
+        segments.append((samples[-1], samples[0]))
     lengths = [abs(b-a) for a, b in segments]
     total = sum(lengths)
     if total == 0:
@@ -117,7 +121,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         obj = json.loads(args.input.read_text(encoding="utf-8"))
-        points = validate_points(obj["points"] if isinstance(obj, dict) else obj)
+        points = obj["points"] if isinstance(obj, dict) else obj
         if args.resample is not None:
             points = resample_polyline(points, args.resample)
         chosen = select_terms(dft(points), args.terms)
