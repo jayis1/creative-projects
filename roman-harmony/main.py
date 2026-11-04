@@ -75,22 +75,48 @@ def progression(tokens: list[str], key: str = "C", mode: str = "major") -> list[
     return [analyze(token, key, mode) for token in tokens]
 
 
+def classify_cadence(chords: list[Chord]) -> str:
+    """Classify a recognizable cadence from the final two scale-degree functions."""
+    if len(chords) < 2:
+        return "incomplete"
+    penultimate, final = chords[-2:]
+    if penultimate.function == "dominant" and final.function == "tonic":
+        return "authentic"
+    if penultimate.function == "subdominant" and final.function == "tonic":
+        return "plagal"
+    if penultimate.function == "dominant" and final.function == "submediant":
+        return "deceptive"
+    if final.function == "dominant":
+        return "half"
+    return "none"
+
+
+def progression_report(tokens: list[str], key: str = "C", mode: str = "major") -> dict:
+    """Return chord details plus a cadence label for a complete progression."""
+    chords = progression(tokens, key, mode)
+    return {"key": key, "mode": mode, "chords": [asdict(c) for c in chords], "cadence": classify_cadence(chords)}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("numerals", nargs="+", help="e.g. I vi IV V7")
     parser.add_argument("--key", default="C")
     parser.add_argument("--mode", choices=("major", "minor"), default="major")
     parser.add_argument("--json", action="store_true", help="emit machine-readable JSON")
+    parser.add_argument("--report", action="store_true", help="include key, mode, and final cadence")
     args = parser.parse_args()
     try:
         chords = progression(args.numerals, args.key, args.mode)
     except ValueError as exc:
         parser.error(str(exc))
     if args.json:
-        print(json.dumps([asdict(c) for c in chords], indent=2))
+        payload = progression_report(args.numerals, args.key, args.mode) if args.report else [asdict(c) for c in chords]
+        print(json.dumps(payload, indent=2))
     else:
         for chord in chords:
             print(f"{chord.token:5} {chord.root:2} {chord.quality:11} {' '.join(chord.notes):14} {chord.function}")
+        if args.report:
+            print(f"Cadence: {classify_cadence(chords)}")
 
 if __name__ == "__main__":
     main()

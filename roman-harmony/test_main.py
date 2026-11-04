@@ -1,5 +1,5 @@
 import unittest
-from main import analyze, pitch_class, progression
+from main import analyze, classify_cadence, pitch_class, progression, progression_report
 
 class HarmonyTests(unittest.TestCase):
     def test_major_key_diatonic_chords(self):
@@ -23,6 +23,18 @@ class HarmonyTests(unittest.TestCase):
             analyze("I", mode="dorian")
         with self.assertRaises(ValueError):
             pitch_class("H")
+
+    def test_cadence_classification(self):
+        self.assertEqual(classify_cadence(progression(["V", "I"])), "authentic")
+        self.assertEqual(classify_cadence(progression(["IV", "I"])), "plagal")
+        self.assertEqual(classify_cadence(progression(["V", "vi"])), "deceptive")
+        self.assertEqual(classify_cadence(progression(["I", "V"])), "half")
+        self.assertEqual(classify_cadence(progression(["I"])), "incomplete")
+
+    def test_structured_report(self):
+        report = progression_report(["V", "I"], "G")
+        self.assertEqual((report["key"], report["mode"], report["cadence"]), ("G", "major", "authentic"))
+        self.assertEqual(len(report["chords"]), 2)
 
     def test_nonempty_progression_required(self):
         with self.assertRaises(ValueError):
