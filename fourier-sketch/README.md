@@ -1,6 +1,6 @@
 # Fourier Sketch
 
-Approximate a closed 2D drawing with rotating Fourier vectors (a truncated discrete Fourier series). The dependency-free Python tool reads sampled points from JSON and exports a scalable SVG curve.
+Approximate a closed 2D drawing with rotating Fourier vectors (a truncated discrete Fourier series). The dependency-free Python tool reads sampled points from JSON and exports either a scalable SVG curve or reconstructed coordinates as JSON, ready for another program or another processing pass.
 
 ## How it works
 
@@ -24,7 +24,13 @@ Run:
 python3 main.py drawing.json drawing.svg --terms 4 --samples 300
 ```
 
-`--terms` controls retained Fourier vectors (default 12); `--samples` controls SVG polyline smoothness (default 400). Add `--resample 128` to first make 128 uniformly spaced samples around the closed stroke, including its final-to-first segment; this reduces speed bias from unevenly spaced sketch points. Input coordinates must be finite numeric pairs; a repeated-point or degenerate stroke is supported.
+`--terms` controls retained Fourier vectors (default 12); `--samples` controls output curve resolution (default 400). Add `--resample 128` to first make 128 uniformly spaced samples around the closed stroke, including its final-to-first segment; this reduces speed bias from unevenly spaced sketch points. Use `--format json` to write a `{"points": [[x, y], ...]}` result instead of SVG. Input coordinates must be finite numeric pairs; a repeated-point or degenerate stroke is supported.
+
+```sh
+python3 main.py drawing.json curve.json --terms 8 --samples 256 --resample 128 --format json
+```
+
+The output JSON can be fed back as an input file for another approximation pass.
 
 ## Library examples
 

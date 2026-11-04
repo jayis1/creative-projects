@@ -85,6 +85,13 @@ def write_svg(points, path, *, width=640, height=480, padding=24):
     coords = " ".join(f"{ox+scale*x:.3f},{height-(oy+scale*y):.3f}" for x, y in zip(xs, ys))
     Path(path).write_text(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}"><polyline fill="none" stroke="#1261a0" stroke-width="2" points="{coords}"/></svg>\n', encoding="utf-8")
 
+
+def write_json(points, path):
+    """Write reconstructed coordinates as a portable JSON points object."""
+    pts = validate_points(points)
+    payload = {"points": [[point.real, point.imag] for point in pts]}
+    Path(path).write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
 def resample_polyline(points, count, *, closed=True):
     """Uniformly resample a stroke by arc length (closed by default for Fourier use)."""
     samples = validate_points(points)
@@ -118,6 +125,7 @@ def main(argv=None):
     parser.add_argument("--terms", type=int, default=12, help="largest Fourier terms to retain")
     parser.add_argument("--samples", type=int, default=400, help="output curve samples")
     parser.add_argument("--resample", type=int, help="uniformly resample input by arc length before analysis")
+    parser.add_argument("--format", choices=("svg", "json"), default="svg", help="output format (default: svg)")
     args = parser.parse_args(argv)
     try:
         obj = json.loads(args.input.read_text(encoding="utf-8"))
@@ -125,10 +133,14 @@ def main(argv=None):
         if args.resample is not None:
             points = resample_polyline(points, args.resample)
         chosen = select_terms(dft(points), args.terms)
-        write_svg(reconstruct(chosen, args.samples), args.output)
+        curve = reconstruct(chosen, args.samples)
+        if args.format == "json":
+            write_json(curve, args.output)
+        else:
+            write_svg(curve, args.output)
     except (OSError, json.JSONDecodeError, KeyError, ValueError) as exc:
         parser.error(str(exc))
-    print(f"Wrote {args.output} using {len(chosen)} Fourier terms and {args.samples} samples")
+    print(f"Wrote {args.format.upper()} {args.output} using {len(chosen)} Fourier terms and {args.samples} samples")
 
 if __name__ == "__main__":
     main()

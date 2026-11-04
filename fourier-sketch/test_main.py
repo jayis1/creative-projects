@@ -1,3 +1,4 @@
+import json
 import math
 import subprocess
 import sys
@@ -28,6 +29,19 @@ class FourierSketchTests(unittest.TestCase):
     def test_term_selection_is_deterministic(self):
         terms = [Term(2, 0, 1), Term(0, 1, 0), Term(-1, 2, 0)]
         self.assertEqual([t.frequency for t in select_terms(terms, 2)], [-1, 0])
+
+    def test_cli_exports_reconstructed_points_as_json(self):
+        with tempfile.TemporaryDirectory() as d:
+            source, target = Path(d) / "shape.json", Path(d) / "curve.json"
+            source.write_text('{"points": [[1, 0], [0, 1], [-1, 0], [0, -1]]}')
+            result = subprocess.run(
+                [sys.executable, str(Path(__file__).with_name("main.py")), str(source), str(target), "--terms", "4", "--samples", "8", "--format", "json"],
+                check=False, capture_output=True, text=True, timeout=10,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            exported = json.loads(target.read_text())
+            self.assertEqual(len(exported["points"]), 8)
+            self.assertEqual(set(exported), {"points"})
 
     def test_cli_writes_svg_from_json_and_arc_resampling(self):
         with tempfile.TemporaryDirectory() as d:
