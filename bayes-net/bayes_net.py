@@ -46,10 +46,15 @@ class BayesNet:
             weight *= p_true if assignment[name] else 1.0 - p_true
         return weight
 
-    def joint_probability(self, assignment: dict[str, bool]) -> float:
-        """Probability of a partial assignment, marginalized over omitted nodes."""
+    def joint_probability(self, assignment: dict[str, bool], *, max_assignments: int = 1_000_000) -> float:
+        """Probability of a partial assignment, marginalizing omissions within a work limit."""
         self._validate_assignment(assignment)
+        if not isinstance(max_assignments, int) or isinstance(max_assignments, bool) or max_assignments < 1:
+            raise ValueError("max_assignments must be a positive integer")
         free = [name for name in self.parents if name not in assignment]
+        count = 1 << len(free)
+        if count > max_assignments:
+            raise ValueError(f"marginalization requires {count} assignments; limit is {max_assignments}")
         total = 0.0
         for values in product((False, True), repeat=len(free)):
             full = dict(assignment)
@@ -84,6 +89,8 @@ class BayesNet:
     def map_assignment(self, evidence: dict[str, bool], *, max_assignments: int = 1_000_000) -> dict[str, bool]:
         """Return the most probable full assignment, ties in stable node/value order."""
         self._validate_assignment(evidence)
+        if not isinstance(max_assignments, int) or isinstance(max_assignments, bool) or max_assignments < 1:
+            raise ValueError("max_assignments must be a positive integer")
         free = [name for name in self.parents if name not in evidence]
         if (1 << len(free)) > max_assignments:
             raise ValueError("MAP search exceeds assignment limit")

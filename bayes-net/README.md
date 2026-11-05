@@ -23,4 +23,9 @@ print(net.joint_probability({"rain": True, "wet": True}))
 print(net.map_assignment({"wet": True}))
 ```
 
-Inputs are validated for names, Boolean assignments, complete CPT rows, finite probabilities in [0, 1], and impossible evidence. Run tests with `python3 -m unittest -v`; no third-party dependencies are required.
+Inputs are validated for names, Boolean assignments, complete CPT rows, finite probabilities in [0, 1], and impossible evidence. Enumeration APIs expose a configurable positive assignment limit (default 1,000,000). Run tests with `python3 -m unittest -v`; no third-party dependencies are required.
+
+## Known Issues (Resolved)
+
+- Partial-joint marginalization had no work bound, allowing an accidental exponential-time request. It now checks the assignment count before enumerating and accepts `max_assignments`.
+- MAP search accepted invalid limits (including booleans and non-integers) inconsistently. It now enforces the same positive-integer limit contract as posterior inference.
