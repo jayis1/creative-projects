@@ -30,7 +30,7 @@ class BayesNet:
         self.parents[name] = tuple(parents)
         self.tables[name] = cleaned
 
-    def _validate_assignment(self, assignment: dict[str, bool], *, partial: bool = True) -> None:
+    def _validate_assignment(self, assignment: dict[str, bool]) -> None:
         if not isinstance(assignment, dict):
             raise ValueError("assignments must be dictionaries")
         for name, value in assignment.items():
@@ -46,13 +46,28 @@ class BayesNet:
             weight *= p_true if assignment[name] else 1.0 - p_true
         return weight
 
-    def distribution(self, query: str, evidence: dict[str, bool]) -> dict[bool, float]:
-        """Return normalized P(query | evidence) by exhaustive enumeration."""
+    def joint_probability(self, assignment: dict[str, bool]) -> float:
+        """Probability of a partial assignment, marginalized over omitted nodes."""
+        self._validate_assignment(assignment)
+        free = [name for name in self.parents if name not in assignment]
+        total = 0.0
+        for values in product((False, True), repeat=len(free)):
+            full = dict(assignment)
+            full.update(zip(free, values))
+            total += self._joint(full)
+        return total
+
+    def distribution(self, query: str, evidence: dict[str, bool], *, max_assignments: int = 1_000_000) -> dict[bool, float]:
+        """Return normalized P(query | evidence), with an explicit work bound."""
         if query not in self.parents:
             raise ValueError(f"unknown query variable: {query}")
         self._validate_assignment(evidence)
-        weights = {False: 0.0, True: 0.0}
+        if not isinstance(max_assignments, int) or isinstance(max_assignments, bool) or max_assignments < 1:
+            raise ValueError("max_assignments must be a positive integer")
         free = [name for name in self.parents if name not in evidence]
+        if (1 << len(free)) > max_assignments:
+            raise ValueError(f"inference requires {1 << len(free)} assignments; limit is {max_assignments}")
+        weights = {False: 0.0, True: 0.0}
         for values in product((False, True), repeat=len(free)):
             assignment = dict(evidence)
             assignment.update(zip(free, values))
@@ -65,3 +80,20 @@ class BayesNet:
     def probability(self, query: str, evidence: dict[str, bool]) -> float:
         """Return P(query=True | evidence)."""
         return self.distribution(query, evidence)[True]
+
+    def map_assignment(self, evidence: dict[str, bool], *, max_assignments: int = 1_000_000) -> dict[str, bool]:
+        """Return the most probable full assignment, ties in stable node/value order."""
+        self._validate_assignment(evidence)
+        free = [name for name in self.parents if name not in evidence]
+        if (1 << len(free)) > max_assignments:
+            raise ValueError("MAP search exceeds assignment limit")
+        best, best_weight = None, -1.0
+        for values in product((False, True), repeat=len(free)):
+            candidate = dict(evidence)
+            candidate.update(zip(free, values))
+            weight = self._joint(candidate)
+            if weight > best_weight:
+                best, best_weight = candidate, weight
+        if best is None or best_weight <= 0:
+            raise ValueError("evidence has zero probability")
+        return best

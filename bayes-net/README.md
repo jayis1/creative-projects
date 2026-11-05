@@ -1,10 +1,10 @@
 # Bayes Net
 
-A dependency-free exact-inference toolkit for finite Bayesian networks with binary variables. Define a directed acyclic graph in parent-before-child order, provide a conditional probability table (CPT) for each node, then compute posterior distributions by exhaustive enumeration.
+A dependency-free exact-inference toolkit for finite Bayesian networks with binary variables. Define a directed acyclic graph in parent-before-child order, provide each node's conditional probability table (CPT), then compute posterior distributions, partial joint probabilities, or the maximum a posteriori (MAP) assignment.
 
 ## How it works
 
-Each full assignment receives the product of its local CPT probabilities. Inference sums those weights over assignments compatible with the supplied evidence and normalizes the requested variable's two outcomes. This is transparent and useful for small models; runtime grows exponentially with the number of unobserved variables.
+Each full assignment receives the product of its local CPT probabilities. Inference enumerates assignments compatible with evidence, sums weights and normalizes the requested variable's outcomes. `joint_probability` marginalizes unspecified variables; `map_assignment` searches for the most likely complete state. Enumeration is transparent but exponential, so inference and MAP have configurable assignment limits (default 1,000,000).
 
 ## Usage
 
@@ -19,6 +19,8 @@ net.add_node("wet", ["rain", "sprinkler"], {
     (False, True): 0.9, (False, False): 0.0,
 })
 print(net.distribution("rain", {"wet": True}))
+print(net.joint_probability({"rain": True, "wet": True}))
+print(net.map_assignment({"wet": True}))
 ```
 
-Run tests with `python3 -m unittest -v` from this directory. There are no third-party dependencies.
+Inputs are validated for names, Boolean assignments, complete CPT rows, finite probabilities in [0, 1], and impossible evidence. Run tests with `python3 -m unittest -v`; no third-party dependencies are required.
