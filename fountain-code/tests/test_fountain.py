@@ -14,13 +14,17 @@ class FountainTests(unittest.TestCase):
         packets = [{"indices": [i], "payload": c.hex()} for i, c in enumerate(chunks)]
         self.assertEqual(decode(packets, 3, len(data), 4), data)
 
+    def test_systematic_mode_starts_with_source_blocks(self):
+        data = b"abcdef"
+        packets = encode(data, 2, 5, seed=8, systematic=True)
+        self.assertEqual([p["indices"] for p in packets[:3]], [[0], [1], [2]])
+        self.assertEqual(decode(packets[:3], 3, len(data), 2), data)
+
     def test_rank_deficiency_is_reported(self):
         with self.assertRaisesRegex(ValueError, "insufficient"):
             decode([{"indices": [0, 1], "payload": "0000"}], 2, 4, 2)
-
     def test_invalid_dimensions_rejected(self):
         with self.assertRaises(ValueError):
             decode([], 1, 3, 2)
-
 if __name__ == "__main__":
     unittest.main()

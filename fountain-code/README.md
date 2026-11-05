@@ -11,10 +11,12 @@ The encoder zero-pads the final source block. A seeded pseudorandom generator pi
 Requires Python 3.10+; no third-party packages.
 
 ```sh
-python3 fountain.py encode input.bin packets.json --block-size 128 --packets 30 --seed 42
+python3 fountain.py encode input.bin packets.json --block-size 128 --packets 30 --seed 42 --systematic
 python3 fountain.py decode packets.json recovered.bin
 cmp input.bin recovered.bin
 ```
+
+The optional `--systematic` emits each source block directly in the first `block_count` packets, then continues with seeded repair packets. This makes source recovery immediate when the initial packets arrive intact; repair packets can fill losses when peeling can resolve their equations.
 
 The JSON packet file carries block count, original byte length, block size, packet indices, and hex payloads. Encode is deterministic for a fixed input and seed. Decode rejects malformed packets, inconsistent equations, and unsolved systems.
 
