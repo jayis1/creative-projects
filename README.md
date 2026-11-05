@@ -136,5 +136,6 @@ A monorepo of AI-generated creative coding projects. Each project lives in its o
 | [cache-coherence-lab](./cache-coherence-lab) | Trace-driven MESI multicore cache simulator with invariant checks, invalidations, and dirty writebacks (Python) |
 | [elevator-dispatch](./elevator-dispatch) | Deterministic multi-car elevator dispatch simulator with JSON scenarios and wait-time metrics (Python) |
 | [supply-chain-lab](./supply-chain-lab) | Multi-echelon inventory and replenishment simulator with lead times and shortage metrics (Python) |
+| [bayes-net](./bayes-net) | Exact enumeration inference for discrete Bayesian networks with validated CPTs and evidence (Python) |
 
 ---
