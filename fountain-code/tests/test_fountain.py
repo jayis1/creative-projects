@@ -23,6 +23,16 @@ class FountainTests(unittest.TestCase):
     def test_rank_deficiency_is_reported(self):
         with self.assertRaisesRegex(ValueError, "insufficient"):
             decode([{"indices": [0, 1], "payload": "0000"}], 2, 4, 2)
+    def test_conflicting_duplicate_singletons_are_rejected(self):
+        packets = [
+            {"indices": [0], "payload": "0000"},
+            {"indices": [0], "payload": "0100"},
+        ]
+        with self.assertRaisesRegex(ValueError, "inconsistent"):
+            decode(packets, 1, 2, 2)
+    def test_unhashable_packet_index_is_rejected_cleanly(self):
+        with self.assertRaisesRegex(ValueError, "invalid packet indices"):
+            decode([{"indices": [[0]], "payload": "0000"}], 1, 2, 2)
     def test_invalid_dimensions_rejected(self):
         with self.assertRaises(ValueError):
             decode([], 1, 3, 2)

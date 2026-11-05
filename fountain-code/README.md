@@ -20,6 +20,11 @@ The optional `--systematic` emits each source block directly in the first `block
 
 The JSON packet file carries block count, original byte length, block size, packet indices, and hex payloads. Encode is deterministic for a fixed input and seed. Decode rejects malformed packets, inconsistent equations, and unsolved systems.
 
+## Known Issues (Resolved)
+
+- A malformed packet containing a nested (unhashable) index raised a raw `TypeError` during duplicate checking. Index type/range validation now precedes uniqueness checking, so malformed indices are consistently rejected as `ValueError`. A regression test reproduces the input.
+
+
 Run tests from this directory:
 
 ```sh

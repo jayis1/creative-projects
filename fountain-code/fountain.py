@@ -44,7 +44,9 @@ def decode(packets: list[dict], block_count: int, original_size: int, block_size
             payload = bytes.fromhex(packet["payload"])
         except (KeyError, TypeError, ValueError) as exc:
             raise ValueError("invalid packet payload") from exc
-        if not isinstance(inds, list) or not inds or len(set(inds)) != len(inds) or any(type(i) is not int or not 0 <= i < block_count for i in inds):
+        if (not isinstance(inds, list) or not inds
+                or any(type(i) is not int or not 0 <= i < block_count for i in inds)
+                or len(set(inds)) != len(inds)):
             raise ValueError("invalid packet indices")
         if len(payload) != block_size:
             raise ValueError("packet payload has wrong size")
@@ -65,6 +67,8 @@ def decode(packets: list[dict], block_count: int, original_size: int, block_size
                     raise ValueError("inconsistent packets")
             elif len(indices) == 1:
                 idx = next(iter(indices))
+                if idx in solved and solved[idx] != bytes(payload):
+                    raise ValueError("inconsistent packets")
                 solved[idx] = bytes(payload)
                 progress = True
             else:
