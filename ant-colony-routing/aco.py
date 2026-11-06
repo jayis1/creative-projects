@@ -7,6 +7,7 @@ import math
 import random
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, cast
 
 @dataclass(frozen=True)
 class Result:
@@ -112,15 +113,43 @@ def load_points(path: Path) -> list[tuple[float, float]]:
     validate(points)
     return points
 
+def load_config(path: Path) -> dict[str, object]:
+    """Load solver defaults from a JSON object, rejecting unknown settings."""
+    try:
+        config = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"cannot read JSON config: {exc}") from exc
+    allowed = {"ants", "iterations", "seed", "alpha", "beta", "evaporation", "two_opt"}
+    if not isinstance(config, dict) or set(config) - allowed:
+        unknown = set(config) - allowed if isinstance(config, dict) else set()
+        detail = f"; unknown keys: {', '.join(sorted(unknown))}" if unknown else ""
+        raise ValueError(f"config must be a JSON object containing only {', '.join(sorted(allowed))}{detail}")
+    return config
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("points", nargs="?", type=Path, help="JSON file containing [[x,y], ...]")
-    parser.add_argument("--ants", type=int, default=24)
-    parser.add_argument("--iterations", type=int, default=100)
-    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--config", type=Path, help="JSON settings file (explicit CLI options override it)")
+    parser.add_argument("--ants", type=int)
+    parser.add_argument("--iterations", type=int)
+    parser.add_argument("--seed", type=int)
+    parser.add_argument("--alpha", type=float)
+    parser.add_argument("--beta", type=float)
+    parser.add_argument("--evaporation", type=float)
+    parser.add_argument("--no-two-opt", action="store_true", help="disable 2-opt local search")
     args = parser.parse_args()
-    points = load_points(args.points) if args.points else [(0,0),(4,0),(5,3),(2,5),(-1,3)]
-    result = solve(points, ants=args.ants, iterations=args.iterations, seed=args.seed)
+    config = load_config(args.config) if args.config else {}
+    for key in ("ants", "iterations", "seed", "alpha", "beta", "evaporation"):
+        value = getattr(args, key)
+        if value is not None:
+            config[key] = value
+    if args.no_two_opt:
+        config["two_opt"] = False
+    points = load_points(args.points) if args.points else [(0.,0.),(4.,0.),(5.,3.),(2.,5.),(-1.,3.)]
+    try:
+        result = solve(points, **cast(Any, config))
+    except TypeError as exc:
+        raise ValueError(f"invalid solver configuration: {exc}") from exc
     print(json.dumps({"route": list(result.route), "distance": result.distance, "history": list(result.history)}, indent=2))
     return 0
 if __name__ == "__main__":

@@ -17,6 +17,17 @@ Supply coordinates as JSON:
 
     python3 aco.py cities.json --seed 12
 
+Store reusable solver defaults in a JSON configuration file:
+
+    python3 aco.py cities.json --config run.json --seed 12
+
+Example `run.json`:
+
+    {"ants": 32, "iterations": 150, "alpha": 1.0, "beta": 3.0,
+     "evaporation": 0.35, "seed": 7, "two_opt": true}
+
+Supported configuration keys are `ants`, `iterations`, `seed`, `alpha`, `beta`, `evaporation`, and `two_opt`. Explicit CLI options override matching config values; built-in solver defaults apply when neither supplies a value. Unknown keys and malformed/unreadable files produce a concise error. Use `--no-two-opt` to override the config and disable local search.
+
 `cities.json` is an array such as `[[0, 0], [4, 0], [5, 3], [2, 5]]`. Output JSON contains a route of point indices, its closed-tour distance, and the best-so-far distance after each iteration. Inputs are bounded to 2–200 finite 2D points; ant count and iteration count are bounded to protect runtime.
 
 ## Known Issues (Resolved)
