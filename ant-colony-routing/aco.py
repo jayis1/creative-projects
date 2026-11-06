@@ -105,7 +105,10 @@ def load_points(path: Path) -> list[tuple[float, float]]:
         raise ValueError(f"cannot read JSON points: {exc}") from exc
     if not isinstance(raw, list) or any(not isinstance(p, list) or len(p) != 2 or any(isinstance(x, bool) or not isinstance(x, (int, float)) for x in p) for p in raw):
         raise ValueError("input must be a JSON array of [x, y] coordinate pairs")
-    points = [(float(p[0]), float(p[1])) for p in raw]
+    try:
+        points = [(float(p[0]), float(p[1])) for p in raw]
+    except (OverflowError, ValueError) as exc:
+        raise ValueError("coordinates must be finite numbers within floating-point range") from exc
     validate(points)
     return points
 

@@ -27,6 +27,14 @@ class RoutingTests(unittest.TestCase):
         improved = improve_two_opt(crossed, distances)
         self.assertLess(route_length(improved, distances), route_length(crossed, distances))
         self.assertEqual(set(improved), set(crossed))
+    def test_json_rejects_huge_integer(self):
+        import json
+        path = Path('huge-point.json')
+        path.write_text(json.dumps([[0, 0], [10**400, 0]]))
+        try:
+            with self.assertRaises(ValueError): load_points(path)
+        finally:
+            path.unlink(missing_ok=True)
     def test_json_input_checks(self):
         with self.assertRaises(ValueError): load_points(Path('/missing/aco.json'))
 

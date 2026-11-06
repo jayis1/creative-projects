@@ -19,7 +19,13 @@ Supply coordinates as JSON:
 
 `cities.json` is an array such as `[[0, 0], [4, 0], [5, 3], [2, 5]]`. Output JSON contains a route of point indices, its closed-tour distance, and the best-so-far distance after each iteration. Inputs are bounded to 2–200 finite 2D points; ant count and iteration count are bounded to protect runtime.
 
-Run tests:
+## Known Issues (Resolved)
+
+- JSON coordinates containing integers too large for floating-point conversion raised an uncaught `OverflowError`. Reproduced with a 10^400 coordinate; `load_points` now raises a user-facing `ValueError`, covered by a regression test.
+
+## Tests
+
+Run the suite:
 
     python3 -m unittest -v
 
