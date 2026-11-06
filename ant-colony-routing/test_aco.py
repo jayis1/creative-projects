@@ -1,7 +1,7 @@
 import math
 import unittest
 from pathlib import Path
-from aco import load_points, route_length, solve, validate
+from aco import improve_two_opt, load_points, route_length, solve, validate
 
 class RoutingTests(unittest.TestCase):
     def test_fixed_seed_is_reproducible(self):
@@ -20,6 +20,13 @@ class RoutingTests(unittest.TestCase):
         for points in [[], [(math.inf,0.)], [(1.,)], [(0.,0.)] * 201]:
             with self.assertRaises(ValueError): validate(points)
         with self.assertRaises(ValueError): solve([(0.,0.),(1.,1.)], evaporation=0)
+    def test_two_opt_removes_crossing(self):
+        pts = [(0.,0.),(2.,2.),(0.,2.),(2.,0.)]
+        distances = [[math.dist(a,b) for b in pts] for a in pts]
+        crossed = (0,1,2,3)
+        improved = improve_two_opt(crossed, distances)
+        self.assertLess(route_length(improved, distances), route_length(crossed, distances))
+        self.assertEqual(set(improved), set(crossed))
     def test_json_input_checks(self):
         with self.assertRaises(ValueError): load_points(Path('/missing/aco.json'))
 

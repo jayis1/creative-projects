@@ -1,8 +1,10 @@
 # Ant Colony Routing
 
-A dependency-free, reproducible ant-colony optimizer for Euclidean traveling-salesperson tours. - Ants probabilistically construct tours using pheromone strength and inverse distance.
+A dependency-free, reproducible ant-colony optimizer for Euclidean traveling-salesperson tours.
+
+- Ants probabilistically construct tours using pheromone strength and inverse distance.
 - Pheromone evaporation balances exploration; shorter tours deposit more pheromone.
-- A bounded 2-opt local search improves each constructed tour before pheromone update.
+- A 2-opt local search improves each constructed tour before pheromone update.
 - The fixed-seed RNG makes runs reproducible. 2-opt is enabled by default and can be disabled through the Python `solve(..., two_opt=False)` API.
 
 ## Usage
