@@ -5,6 +5,7 @@ A monorepo of AI-generated creative coding projects. Each project lives in its o
 ## Projects
 
 | Project | Description |
+| [ant-colony-routing](./ant-colony-routing) | Seeded ant-colony optimization for bounded Euclidean traveling-salesperson tours (Python) |
 | [roman-harmony](./roman-harmony) | Dependency-free Roman-numeral chord analyzer for major and natural-minor keys, with CLI and tests |
 | [fourier-sketch](./fourier-sketch) | Fourier epicycle drawing approximation and SVG exporter (Python) |
 | [epidemic-network](./epidemic-network) | Seeded SEIR epidemic simulation on randomized contact networks |
