@@ -107,17 +107,36 @@ def private_histogram(values: Iterable[str], *, categories: Iterable[str],
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("values", nargs="*", type=float, default=[1, 2, 3, 4])
+    parser.add_argument("values", nargs="*", help="numeric values for sum/mean, categories for histogram")
+    parser.add_argument("--mode", choices=("sum", "mean", "histogram"), default="sum")
+    parser.add_argument("--category", action="append", dest="categories",
+                        help="public histogram category; repeat for each allowed label")
     parser.add_argument("--lower", type=float, default=0.0)
     parser.add_argument("--upper", type=float, default=10.0)
     parser.add_argument("--epsilon", type=float, default=1.0)
     parser.add_argument("--seed", type=int, help="reproducible demo randomness; not for real private releases")
     args = parser.parse_args(argv)
     rng = random.Random(args.seed) if args.seed is not None else None
-    answer, cost = private_sum(args.values, lower=args.lower, upper=args.upper,
-                               epsilon=args.epsilon, rng=rng)
-    print(json.dumps({"noisy_sum": answer, "epsilon": cost.epsilon,
-                      "delta": cost.delta, "contributions": len(args.values)}))
+    try:
+        if args.mode == "histogram":
+            if not args.categories:
+                parser.error("--mode histogram requires at least one --category")
+            released, cost = private_histogram(args.values, categories=args.categories,
+                                               epsilon=args.epsilon, rng=rng)
+            result = {"mechanism": "histogram", "noisy_counts": released,
+                      "epsilon": cost.epsilon, "delta": cost.delta,
+                      "contributions": len(args.values)}
+        else:
+            values = [float(value) for value in (args.values or ["1", "2", "3", "4"])]
+            mechanism = private_sum if args.mode == "sum" else private_mean
+            answer, cost = mechanism(values, lower=args.lower, upper=args.upper,
+                                     epsilon=args.epsilon, rng=rng)
+            key = "noisy_sum" if args.mode == "sum" else "noisy_mean"
+            result = {"mechanism": args.mode, key: answer, "epsilon": cost.epsilon,
+                      "delta": cost.delta, "contributions": len(values)}
+    except ValueError as error:
+        parser.error(str(error))
+    print(json.dumps(result, sort_keys=True))
     return 0
 
 

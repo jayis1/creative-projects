@@ -69,6 +69,27 @@ class MechanismTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             private_histogram([], categories=cast(list[str], [["unhashable"]]), epsilon=1)
 
+    def test_cli_mean_emits_structured_json(self):
+        from contextlib import redirect_stdout
+        from io import StringIO
+        from privacy_budget import main
+
+        output = StringIO()
+        with redirect_stdout(output):
+            self.assertEqual(main(["--mode", "mean", "0", "10", "--lower", "0",
+                                   "--upper", "10", "--seed", "9"]), 0)
+        import json
+        result = json.loads(output.getvalue())
+        self.assertEqual(result["mechanism"], "mean")
+        self.assertEqual(result["epsilon"], 1.0)
+        self.assertIn("noisy_mean", result)
+
+    def test_cli_histogram_requires_categories(self):
+        from privacy_budget import main
+        with self.assertRaises(SystemExit) as error:
+            main(["--mode", "histogram", "red"])
+        self.assertEqual(error.exception.code, 2)
+
 
 if __name__ == "__main__":
     unittest.main()
