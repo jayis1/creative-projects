@@ -20,6 +20,10 @@ Render PPM:
 
     python3 newton_fractal.py --width 160 --height 90 --format ppm --output newton.ppm
 
+The renderer can be tuned with `--max-iterations` and `--damping`; add `--stats` to print per-basin pixel totals. For example:
+
+    python3 newton_fractal.py --width 40 --height 20 --stats --damping 0.8
+
 Run tests:
 
     python3 -m unittest discover -s tests -v

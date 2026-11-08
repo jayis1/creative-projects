@@ -97,12 +97,23 @@ def main() -> None:
     parser.add_argument("--height", type=int, default=32)
     parser.add_argument("--format", choices=("ascii", "ppm"), default="ascii")
     parser.add_argument("--output", type=Path, help="write PPM image to this path")
+    parser.add_argument("--stats", action="store_true", help="print basin pixel counts")
+    parser.add_argument("--max-iterations", type=int, default=80)
+    parser.add_argument("--damping", type=float, default=1.0)
     args = parser.parse_args()
     if args.demo:
         demo(); return
     coeffs = (1, 0, 0, -1)
     roots = (1 + 0j, cmath.exp(2j * cmath.pi / 3), cmath.exp(4j * cmath.pi / 3))
-    rows = render(args.width, args.height, (-1.6, 1.6, -1.2, 1.2), coeffs, roots)
+    rows = render(args.width, args.height, (-1.6, 1.6, -1.2, 1.2), coeffs, roots,
+                  max_iterations=args.max_iterations, damping=args.damping)
+    if args.stats:
+        counts = {str(i): 0 for i in range(len(roots))}
+        counts["unresolved"] = 0
+        for row in rows:
+            for cell in row:
+                counts[str(cell.basin) if cell.basin >= 0 else "unresolved"] += 1
+        print("Basin pixel counts:", counts)
     if args.format == "ppm":
         if args.output is None:
             parser.error("--output is required for PPM format")
