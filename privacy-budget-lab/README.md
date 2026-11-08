@@ -16,7 +16,15 @@ python3 privacy_budget.py 2 3 --epsilon 1 --seed 7
 python3 -m unittest discover -s tests -v
 ```
 
-The CLI emits one JSON object. The seed is not appropriate for a real release because predictable noise is not private. Always choose bounds, adjacency, and privacy parameters based on the data-release setting. This initial version offers a noisy sum and cost composition; later versions extend these capabilities.
+This enhancement adds two mechanisms. `private_mean` clips values and adds Laplace noise using range/n sensitivity under fixed-size replacement adjacency. `private_histogram` uses a caller-supplied public category domain; add/remove-one records increment one bin, giving vector L1 sensitivity one and noise scale 1/epsilon per bin. Both return their privacy cost and reject malformed inputs.
+
+```python
+from privacy_budget import private_histogram
+released, cost = private_histogram(["red", "blue", "red"],
+    categories=["red", "blue", "green"], epsilon=0.5)
+```
+
+The CLI still emits a noisy sum as JSON. `--seed` remains demo-only and is not safe for actual releases.
 
 ## Limitations
 

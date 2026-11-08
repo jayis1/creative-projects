@@ -61,6 +61,46 @@ def private_sum(values: Iterable[float], *, lower: float, upper: float,
     return sum(clipped) + laplace_noise(sensitivity / epsilon, rng), PrivacyCost(epsilon)
 
 
+def private_mean(values: Iterable[float], *, lower: float, upper: float,
+                 epsilon: float, rng: random.Random | None = None) -> tuple[float, PrivacyCost]:
+    """Release clipped sample mean; neighboring datasets have fixed size n."""
+    if not math.isfinite(lower) or not math.isfinite(upper) or lower > upper:
+        raise ValueError("finite ordered bounds required")
+    if not math.isfinite(epsilon) or epsilon <= 0:
+        raise ValueError("epsilon must be finite and positive")
+    data = [clamp_count(float(v), lower, upper) for v in values]
+    if not data:
+        raise ValueError("private mean requires at least one value")
+    # Replacement adjacency on fixed-size datasets changes one term by at most range/n.
+    sensitivity = (upper - lower) / len(data)
+    return sum(data) / len(data) + laplace_noise(sensitivity / epsilon, rng), PrivacyCost(epsilon)
+
+
+def private_histogram(values: Iterable[str], *, categories: Iterable[str],
+                      epsilon: float, rng: random.Random | None = None
+                      ) -> tuple[dict[str, float], PrivacyCost]:
+    """Release a categorical histogram under add/remove-one adjacency.
+
+    Categories must be declared publicly; each record increments exactly one
+    bin, so the vector's L1 sensitivity is one. Independent Laplace noise with
+    scale 1/epsilon on each bin gives epsilon-DP.
+    """
+    labels = list(categories)
+    if not labels or len(set(labels)) != len(labels) or any(not isinstance(x, str) for x in labels):
+        raise ValueError("categories must be non-empty, unique strings")
+    if not math.isfinite(epsilon) or epsilon <= 0:
+        raise ValueError("epsilon must be finite and positive")
+    counts = dict.fromkeys(labels, 0)
+    for value in values:
+        if value not in counts:
+            raise ValueError(f"undeclared category: {value!r}")
+        counts[value] += 1
+    source = rng or random.SystemRandom()
+    released = {label: count + laplace_noise(1 / epsilon, source)
+                for label, count in counts.items()}
+    return released, PrivacyCost(epsilon)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("values", nargs="*", type=float, default=[1, 2, 3, 4])

@@ -6,7 +6,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from privacy_budget import PrivacyCost, clamp_count, laplace_noise, private_sum
+from privacy_budget import (PrivacyCost, clamp_count, laplace_noise, private_histogram,
+                            private_mean, private_sum)
 
 
 class MechanismTests(unittest.TestCase):
@@ -38,6 +39,26 @@ class MechanismTests(unittest.TestCase):
     def test_nonfinite_input_rejected(self):
         with self.assertRaises(ValueError):
             clamp_count(math.inf, 0, 1)
+
+    def test_mean_uses_fixed_size_replacement_sensitivity(self):
+        value, _ = private_mean([0, 10], lower=0, upper=10, epsilon=1,
+                                rng=random.Random(9))
+        self.assertAlmostEqual(value, 5 + laplace_noise(5, random.Random(9)))
+
+    def test_mean_rejects_empty(self):
+        with self.assertRaises(ValueError):
+            private_mean([], lower=0, upper=1, epsilon=1)
+
+    def test_histogram_noisy_bins(self):
+        output, cost = private_histogram(["a", "a", "b"], categories=["a", "b", "c"],
+                                         epsilon=1, rng=random.Random(2))
+        self.assertEqual(set(output), {"a", "b", "c"})
+        self.assertEqual(cost, PrivacyCost(1))
+        self.assertNotEqual(output["c"], 0)
+
+    def test_histogram_rejects_undeclared_category(self):
+        with self.assertRaises(ValueError):
+            private_histogram(["secret"], categories=["public"], epsilon=1)
 
 
 if __name__ == "__main__":
