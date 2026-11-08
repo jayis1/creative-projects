@@ -22,8 +22,11 @@ class PrivacyCost:
             raise ValueError("delta must be finite and in [0, 1)")
 
     def compose(self, other: "PrivacyCost") -> "PrivacyCost":
-        return PrivacyCost(self.epsilon + other.epsilon,
-                           min(math.nextafter(1.0, 0.0), self.delta + other.delta))
+        """Add sequential costs; reject a vacuous delta bound of one or more."""
+        total_delta = self.delta + other.delta
+        if total_delta >= 1:
+            raise ValueError("composed delta must remain below 1")
+        return PrivacyCost(self.epsilon + other.epsilon, total_delta)
 
 
 def clamp_count(value: float, lower: float, upper: float) -> float:
@@ -55,7 +58,6 @@ def private_sum(values: Iterable[float], *, lower: float, upper: float,
     if not math.isfinite(lower) or not math.isfinite(upper) or lower > upper:
         raise ValueError("finite ordered bounds required")
     clipped = [clamp_count(float(v), lower, upper) for v in values]
-    sensitivity = max(abs(lower), abs(upper), abs(upper - lower))
     # For a bounded per-person value under add/remove adjacency, |x| is sensitivity.
     sensitivity = max(abs(lower), abs(upper))
     return sum(clipped) + laplace_noise(sensitivity / epsilon, rng), PrivacyCost(epsilon)
@@ -86,8 +88,10 @@ def private_histogram(values: Iterable[str], *, categories: Iterable[str],
     scale 1/epsilon on each bin gives epsilon-DP.
     """
     labels = list(categories)
-    if not labels or len(set(labels)) != len(labels) or any(not isinstance(x, str) for x in labels):
-        raise ValueError("categories must be non-empty, unique strings")
+    if not labels or any(not isinstance(x, str) for x in labels):
+        raise ValueError("categories must be non-empty strings")
+    if len(set(labels)) != len(labels):
+        raise ValueError("categories must be unique")
     if not math.isfinite(epsilon) or epsilon <= 0:
         raise ValueError("epsilon must be finite and positive")
     counts = dict.fromkeys(labels, 0)

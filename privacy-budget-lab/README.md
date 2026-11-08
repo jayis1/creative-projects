@@ -26,6 +26,11 @@ released, cost = private_histogram(["red", "blue", "red"],
 
 The CLI still emits a noisy sum as JSON. `--seed` remains demo-only and is not safe for actual releases.
 
+## Known Issues (Resolved)
+
+- Sequential composition previously capped an accumulated delta just below one, which could understate a vacuous bound when component deltas summed to at least one. A regression test reproduced this; composition now rejects totals at or above one.
+- Histogram domain validation previously attempted set conversion before confirming labels were strings, raising an incidental `TypeError` for unhashable malformed labels. A regression test reproduced it; validation now rejects non-string labels with the documented `ValueError`.
+
 ## Limitations
 
 No persistent budget ledger, advanced composition theorem, or protection against misuse of public bounds is provided. Clipping bounds and the adjacency model are part of the privacy claim, not mere input conveniences.

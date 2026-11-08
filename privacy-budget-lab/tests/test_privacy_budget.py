@@ -3,6 +3,7 @@ import random
 import sys
 import unittest
 from pathlib import Path
+from typing import cast
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -59,6 +60,14 @@ class MechanismTests(unittest.TestCase):
     def test_histogram_rejects_undeclared_category(self):
         with self.assertRaises(ValueError):
             private_histogram(["secret"], categories=["public"], epsilon=1)
+
+    def test_composition_rejects_delta_total_at_least_one(self):
+        with self.assertRaises(ValueError):
+            PrivacyCost(0, .6).compose(PrivacyCost(0, .5))
+
+    def test_histogram_rejects_non_string_domain_cleanly(self):
+        with self.assertRaises(ValueError):
+            private_histogram([], categories=cast(list[str], [["unhashable"]]), epsilon=1)
 
 
 if __name__ == "__main__":
