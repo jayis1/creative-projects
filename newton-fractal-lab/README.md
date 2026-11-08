@@ -24,6 +24,16 @@ The renderer can be tuned with `--max-iterations` and `--damping`; add `--stats`
 
     python3 newton_fractal.py --width 40 --height 20 --stats --damping 0.8
 
+Run the existing `z^3 - 1` demo, or provide a JSON file to render another polynomial. Coefficients are ordered from highest to lowest degree; complex values use `[real, imaginary]` pairs:
+
+    {"coefficients": [1, 0, 0, -1], "roots": [1, [-0.5, 0.8660254], [-0.5, -0.8660254]]}
+
+Save this as `cubic.json`, then run:
+
+    python3 newton_fractal.py --config cubic.json --width 80 --height 40 --stats
+
+The config must contain exactly `coefficients` and `roots`, with at least two coefficients and one candidate root. Invalid or non-finite values are rejected with a CLI usage error. With no `--config`, the built-in cubic remains the default.
+
 Run tests:
 
     python3 -m unittest discover -s tests -v

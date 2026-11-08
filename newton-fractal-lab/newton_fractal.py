@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import cmath
 import math
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -91,8 +92,33 @@ def demo() -> None:
     print(ascii_art(rows))
 
 
+def load_config(path: Path) -> tuple[tuple[complex, ...], tuple[complex, ...]]:
+    """Load coefficients and root candidates from a JSON config."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict) or set(data) != {"coefficients", "roots"}:
+            raise ValueError("config must contain exactly 'coefficients' and 'roots'")
+        def parse_complex(value: object) -> complex:
+            if (isinstance(value, (int, float)) and not isinstance(value, bool)
+                    and math.isfinite(value)):
+                return complex(value)
+            if (isinstance(value, list) and len(value) == 2 and
+                    all(isinstance(part, (int, float)) and not isinstance(part, bool) and math.isfinite(part)
+                        for part in value)):
+                return complex(value[0], value[1])
+            raise ValueError("complex numbers must be real numbers or [real, imaginary] pairs")
+        coefficients = tuple(parse_complex(v) for v in data["coefficients"])
+        roots = tuple(parse_complex(v) for v in data["roots"])
+        if len(coefficients) < 2 or not roots:
+            raise ValueError("at least two coefficients and one root candidate are required")
+        return coefficients, roots
+    except (OSError, json.JSONDecodeError, TypeError, KeyError) as exc:
+        raise ValueError(f"cannot read config {path}: {exc}") from exc
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--config", type=Path, help="JSON polynomial config; overrides the built-in cubic")
     parser.add_argument("--demo", action="store_true", help="render the cubic z^3-1 example")
     parser.add_argument("--width", type=int, default=72)
     parser.add_argument("--height", type=int, default=32)
@@ -104,8 +130,14 @@ def main() -> None:
     args = parser.parse_args()
     if args.demo:
         demo(); return
-    coeffs = (1, 0, 0, -1)
-    roots = (1 + 0j, cmath.exp(2j * cmath.pi / 3), cmath.exp(4j * cmath.pi / 3))
+    if args.config:
+        try:
+            coeffs, roots = load_config(args.config)
+        except ValueError as exc:
+            parser.error(str(exc))
+    else:
+        coeffs = (1, 0, 0, -1)
+        roots = (1 + 0j, cmath.exp(2j * cmath.pi / 3), cmath.exp(4j * cmath.pi / 3))
     rows = render(args.width, args.height, (-1.6, 1.6, -1.2, 1.2), coeffs, roots,
                   max_iterations=args.max_iterations, damping=args.damping)
     if args.stats:

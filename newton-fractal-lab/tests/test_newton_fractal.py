@@ -1,11 +1,32 @@
 import cmath
 import unittest
-from newton_fractal import ascii_art, classify, evaluate, ppm_bytes, render
+from newton_fractal import ascii_art, classify, evaluate, load_config, ppm_bytes, render
 
 class NewtonFractalTests(unittest.TestCase):
     def setUp(self):
         self.coeffs = (1, 0, 0, -1)
         self.roots = (1+0j, cmath.exp(2j*cmath.pi/3), cmath.exp(4j*cmath.pi/3))
+
+    def test_json_config_supports_complex_pairs(self):
+        from pathlib import Path
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "poly.json"
+            path.write_text('{"coefficients":[1,0,-1],"roots":[1,[-1,0]]}', encoding="utf-8")
+            coefficients, roots = load_config(path)
+            self.assertEqual(coefficients, (1+0j, 0j, -1+0j))
+            self.assertEqual(roots, (1+0j, -1+0j))
+
+    def test_json_config_rejects_missing_keys_and_nonfinite_values(self):
+        from pathlib import Path
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "bad.json"
+            for text in ('{"coefficients":[1,0],"roots":[]}',
+                         '{"coefficients":[1,0],"roots":[[NaN,0]]}'):
+                path.write_text(text, encoding="utf-8")
+                with self.assertRaises(ValueError):
+                    load_config(path)
 
     def test_evaluate_horner_value_and_derivative(self):
         value, derivative = evaluate((1, 0, 0, -1), 2)
