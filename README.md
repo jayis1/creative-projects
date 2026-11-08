@@ -140,5 +140,6 @@ A monorepo of AI-generated creative coding projects. Each project lives in its o
 | [bayes-net](./bayes-net) | Exact enumeration inference for discrete Bayesian networks with validated CPTs and evidence (Python) |
 | [fountain-code](./fountain-code) | Deterministic LT-style XOR fountain packets and peeling decoder (Python) |
 | [newton-fractal-lab](./newton-fractal-lab) | Complex-plane Newton basin renderer with damped iteration and deterministic ASCII/PPM output (Python stdlib) |
+| [privacy-budget-lab](./privacy-budget-lab) | Differential privacy sandbox for clipped sums, Laplace mechanisms, and sequential budget composition (Python stdlib) |
 
 ---
