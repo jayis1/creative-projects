@@ -33,6 +33,7 @@ class NewtonFractalTests(unittest.TestCase):
         with self.assertRaises(ValueError): classify(0j, (1,), self.roots)
         with self.assertRaises(ValueError): classify(0j, self.coeffs, self.roots, damping=0)
         with self.assertRaises(ValueError): render(0, 4, (-1, 1, -1, 1), self.coeffs, self.roots)
+        with self.assertRaises(ValueError): render(2, 2, (float("nan"), 1, -1, 1), self.coeffs, self.roots)
 
 if __name__ == "__main__":
     unittest.main()

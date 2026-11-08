@@ -3,6 +3,7 @@
 from __future__ import annotations
 import argparse
 import cmath
+import math
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -49,7 +50,7 @@ def render(width: int, height: int, bounds: tuple[float, float, float, float],
     if width < 1 or height < 1:
         raise ValueError("image dimensions must be positive")
     xmin, xmax, ymin, ymax = bounds
-    if not all(map(lambda x: isinstance(x, (int, float)), bounds)) or xmin >= xmax or ymin >= ymax:
+    if not all(isinstance(x, (int, float)) and math.isfinite(x) for x in bounds) or xmin >= xmax or ymin >= ymax:
         raise ValueError("bounds must be finite increasing numeric intervals")
     rows = []
     for row in range(height):

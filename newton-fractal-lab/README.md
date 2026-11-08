@@ -28,4 +28,8 @@ Run tests:
 
     python3 -m unittest discover -s tests -v
 
-Coordinates, polynomial coefficients, candidate roots, iteration cap, tolerance, and damping are configurable through the Python API. No external packages or network access are required.
+Known Issues (Resolved)
+
+- Non-finite viewport coordinates such as NaN previously bypassed the increasing-bounds check and could silently generate an invalid image. `render` now rejects NaN and infinity; a regression test was observed failing before the fix and passes after it.
+
+Remaining limitations: the CLI currently renders the built-in `z^3 - 1` polynomial; custom polynomial/root configuration is available through the Python API. Basin colors are categorical and not iteration-shaded.
