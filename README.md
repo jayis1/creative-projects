@@ -139,5 +139,6 @@ A monorepo of AI-generated creative coding projects. Each project lives in its o
 | [supply-chain-lab](./supply-chain-lab) | Multi-echelon inventory and replenishment simulator with lead times and shortage metrics (Python) |
 | [bayes-net](./bayes-net) | Exact enumeration inference for discrete Bayesian networks with validated CPTs and evidence (Python) |
 | [fountain-code](./fountain-code) | Deterministic LT-style XOR fountain packets and peeling decoder (Python) |
+| [newton-fractal-lab](./newton-fractal-lab) | Complex-plane Newton basin renderer with damped iteration and deterministic ASCII/PPM output (Python stdlib) |
 
 ---
