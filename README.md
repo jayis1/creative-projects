@@ -141,5 +141,6 @@ A monorepo of AI-generated creative coding projects. Each project lives in its o
 | [fountain-code](./fountain-code) | Deterministic LT-style XOR fountain packets and peeling decoder (Python) |
 | [newton-fractal-lab](./newton-fractal-lab) | Complex-plane Newton basin renderer with damped iteration and deterministic ASCII/PPM output (Python stdlib) |
 | [privacy-budget-lab](./privacy-budget-lab) | Differential privacy sandbox for clipped sums, Laplace mechanisms, and sequential budget composition (Python stdlib) |
+| [spectral-music-lab](./spectral-music-lab) | Dependency-free PCM WAV spectral analysis with radix-2 FFT, peak picking, RMS, and centroid (Python) |
 
 ---
