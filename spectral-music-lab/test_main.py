@@ -3,7 +3,7 @@ import tempfile
 import unittest
 import wave
 from pathlib import Path
-from main import analyze, analyze_wav, fft, read_wav
+from main import analyze, analyze_wav, fft, read_wav, spectrogram, write_spectrogram_csv
 
 class FftTests(unittest.TestCase):
     def test_impulse_has_flat_spectrum(self):
@@ -42,6 +42,22 @@ class FftTests(unittest.TestCase):
             self.assertEqual(samples, [0.0] * 8)
             with self.assertRaises(ValueError):
                 read_wav(path, max_samples=7)
+
+    def test_spectrogram_overlap_and_csv_output(self):
+        samples = [math.sin(2 * math.pi * 4 * i / 32) for i in range(64)]
+        rows = spectrogram(samples, 3200, frame_size=32, hop_size=16)
+        self.assertEqual([round(t, 4) for t, _ in rows], [0.0, 0.005, 0.01, 0.015])
+        self.assertAlmostEqual(rows[0][1].dominant_frequency_hz or 0, 400)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "features.csv"
+            write_spectrogram_csv(path, rows)
+            contents = path.read_text()
+            self.assertIn("time_seconds,sample_rate,samples,rms", contents)
+            self.assertEqual(len(contents.splitlines()), 5)
+
+    def test_spectrogram_rejects_invalid_hop(self):
+        with self.assertRaises(ValueError):
+            spectrogram([0.0], 8000, frame_size=8, hop_size=0)
 
     def test_empty_wav_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:

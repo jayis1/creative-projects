@@ -3,6 +3,7 @@
 from __future__ import annotations
 import argparse
 import cmath
+import csv
 import json
 import math
 import wave
@@ -127,15 +128,53 @@ def analyze_wav(path: str | Path, *, peak_count: int = 5, frame_size: int | None
     return analyze(frame, rate, peak_count=peak_count, frame_size=size)
 
 
+def spectrogram(samples: Sequence[float], sample_rate: int, *, frame_size: int = 1024,
+                hop_size: int | None = None, peak_count: int = 5) -> list[tuple[float, Analysis]]:
+    """Analyze overlapping frames and return their start times and spectral features."""
+    if sample_rate <= 0:
+        raise ValueError("sample rate must be positive")
+    if not samples:
+        raise ValueError("at least one sample is required")
+    if frame_size < 2 or frame_size > 65536 or frame_size & (frame_size - 1):
+        raise ValueError("frame size must be a power of two from 2 to 65536")
+    hop = frame_size // 2 if hop_size is None else hop_size
+    if hop <= 0 or hop > frame_size:
+        raise ValueError("hop size must be between 1 and frame size")
+    return [(start / sample_rate,
+             analyze(samples[start:start + frame_size], sample_rate,
+                     peak_count=peak_count, frame_size=frame_size))
+            for start in range(0, len(samples), hop)]
+
+
+def write_spectrogram_csv(path: str | Path, rows: Sequence[tuple[float, Analysis]]) -> None:
+    """Write frame-level spectral features to CSV."""
+    with Path(path).open("w", newline="", encoding="utf-8") as output:
+        writer = csv.writer(output)
+        writer.writerow(("time_seconds", "sample_rate", "samples", "rms",
+                         "spectral_centroid_hz", "dominant_frequency_hz"))
+        for time_seconds, result in rows:
+            writer.writerow((f"{time_seconds:.9f}", result.sample_rate, result.samples,
+                             f"{result.rms:.9f}", f"{result.spectral_centroid_hz:.6f}",
+                             "" if result.dominant_frequency_hz is None else
+                             f"{result.dominant_frequency_hz:.6f}"))
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("wav", type=Path, help="PCM WAV input")
     parser.add_argument("--peaks", type=int, default=5, help="number of spectral peaks (default: 5)")
     parser.add_argument("--frame-size", type=int, help="power-of-two analysis frame, up to 65536")
     parser.add_argument("--json", action="store_true", help="emit JSON instead of a text summary")
+    parser.add_argument("--spectrogram-csv", type=Path, help="write frame features to CSV")
+    parser.add_argument("--hop-size", type=int, help="spectrogram step (default: half frame)")
     args = parser.parse_args(argv)
     try:
         result = analyze_wav(args.wav, peak_count=args.peaks, frame_size=args.frame_size)
+        if args.spectrogram_csv:
+            samples, rate = read_wav(args.wav)
+            write_spectrogram_csv(args.spectrogram_csv, spectrogram(
+                samples, rate, frame_size=args.frame_size or 1024,
+                hop_size=args.hop_size, peak_count=args.peaks))
     except (OSError, wave.Error, ValueError) as exc:
         parser.error(str(exc))
     data = asdict(result)
