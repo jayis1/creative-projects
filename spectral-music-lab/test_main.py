@@ -55,6 +55,17 @@ class FftTests(unittest.TestCase):
             self.assertIn("time_seconds,sample_rate,samples,rms", contents)
             self.assertEqual(len(contents.splitlines()), 5)
 
+    def test_zero_frame_size_is_rejected(self):
+        with self.assertRaises(ValueError):
+            analyze([1.0, 0.0], 8000, frame_size=0)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "tone.wav"
+            with wave.open(str(path), "wb") as out:
+                out.setnchannels(1); out.setsampwidth(2); out.setframerate(8000)
+                out.writeframes(bytes.fromhex("0040004000400040"))
+            with self.assertRaises(ValueError):
+                analyze_wav(path, frame_size=0)
+
     def test_spectrogram_rejects_invalid_hop(self):
         with self.assertRaises(ValueError):
             spectrogram([0.0], 8000, frame_size=8, hop_size=0)

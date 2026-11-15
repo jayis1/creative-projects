@@ -31,6 +31,9 @@ Added overlapping, time-indexed CSV spectrogram export with configurable hop siz
 ## Known Issues (Resolved)
 
 - Empty WAV input previously proceeded toward an invalid zero-length transform; it now raises a clear `ValueError`, covered by a regression test.
+- Explicit `frame_size=0` was previously treated as if no frame size had been supplied, silently selecting the default. Both `analyze` and `analyze_wav` now preserve explicit values and reject zero through normal frame-size validation; regression tests cover both APIs.
+
+The analyzer intentionally reads only the first analysis frame for summary metrics. Use `--spectrogram-csv` for frame-by-frame analysis of the full WAV.
 - Negative sample limits were not rejected; they now fail explicitly. (Verified by inspection of the input validation path.)
 
 ## Remaining limitations

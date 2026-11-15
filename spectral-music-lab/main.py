@@ -70,7 +70,8 @@ def analyze(samples: Sequence[float], sample_rate: int, *, peak_count: int = 5,
         raise ValueError("at least one sample is required")
     if any(not math.isfinite(float(x)) for x in samples):
         raise ValueError("samples must be finite")
-    n = frame_size or min(4096, 1 << (len(samples) - 1).bit_length())
+    n = (min(4096, 1 << (len(samples) - 1).bit_length())
+         if frame_size is None else frame_size)
     if n <= 0 or n & (n - 1) or n > 65536:
         raise ValueError("frame size must be a power of two no larger than 65536")
     if len(samples) > n:
@@ -123,7 +124,8 @@ def read_wav(path: str | Path, *, max_samples: int = 10_000_000) -> tuple[list[f
 
 def analyze_wav(path: str | Path, *, peak_count: int = 5, frame_size: int | None = None) -> Analysis:
     samples, rate = read_wav(path)
-    size = frame_size or min(4096, 1 << (min(len(samples), 4096) - 1).bit_length()) if samples else frame_size
+    size = (min(4096, 1 << (min(len(samples), 4096) - 1).bit_length())
+            if frame_size is None and samples else frame_size)
     frame = samples[:size] if size else samples
     return analyze(frame, rate, peak_count=peak_count, frame_size=size)
 
