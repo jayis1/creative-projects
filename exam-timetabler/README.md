@@ -16,4 +16,4 @@ Schedule JSON input:
 
     python3 main.py exams.json --slots 4
 
-Input shape: `{"exams":[{"name":"Algorithms","students":["s1","s2"]}]}`. Output is JSON mapping exam names to zero-based slot numbers. Run tests with `python3 -m unittest -v` from this directory. Requires Python 3.10+; no third-party packages.
+Input shape: `{"exams":[{"name":"Algorithms","students":["s1","s2"]}]}`. Output is JSON mapping exam names to zero-based slot numbers. Run `python3 -m unittest -v` from this directory. The `schedule_report(exams, assignment)` helper validates a complete conflict-free assignment and returns exam counts plus a sorted slot-to-exams breakdown; it rejects negative or non-integer slot identifiers.

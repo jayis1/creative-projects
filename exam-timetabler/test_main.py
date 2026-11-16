@@ -1,5 +1,5 @@
 import unittest
-from main import Exam, check_schedule, conflicts, schedule, validate_input
+from main import Exam, check_schedule, conflicts, schedule, schedule_report, validate_input
 
 class TimetableTests(unittest.TestCase):
     def setUp(self):
@@ -13,6 +13,11 @@ class TimetableTests(unittest.TestCase):
     def test_impossible_slot_limit(self):
         with self.assertRaises(ValueError): schedule(self.exams[:2],1)
     def test_empty_problem(self): self.assertEqual(schedule([],None),{})
+    def test_report_includes_empty_slots(self):
+        report=schedule_report(self.exams,{"A":0,"B":1,"C":0,"D":2})
+        self.assertEqual(report["slot_count"],3)
+        self.assertEqual(report["slots"][0],["A","C"])
+        self.assertEqual(report["exam_count"],4)
     def test_duplicate_name(self):
         with self.assertRaisesRegex(ValueError,"duplicate"): validate_input({"exams":[{"name":"A","students":[]},{"name":"A","students":[]}]})
     def test_bad_shape(self):

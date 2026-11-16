@@ -62,6 +62,23 @@ def check_schedule(exams: list[Exam], assignment: dict[str,int]) -> list[str]:
     return errors
 
 
+def schedule_report(exams: list[Exam], assignment: dict[str, int]) -> dict[str, object]:
+    """Return a validated, human-friendly slot breakdown and utilization summary."""
+    errors = check_schedule(exams, assignment)
+    if errors:
+        raise ValueError("invalid schedule: " + "; ".join(errors))
+    grouped: dict[int, list[str]] = {}
+    for name, slot in assignment.items():
+        if not isinstance(slot, int) or isinstance(slot, bool) or slot < 0:
+            raise ValueError(f"invalid slot for {name!r}: expected a non-negative integer")
+        grouped.setdefault(slot, []).append(name)
+    return {
+        "exam_count": len(exams),
+        "slot_count": len(grouped),
+        "slots": {slot: sorted(names) for slot, names in sorted(grouped.items())},
+    }
+
+
 def main() -> int:
     ap=argparse.ArgumentParser(description=__doc__); ap.add_argument("input",nargs="?",type=Path); ap.add_argument("--slots",type=int)
     args=ap.parse_args()
