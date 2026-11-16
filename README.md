@@ -144,3 +144,4 @@ A monorepo of AI-generated creative coding projects. Each project lives in its o
 | [spectral-music-lab](./spectral-music-lab) | Dependency-free PCM WAV spectral analysis with radix-2 FFT, peak picking, RMS, and centroid (Python) |
 
 ---
+| [exam-timetabler](./exam-timetabler) | Deterministic DSATUR conflict-graph exam scheduling with JSON input and slot limits (Python stdlib) |
