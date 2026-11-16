@@ -16,7 +16,11 @@ Schedule JSON input:
 
     python3 main.py exams.json --slots 4
 
-Input shape: `{"exams":[{"name":"Algorithms","students":["s1","s2"]}]}`. Output is JSON mapping exam names to zero-based slot numbers. Run `python3 -m unittest -v` from this directory. The CLI uses a deterministic DSATUR heuristic rather than an optimal-coloring search, so it may use more slots than mathematically necessary. It expects UTF-8 JSON and holds the complete input and conflict graph in memory.
+For a detailed slot-by-slot breakdown, use:
+
+    python3 main.py exams.json --slots 4 --report
+
+Input shape: `{"exams":[{"name":"Algorithms","students":["s1","s2"]}]}`. The default output is JSON mapping exam names to zero-based slot numbers and a slot count. `--report` instead emits `exam_count`, the number of used slots, and a sorted mapping from slot numbers to exam names. Run `python3 -m unittest -v` from this directory. The CLI uses a deterministic DSATUR heuristic rather than an optimal-coloring search, so it may use more slots than mathematically necessary. It expects UTF-8 JSON and holds the complete input and conflict graph in memory.
 
 ## Known Issues (Resolved)
 

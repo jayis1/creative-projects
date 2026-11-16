@@ -84,6 +84,7 @@ def schedule_report(exams: list[Exam], assignment: dict[str, int]) -> dict[str, 
 
 def main() -> int:
     ap=argparse.ArgumentParser(description=__doc__); ap.add_argument("input",nargs="?",type=Path); ap.add_argument("--slots",type=int)
+    ap.add_argument("--report", action="store_true", help="include a sorted slot-by-slot breakdown")
     args=ap.parse_args()
     if args.slots is not None and args.slots<1: ap.error("--slots must be positive")
     demo={"exams":[{"name":"Algorithms","students":["a","b","c"]},{"name":"Databases","students":["b","d"]},{"name":"Networks","students":["c","e"]},{"name":"Compilers","students":["a","d"]}]}
@@ -92,7 +93,11 @@ def main() -> int:
         exams=validate_input(data); result=schedule(exams,args.slots)
     except (OSError,json.JSONDecodeError,ValueError) as e:
         ap.error(str(e))
-    print(json.dumps({"slots":result,"slot_count":len(set(result.values()))},indent=2))
+    output = schedule_report(exams, result) if args.report else {
+        "slots": result,
+        "slot_count": len(set(result.values())),
+    }
+    print(json.dumps(output, indent=2))
     return 0
 
 if __name__=="__main__": raise SystemExit(main())

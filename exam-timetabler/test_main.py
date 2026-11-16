@@ -1,4 +1,8 @@
 import unittest
+import json
+import subprocess
+import sys
+from pathlib import Path
 from main import Exam, check_schedule, conflicts, schedule, schedule_report, validate_input
 
 class TimetableTests(unittest.TestCase):
@@ -25,4 +29,13 @@ class TimetableTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,"duplicate"): validate_input({"exams":[{"name":"A","students":[]},{"name":"A","students":[]}]})
     def test_bad_shape(self):
         with self.assertRaises(ValueError): validate_input({"exams":"bad"})
+    def test_cli_report_mode(self):
+        project = Path(__file__).parent
+        result = subprocess.run(
+            [sys.executable, str(project / "main.py"), "--report"],
+            cwd=project, capture_output=True, text=True, check=True,
+        )
+        report = json.loads(result.stdout)
+        self.assertEqual(report["exam_count"], 4)
+        self.assertEqual(sum(len(names) for names in report["slots"].values()), 4)
 if __name__=="__main__": unittest.main()
