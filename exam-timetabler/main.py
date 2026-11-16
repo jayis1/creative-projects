@@ -55,6 +55,9 @@ def schedule(exams: list[Exam], slots: int | None = None) -> dict[str,int]:
 def check_schedule(exams: list[Exam], assignment: dict[str,int]) -> list[str]:
     graph=conflicts(exams); errors=[]
     if set(assignment)!=set(graph): errors.append("assignment must cover every exam exactly")
+    for name, slot in assignment.items():
+        if not isinstance(slot, int) or isinstance(slot, bool) or slot < 0:
+            errors.append(f"invalid slot for {name!r}: expected a non-negative integer")
     for n, neighbors in graph.items():
         for other in neighbors:
             if n in assignment and other in assignment and assignment[n]==assignment[other]:

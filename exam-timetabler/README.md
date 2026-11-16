@@ -16,4 +16,8 @@ Schedule JSON input:
 
     python3 main.py exams.json --slots 4
 
-Input shape: `{"exams":[{"name":"Algorithms","students":["s1","s2"]}]}`. Output is JSON mapping exam names to zero-based slot numbers. Run `python3 -m unittest -v` from this directory. The `schedule_report(exams, assignment)` helper validates a complete conflict-free assignment and returns exam counts plus a sorted slot-to-exams breakdown; it rejects negative or non-integer slot identifiers.
+Input shape: `{"exams":[{"name":"Algorithms","students":["s1","s2"]}]}`. Output is JSON mapping exam names to zero-based slot numbers. Run `python3 -m unittest -v` from this directory. The CLI uses a deterministic DSATUR heuristic rather than an optimal-coloring search, so it may use more slots than mathematically necessary. It expects UTF-8 JSON and holds the complete input and conflict graph in memory.
+
+## Known Issues (Resolved)
+
+- The schedule checker previously accepted negative and fractional slot identifiers as valid. It now reports invalid slot values; regression tests reproduce both cases.

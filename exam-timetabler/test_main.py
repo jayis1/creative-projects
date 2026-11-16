@@ -12,6 +12,9 @@ class TimetableTests(unittest.TestCase):
         self.assertEqual(result["A"],result["C"])
     def test_impossible_slot_limit(self):
         with self.assertRaises(ValueError): schedule(self.exams[:2],1)
+    def test_checker_rejects_non_integer_and_negative_slots(self):
+        self.assertTrue(check_schedule(self.exams,{"A":-1,"B":1,"C":2,"D":3}))
+        self.assertTrue(check_schedule(self.exams,{"A":0.5,"B":1,"C":2,"D":3}))
     def test_empty_problem(self): self.assertEqual(schedule([],None),{})
     def test_report_includes_empty_slots(self):
         report=schedule_report(self.exams,{"A":0,"B":1,"C":0,"D":2})
