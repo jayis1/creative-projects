@@ -26,7 +26,7 @@ angles, residual, steps = arm.solve((0.8, 1.2), joint_limits=((-1.5, 1.5), (-2.0
 
 ## Known Issues (Resolved)
 
-No confirmed defects were found in the Phase 3 review of `ik.py` and `test_ik.py`; therefore no bug fixes are claimed. The six regression and behavior tests pass. Known limitation: the solver is local and can converge to a best-effort pose rather than a global optimum; it does not model link collisions or self-collision.
+Phase 3 review covered all source files (`ik.py` and `test_ik.py`). No confirmed defects were found, so no fixes or bug count are claimed. All six tests pass. Remaining limitations are intentional: the solver is local and can return a best-effort pose rather than a global optimum; link and self-collisions are not modeled.
 
 ## Phase 1 scope
 
