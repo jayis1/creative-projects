@@ -94,13 +94,24 @@ def main() -> None:
     parser.add_argument("--target", default="1.5,1.2", help="target x,y")
     parser.add_argument("--iterations", type=int, default=500)
     parser.add_argument("--tolerance", type=float, default=1e-5)
+    parser.add_argument("--damping", type=float, default=0.05, help="DLS damping factor")
+    parser.add_argument("--max-step", type=float, default=0.2, help="maximum joint update in radians")
+    parser.add_argument("--joint-limits", help="optional JSON array of [min,max] radian pairs")
     args = parser.parse_args()
     try:
         lengths = tuple(float(x) for x in args.lengths.split(","))
         angles = tuple(float(x) for x in args.angles.split(","))
-        target = tuple(float(x) for x in args.target.split(","))
+        target_values = tuple(float(x) for x in args.target.split(","))
+        if len(target_values) != 2:
+            raise ValueError("target must contain two finite coordinates")
+        target = (target_values[0], target_values[1])
+        joint_limits = json.loads(args.joint_limits) if args.joint_limits else None
         arm = Arm(lengths, angles)
-        result, error, used = arm.solve(target, iterations=args.iterations, tolerance=args.tolerance)
+        result, error, used = arm.solve(
+            target, iterations=args.iterations, tolerance=args.tolerance,
+            damping=args.damping, max_step=args.max_step,
+            joint_limits=joint_limits,
+        )
     except (ValueError, OverflowError) as exc:
         parser.error(str(exc))
     print(json.dumps({"angles_radians": result, "joints": arm.joints(result),

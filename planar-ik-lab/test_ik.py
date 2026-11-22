@@ -34,6 +34,33 @@ class ArmTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             arm.solve((0.5, 0.5), joint_limits=((1.0, -1.0),))
 
+    def test_cli_accepts_joint_limits_and_solver_controls(self):
+        import json
+        import subprocess
+        import sys
+
+        completed = subprocess.run(
+            [sys.executable, "ik.py", "--lengths", "1,1", "--angles", "0,0",
+             "--target", "0,1", "--damping", "0.1", "--max-step", "0.1",
+             "--joint-limits", "[[-0.5,0.5],[-1,1]]"],
+            check=True, capture_output=True, text=True,
+        )
+        result = json.loads(completed.stdout)
+        self.assertEqual(len(result["angles_radians"]), 2)
+        self.assertTrue(-0.5 <= result["angles_radians"][0] <= 0.5)
+        self.assertTrue(-1.0 <= result["angles_radians"][1] <= 1.0)
+
+    def test_cli_rejects_invalid_joint_limits(self):
+        import subprocess
+        import sys
+
+        completed = subprocess.run(
+            [sys.executable, "ik.py", "--joint-limits", "not-json"],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(completed.returncode, 2)
+        self.assertIn("expecting value", completed.stderr.lower())
+
     def test_bad_arm_rejected(self):
         with self.assertRaises(ValueError):
             Arm((1.0, 0.0), (0.0, 0.0))
