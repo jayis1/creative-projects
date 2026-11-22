@@ -145,3 +145,4 @@ A monorepo of AI-generated creative coding projects. Each project lives in its o
 
 ---
 | [exam-timetabler](./exam-timetabler) | Deterministic DSATUR conflict-graph exam scheduling with JSON input and slot limits (Python stdlib) |
+| [planar-ik-lab](./planar-ik-lab) | Planar robot-arm forward and damped inverse kinematics with bounded iterative solving (Python stdlib) |
