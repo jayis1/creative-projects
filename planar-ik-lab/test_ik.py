@@ -19,6 +19,21 @@ class ArmTests(unittest.TestCase):
         _, error, _ = Arm((1.0,), (0.0,)).solve((4.0, 0.0))
         self.assertAlmostEqual(error, 3.0)
 
+    def test_joint_limits_are_respected(self):
+        arm = Arm((1.0, 1.0), (0.0, 0.0))
+        limits = ((-0.1, 0.1), (-0.2, 0.2))
+        angles, _, _ = arm.solve((0.0, 2.0), joint_limits=limits)
+        for angle, (low, high) in zip(angles, limits):
+            self.assertLessEqual(low, angle)
+            self.assertLessEqual(angle, high)
+
+    def test_joint_limit_shape_and_order_are_validated(self):
+        arm = Arm((1.0,), (0.0,))
+        with self.assertRaises(ValueError):
+            arm.solve((0.5, 0.5), joint_limits=())
+        with self.assertRaises(ValueError):
+            arm.solve((0.5, 0.5), joint_limits=((1.0, -1.0),))
+
     def test_bad_arm_rejected(self):
         with self.assertRaises(ValueError):
             Arm((1.0, 0.0), (0.0, 0.0))

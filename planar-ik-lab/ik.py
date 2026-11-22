@@ -36,7 +36,8 @@ class Arm:
 
     def solve(self, target: tuple[float, float], *, iterations: int = 500,
               tolerance: float = 1e-5, damping: float = 0.05,
-              max_step: float = 0.2) -> tuple[tuple[float, ...], float, int]:
+              max_step: float = 0.2,
+              joint_limits: Sequence[tuple[float, float]] | None = None) -> tuple[tuple[float, ...], float, int]:
         """Return (angles, final error, iterations used), keeping joints unwrapped."""
         if len(target) != 2 or any(not math.isfinite(v) for v in target):
             raise ValueError("target must contain two finite coordinates")
@@ -49,6 +50,16 @@ class Arm:
         if max_step <= 0 or not math.isfinite(max_step):
             raise ValueError("max_step must be finite and positive")
         q = list(self.angles)
+        limits = None
+        if joint_limits is not None:
+            if len(joint_limits) != len(q):
+                raise ValueError("joint_limits must have one pair per link")
+            limits = []
+            for low, high in joint_limits:
+                if not (math.isfinite(low) and math.isfinite(high) and low <= high):
+                    raise ValueError("each joint limit must be finite and ordered")
+                limits.append((low, high))
+            q = [max(lo, min(hi, angle)) for angle, (lo, hi) in zip(q, limits)]
         used = 0
         for used in range(iterations + 1):
             pts = self.joints(q)
@@ -70,6 +81,9 @@ class Arm:
             for i in range(len(q)):
                 delta = jx[i] * zx + jy[i] * zy
                 q[i] += max(-max_step, min(max_step, delta))
+                if limits is not None:
+                    # Clamp after every update so no intermediate pose violates a hard stop.
+                    q[i] = max(limits[i][0], min(limits[i][1], q[i]))
         raise AssertionError("unreachable")
 
 
