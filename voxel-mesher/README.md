@@ -30,6 +30,16 @@ Coordinates must be integers, material IDs positive integers, and duplicate coor
 
 Supports exposed-face extraction, deterministic greedy rectangle merging, per-voxel material IDs, and OBJ mesh serialization.
 
+## Phase 2 enhancements
+
+A JSON-to-OBJ CLI accepts a document shaped as `{"voxels": [[x, y, z], [x, y, z, material]]}`. It can write the mesh to a file or stdout and optionally report voxel, exposed-face, and merged-quad counts to stderr. Malformed JSON, unsupported shapes, invalid voxels, and file errors produce a concise diagnostic and exit code 2.
+
+```sh
+python3 cli.py model.json --output model.obj --stats
+```
+
+Tests (including CLI behavior) run with `pytest -q`.
+
 ## Known Issues (Resolved)
 
 None identified in the Phase 1 implementation; the bug-hunt phase will record confirmed, reproduced defects here.
