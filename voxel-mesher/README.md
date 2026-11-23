@@ -42,4 +42,4 @@ Tests (including CLI behavior) run with `pytest -q`.
 
 ## Known Issues (Resolved)
 
-None identified in the Phase 1 implementation; the bug-hunt phase will record confirmed, reproduced defects here.
+- OBJ quads on the Y axis had inward-facing winding because the chosen `(x, z)` face basis is left-handed relative to +Y. A single-voxel regression test calculated each triangle normal and failed before the fix; winding now accounts for the basis orientation, and all six normals point outward.

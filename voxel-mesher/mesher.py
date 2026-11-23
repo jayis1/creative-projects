@@ -90,7 +90,10 @@ class VoxelModel:
                 else:
                     p = (u, v, face.plane)
                 points.append(p)
-            if face.sign < 0:
+            # The (u,v) basis for Y faces maps to -Y; compensate for that
+            # handedness before applying the requested outward normal sign.
+            orientation = -1 if face.axis == 1 else 1
+            if face.sign * orientation < 0:
                 points.reverse()
             face_indices = []
             for point in points:
