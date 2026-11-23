@@ -71,6 +71,38 @@ class VoxelModel:
                 merged.append(Face(axis, sign, plane, u0, v0, width, height, material))
         return sorted(merged)
 
+    def to_stl(self, *, name: str = "voxel_model") -> str:
+        """Export greedy quads as an ASCII STL triangle mesh."""
+        if not name or any(char in name for char in "\\r\\n"):
+            raise ValueError("STL name must be non-empty and contain no newlines")
+        lines = [f"solid {name}"]
+        for face in self.greedy_faces():
+            corners = [(face.u, face.v), (face.u + face.width, face.v),
+                       (face.u + face.width, face.v + face.height),
+                       (face.u, face.v + face.height)]
+            points = []
+            for u, v in corners:
+                if face.axis == 0:
+                    point = (face.plane, u, v)
+                elif face.axis == 1:
+                    point = (u, face.plane, v)
+                else:
+                    point = (u, v, face.plane)
+                points.append(point)
+            orientation = -1 if face.axis == 1 else 1
+            if face.sign * orientation < 0:
+                points.reverse()
+            normal = [0, 0, 0]
+            normal[face.axis] = face.sign
+            for triangle in ((points[0], points[1], points[2]),
+                             (points[0], points[2], points[3])):
+                lines.append(f"  facet normal {normal[0]} {normal[1]} {normal[2]}")
+                lines.append("    outer loop")
+                lines.extend(f"      vertex {x} {y} {z}" for x, y, z in triangle)
+                lines.extend(("    endloop", "  endfacet"))
+        lines.append(f"endsolid {name}")
+        return "\n".join(lines) + "\n"
+
     def to_obj(self) -> str:
         """Export greedy quads as a compact, indexed Wavefront OBJ mesh."""
         vertices: list[tuple[int, int, int]] = []

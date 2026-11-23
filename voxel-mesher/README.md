@@ -38,6 +38,14 @@ A JSON-to-OBJ CLI accepts a document shaped as `{"voxels": [[x, y, z], [x, y, z,
 python3 cli.py model.json --output model.obj --stats
 ```
 
+## Phase 3 enhancements
+
+The CLI also exports ASCII STL for 3D-printing and CAD workflows. Each greedily merged quad is triangulated into two facets with outward axis-aligned normals. The STL solid name is taken from the input filename stem; use `--output` to save it.
+
+```sh
+python3 cli.py model.json --format stl --output model.stl --stats
+```
+
 Tests (including CLI behavior) run with `pytest -q`.
 
 ## Known Issues (Resolved)

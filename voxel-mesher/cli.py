@@ -14,6 +14,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("input", help="JSON object with a 'voxels' array")
     parser.add_argument("-o", "--output", help="OBJ output path (default: stdout)")
     parser.add_argument("--stats", action="store_true", help="write mesh counts to stderr")
+    parser.add_argument("--format", choices=("obj", "stl"), default="obj", help="mesh format (default: obj)")
     args = parser.parse_args(argv)
     try:
         with Path(args.input).open(encoding="utf-8") as source:
@@ -21,11 +22,11 @@ def main(argv: list[str] | None = None) -> int:
         if not isinstance(payload, dict) or not isinstance(payload.get("voxels"), list):
             raise ValueError("input must be an object containing a 'voxels' array")
         model = VoxelModel(payload["voxels"])
-        obj = model.to_obj()
+        mesh = model.to_stl(name=Path(args.input).stem) if args.format == "stl" else model.to_obj()
         if args.output:
-            Path(args.output).write_text(obj, encoding="utf-8")
+            Path(args.output).write_text(mesh, encoding="utf-8")
         else:
-            sys.stdout.write(obj)
+            sys.stdout.write(mesh)
         if args.stats:
             print(f"voxels={len(model.voxels)} unit_faces={len(model.faces())} quads={len(model.greedy_faces())}", file=sys.stderr)
         return 0
