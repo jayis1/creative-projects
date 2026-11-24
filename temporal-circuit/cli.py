@@ -22,7 +22,7 @@ def demo(until: int):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--format", choices=("csv", "json"), default="csv")
+    parser.add_argument("--format", choices=("csv", "json", "vcd"), default="csv")
     parser.add_argument("--until", type=int, default=10)
     args = parser.parse_args(argv)
     if args.until < 0:
@@ -30,6 +30,8 @@ def main(argv=None):
     circuit, _, _ = demo(args.until)
     if args.format == "json":
         print(circuit.trace_json())
+    elif args.format == "vcd":
+        print(circuit.trace_vcd(), end="")
     else:
         writer = csv.writer(sys.stdout, lineterminator="\n")
         writer.writerow(("time", "wire", "old", "new", "cause"))

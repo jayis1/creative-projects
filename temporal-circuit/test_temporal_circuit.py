@@ -55,6 +55,19 @@ class CircuitTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             c.set_input("b", 1, at=0) if False else c.set_input("missing", 1)
 
+    def test_vcd_contains_initial_values_and_transitions(self):
+        c = Circuit()
+        a = c.input("a")
+        y = c.not_gate("y", a, delay=1)
+        c.set_input("a", 1, at=2)
+        c.run(until=3)
+        vcd = c.trace_vcd()
+        self.assertIn("$timescale 1ns $end", vcd)
+        self.assertIn("0w0", vcd)
+        self.assertIn("1w1", vcd)
+        self.assertIn("#2\n1w0", vcd)
+        self.assertIn("#3\n0w1", vcd)
+
     def test_event_budget_stops_zero_delay_oscillation(self):
         c = Circuit(max_events_at_time=20)
         a = c.input("a")

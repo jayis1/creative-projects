@@ -1,6 +1,6 @@
 # Temporal Circuit
 
-A dependency-free Python toolkit for simulating synchronous digital circuits with explicit propagation delay. Model combinational gates and registers, inspect a deterministic event trace, detect zero-delay combinational cycles, and export traces as CSV or JSON.
+A dependency-free Python toolkit for simulating synchronous digital circuits with explicit propagation delay. Model combinational gates and registers, inspect a deterministic event trace, detect zero-delay combinational cycles, and export traces as CSV, JSON, or VCD waveforms.
 
 ## How it works
 
@@ -27,6 +27,7 @@ The CLI runs a small half-adder and emits a trace:
 ```sh
 python3 cli.py --format csv
 python3 cli.py --format json --until 20
+python3 cli.py --format vcd --until 20
 python3 -m unittest -v
 ```
 
