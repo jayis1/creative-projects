@@ -35,4 +35,8 @@ python3 -m unittest -v
 
 `Circuit.input(name, value=0)` creates a driven input. `and_gate`, `or_gate`, `xor_gate`, `not_gate` and `register` build components and return output wires. Values are binary integers. `run(until=None, max_events=100000)` processes events; `set_input(name, value, at=...)` schedules external input changes. Trace rows contain time, wire, old value, new value, and cause. Invalid names, values, times, and event limits raise `ValueError`.
 
-Circuit size and simulation time are caller-controlled; `max_events` and `max_events_at_time` bound pathological activity. The library does not model analog voltage, setup/hold violations, or metastability.
+Circuit size and simulation time are caller-controlled; `max_events` and `max_events_at_time` bound pathological activity. On budget exhaustion, the triggering event remains queued, so a caller may resume with a larger budget. The library does not model analog voltage, setup/hold violations, or metastability.
+
+## Known Issues (Resolved)
+
+- Event-budget exhaustion previously removed the next event before raising, making a paused simulation impossible to resume reliably. The simulator now checks both budgets before dequeueing; a regression test forces exhaustion and confirms the input event is processed after resuming with a larger budget.

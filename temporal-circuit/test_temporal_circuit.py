@@ -68,6 +68,16 @@ class CircuitTests(unittest.TestCase):
         self.assertIn("#2\n1w0", vcd)
         self.assertIn("#3\n0w1", vcd)
 
+    def test_event_budget_does_not_discard_unprocessed_event(self):
+        c = Circuit()
+        a = c.input("a")
+        c.not_gate("y", a, delay=0)
+        c.set_input("a", 1, at=0)
+        with self.assertRaisesRegex(RuntimeError, "event budget exceeded"):
+            c.run(max_events=1)
+        c.run()
+        self.assertEqual(a.value, 1)
+
     def test_event_budget_stops_zero_delay_oscillation(self):
         c = Circuit(max_events_at_time=20)
         a = c.input("a")

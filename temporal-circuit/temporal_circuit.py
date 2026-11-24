@@ -143,13 +143,16 @@ class Circuit:
         active_time: int | None = None
         at_time = 0
         while self._queue and (until is None or self._queue[0][0] <= until):
+            when = self._queue[0][0]
+            next_at_time = at_time + 1 if when == active_time else 1
+            if next_at_time > self.max_events_at_time or processed + 1 > max_events:
+                # Leave the event queued so callers can continue with a larger budget.
+                raise RuntimeError("event budget exceeded; possible zero-delay oscillation")
             when, _, action = heapq.heappop(self._queue)
             if when != active_time:
                 active_time, at_time = when, 0
             at_time += 1
             processed += 1
-            if at_time > self.max_events_at_time or processed > max_events:
-                raise RuntimeError("event budget exceeded; possible zero-delay oscillation")
             self.time = when
             action()
         if until is not None:
