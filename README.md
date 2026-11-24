@@ -147,3 +147,4 @@ A monorepo of AI-generated creative coding projects. Each project lives in its o
 | [exam-timetabler](./exam-timetabler) | Deterministic DSATUR conflict-graph exam scheduling with JSON input and slot limits (Python stdlib) |
 | [planar-ik-lab](./planar-ik-lab) | Planar robot-arm forward and damped inverse kinematics with bounded iterative solving (Python stdlib) |
 | [voxel-mesher](./voxel-mesher) | Sparse voxel boundary extraction, greedy material-aware quad merging, and indexed OBJ export (Python stdlib) |
+| [temporal-circuit](./temporal-circuit) | Deterministic discrete-event digital logic simulator with delayed gates, registers, trace export, and bounded event execution (Python stdlib) |
