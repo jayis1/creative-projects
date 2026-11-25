@@ -149,3 +149,4 @@ A monorepo of AI-generated creative coding projects. Each project lives in its o
 | [voxel-mesher](./voxel-mesher) | Sparse voxel boundary extraction, greedy material-aware quad merging, and indexed OBJ export (Python stdlib) |
 | [temporal-circuit](./temporal-circuit) | Deterministic discrete-event digital logic simulator with delayed gates, registers, trace export, and bounded event execution (Python stdlib) |
 | [wavefront-planner](./wavefront-planner) | Weighted-grid A* path planning with admissible octile heuristic and corner-safe diagonals (Python stdlib) |
+| [coverage-path-lab](./coverage-path-lab) | Grid robot coverage sweeps with obstacle-aware A* connectors and connectivity validation (Python stdlib) |
