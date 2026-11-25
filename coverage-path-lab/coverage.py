@@ -85,6 +85,12 @@ def plan_coverage(rows: Iterable[str], start: Cell | None = None, axis: str = "r
 def render(rows: Iterable[str], plan: CoveragePlan) -> str:
     """Render the grid, showing first visits by order modulo 10."""
     grid, h, w = _grid(rows)
+    for cell in plan.cells:
+        if (not isinstance(cell, tuple) or len(cell) != 2
+                or any(not isinstance(value, int) for value in cell)
+                or not (0 <= cell[0] < h and 0 <= cell[1] < w)
+                or grid[cell[0]][cell[1]] != "."):
+            raise ValueError(f"plan contains invalid traversable cell: {cell!r}")
     marks = {}
     for i, cell in enumerate(plan.cells):
         if cell not in marks:

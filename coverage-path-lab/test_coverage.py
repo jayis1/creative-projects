@@ -1,6 +1,6 @@
 import unittest
 
-from coverage import plan_coverage, render
+from coverage import CoveragePlan, plan_coverage, render
 
 class CoverageTests(unittest.TestCase):
     def test_visits_every_free_cell_and_avoids_obstacles(self):
@@ -33,6 +33,13 @@ class CoverageTests(unittest.TestCase):
         self.assertEqual(set(result.cells), expected)
         with self.assertRaisesRegex(ValueError, "axis"):
             plan_coverage(grid, axis="diagonal")
+
+    def test_render_rejects_malformed_plan_coordinates(self):
+        grid = [".#"]
+        with self.assertRaisesRegex(ValueError, "invalid traversable cell"):
+            render(grid, CoveragePlan(((2, 0),), 0.0))
+        with self.assertRaisesRegex(ValueError, "invalid traversable cell"):
+            render(grid, CoveragePlan(((0, 1),), 0.0))
 
     def test_disconnected_area_rejected(self):
         with self.assertRaisesRegex(ValueError, "connected"):
