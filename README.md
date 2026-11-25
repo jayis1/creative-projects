@@ -148,3 +148,4 @@ A monorepo of AI-generated creative coding projects. Each project lives in its o
 | [planar-ik-lab](./planar-ik-lab) | Planar robot-arm forward and damped inverse kinematics with bounded iterative solving (Python stdlib) |
 | [voxel-mesher](./voxel-mesher) | Sparse voxel boundary extraction, greedy material-aware quad merging, and indexed OBJ export (Python stdlib) |
 | [temporal-circuit](./temporal-circuit) | Deterministic discrete-event digital logic simulator with delayed gates, registers, trace export, and bounded event execution (Python stdlib) |
+| [wavefront-planner](./wavefront-planner) | Weighted-grid A* path planning with admissible octile heuristic and corner-safe diagonals (Python stdlib) |
