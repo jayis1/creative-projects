@@ -26,6 +26,14 @@ class CoverageTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             plan_coverage([".#."], (4,4))
 
+    def test_column_sweep_and_invalid_axis(self):
+        grid = ["...", ".#.", "..."]
+        result = plan_coverage(grid, axis="columns")
+        expected = {(r,c) for r,row in enumerate(grid) for c,ch in enumerate(row) if ch == "."}
+        self.assertEqual(set(result.cells), expected)
+        with self.assertRaisesRegex(ValueError, "axis"):
+            plan_coverage(grid, axis="diagonal")
+
     def test_disconnected_area_rejected(self):
         with self.assertRaisesRegex(ValueError, "connected"):
             plan_coverage([".#."])

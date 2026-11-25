@@ -19,4 +19,4 @@ print(f"steps: {plan.distance:g}; visited: {len(set(plan.cells))}")
 
 Run the tests with `python3 -m unittest -v` from this folder. No third-party packages are needed.
 
-Input must be a non-empty rectangular grid using only `.` and `#`. Disconnected free-space maps and blocked/out-of-bounds starts are rejected.
+The default `axis="rows"` sweeps alternating rows; `axis="columns"` sweeps alternating columns, which can better suit corridors or rectangular workspaces. Both modes guarantee coverage when free cells form one connected component, but neither promises a shortest tour. Invalid axis values are rejected.

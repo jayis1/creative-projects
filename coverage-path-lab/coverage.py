@@ -49,9 +49,11 @@ def _astar(grid: tuple[str, ...], start: Cell, goal: Cell) -> list[Cell]:
     raise ValueError(f"no path between {start} and {goal}")
 
 
-def plan_coverage(rows: Iterable[str], start: Cell | None = None) -> CoveragePlan:
-    """Visit every free cell; sweep rows alternately and connect sweep runs by A*."""
+def plan_coverage(rows: Iterable[str], start: Cell | None = None, axis: str = "rows") -> CoveragePlan:
+    """Visit every free cell; sweep rows or columns alternately using A* connectors."""
     grid, h, w = _grid(rows)
+    if axis not in ("rows", "columns"):
+        raise ValueError("axis must be 'rows' or 'columns'")
     free = {(r,c) for r in range(h) for c in range(w) if grid[r][c] == "."}
     if start is None:
         start = min(free)
@@ -68,7 +70,10 @@ def plan_coverage(rows: Iterable[str], start: Cell | None = None) -> CoveragePla
                 reached.add(n); stack.append(n)
     if reached != free:
         raise ValueError("all traversable cells must be connected")
-    targets = [(r,c) for r in range(h) for c in (range(w) if r % 2 == 0 else range(w-1,-1,-1)) if (r,c) in free]
+    if axis == "rows":
+        targets = [(r,c) for r in range(h) for c in (range(w) if r % 2 == 0 else range(w-1,-1,-1)) if (r,c) in free]
+    else:
+        targets = [(r,c) for c in range(w) for r in (range(h) if c % 2 == 0 else range(h-1,-1,-1)) if (r,c) in free]
     tour = [start]
     for target in targets:
         segment = _astar(grid, tour[-1], target)
