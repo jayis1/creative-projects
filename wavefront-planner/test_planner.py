@@ -31,6 +31,12 @@ class AStarTests(unittest.TestCase):
     def test_identical_endpoints(self):
         self.assertEqual(find_path(Grid.from_rows([[1]]), (0, 0), (0, 0)).points, ((0, 0),))
 
+    def test_tiny_positive_terrain_is_supported(self):
+        grid = Grid.from_rows([[1e-15, 1e-15, 1e-15]])
+        route = find_path(grid, (0, 0), (2, 0))
+        self.assertIsNotNone(route)
+        self.assertAlmostEqual(route.cost, 2e-15, places=29)
+
 
 if __name__ == '__main__':
     unittest.main()
