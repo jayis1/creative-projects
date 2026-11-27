@@ -18,6 +18,14 @@ minimal = a.minimize()
 print(minimal.states)             # frozenset({'q0', 'q1'})
 ```
 
+The library also provides `complement()` (over the declared alphabet) and `product(other, operation='intersection')`; use `operation='union'` for union. Products account for disjoint alphabets by treating unavailable symbols as implicit rejecting transitions.
+
+```python
+not_a = a.complement()
+both = a.product(other, 'intersection')
+either = a.product(other, 'union')
+```
+
 Run tests with `python3 -m pytest -q` from this directory. Python 3.10+; standard library only for runtime (pytest for tests).
 
 ## Limitations

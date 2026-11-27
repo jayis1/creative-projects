@@ -92,6 +92,45 @@ class DFA:
         accepting = frozenset(names[s] for s in finals)
         return DFA(states, dfa.alphabet, names[dfa.start], accepting, transitions)
 
+    def complement(self) -> "DFA":
+        """Return the language complement over this DFA's declared alphabet."""
+        total = self.complete()
+        return DFA(total.states, total.alphabet, total.start,
+                   total.states - total.accepting, total.transitions)
+
+    def product(self, other: "DFA", operation: str = "intersection") -> "DFA":
+        """Build a reachable product DFA for intersection or union."""
+        if operation not in {"intersection", "union"}:
+            raise ValueError("operation must be 'intersection' or 'union'")
+        alphabet = self.alphabet | other.alphabet
+        # Missing symbols and transitions lead to independent rejecting sinks.
+        left = self.complete(); right = other.complete()
+        l_sink, r_sink = "__implicit_left__", "__implicit_right__"
+        while l_sink in left.states: l_sink += "_"
+        while r_sink in right.states: r_sink += "_"
+        def step(machine: "DFA", sink: str, state: str, symbol: str) -> str:
+            if state == sink or symbol not in machine.alphabet:
+                return sink
+            return machine.transitions.get((state, symbol), sink)
+        start_pair = (left.start, right.start)
+        pairs = {start_pair}; queue = deque([start_pair]); transitions = {}
+        while queue:
+            pair = queue.popleft()
+            for symbol in alphabet:
+                target = (step(left, l_sink, pair[0], symbol), step(right, r_sink, pair[1], symbol))
+                transitions[(pair, symbol)] = target
+                if target not in pairs:
+                    pairs.add(target); queue.append(target)
+        names = {pair: f"p{i}" for i, pair in enumerate(sorted(pairs, key=repr))}
+        finals = set()
+        for pair in pairs:
+            accepted = ((pair[0] in left.accepting) and (pair[1] in right.accepting))
+            if operation == "union":
+                accepted = pair[0] in left.accepting or pair[1] in right.accepting
+            if accepted: finals.add(names[pair])
+        return DFA(frozenset(names.values()), alphabet, names[start_pair], frozenset(finals),
+                   {(names[pair], symbol): names[target] for (pair, symbol), target in transitions.items()})
+
     def distinguishing_word(self, other: "DFA") -> str | None:
         """Shortest word on the union alphabet with differing acceptance; None if equivalent."""
         alphabet = self.alphabet | other.alphabet

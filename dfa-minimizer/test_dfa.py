@@ -26,3 +26,25 @@ def test_completion_routes_missing_edges_to_sink():
     total = partial.complete()
     assert total.transitions['s', 'a'] != 's'
     assert not total.accepts('a')
+
+
+def test_complement_and_product_over_mixed_alphabets():
+    ends_a = sample()
+    only_b = DFA(frozenset({'s', 'f'}), frozenset({'b'}), 's', frozenset({'f'}),
+                 {('s', 'b'): 'f', ('f', 'b'): 'f'})
+    complement = ends_a.complement()
+    intersection = ends_a.product(only_b)
+    union = ends_a.product(only_b, 'union')
+    for word in ('', 'a', 'b', 'ab', 'bb', 'ba'):
+        assert complement.accepts(word) == (not ends_a.accepts(word))
+        assert intersection.accepts(word) == (ends_a.accepts(word) and only_b.accepts(word))
+        assert union.accepts(word) == (ends_a.accepts(word) or only_b.accepts(word))
+
+
+def test_invalid_product_operation_is_rejected():
+    try:
+        sample().product(sample(), 'xor')
+    except ValueError:
+        pass
+    else:
+        raise AssertionError('invalid operation should be rejected')
