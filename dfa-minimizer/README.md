@@ -28,6 +28,10 @@ either = a.product(other, 'union')
 
 Run tests with `python3 -m pytest -q` from this directory. Python 3.10+; standard library only for runtime (pytest for tests).
 
+## Known Issues (Resolved)
+
+The Phase 3 source audit found no confirmed defects, so no fixes are claimed. Added coverage verifies unreachable-state removal, partial-transition rejection, invalid transition validation, and equivalence against a minimized automaton.
+
 ## Limitations
 
 Symbols are single Python characters when using `accepts(str)`. DFA transition mappings use `(state, symbol)` keys. Equivalence treats a symbol absent from one alphabet as an implicit rejecting transition.

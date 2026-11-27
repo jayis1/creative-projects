@@ -14,7 +14,9 @@ def test_accepts_and_shortest_witness():
 
 
 def test_minimization_preserves_language_and_drops_unreachable():
-    dfa = sample()
+    dfa = DFA(frozenset({'start', 'end', 'unused'}), frozenset({'a', 'b'}), 'start', frozenset({'end'}),
+              {('start', 'a'): 'end', ('start', 'b'): 'start', ('end', 'a'): 'end', ('end', 'b'): 'start',
+               ('unused', 'a'): 'unused', ('unused', 'b'): 'unused'})
     assert dfa.minimize().states == frozenset({'q0', 'q1'})
     minimized = dfa.minimize()
     for word in ('', 'a', 'b', 'abba', 'bbab'):
@@ -48,3 +50,20 @@ def test_invalid_product_operation_is_rejected():
         pass
     else:
         raise AssertionError('invalid operation should be rejected')
+
+
+def test_partial_dfa_rejects_missing_and_out_of_alphabet_symbols():
+    partial = DFA(frozenset({'s', 'f'}), frozenset({'a', 'b'}), 's', frozenset({'f'}), {('s', 'a'): 'f'})
+    assert partial.accepts('a')
+    assert not partial.accepts('b')
+    assert not partial.accepts('a?')
+    assert partial.distinguishing_word(partial.minimize()) is None
+
+
+def test_dfa_rejects_invalid_transition_references():
+    try:
+        DFA(frozenset({'s'}), frozenset({'a'}), 's', frozenset(), {('s', 'a'): 'missing'})
+    except ValueError:
+        pass
+    else:
+        raise AssertionError('invalid target must be rejected')
