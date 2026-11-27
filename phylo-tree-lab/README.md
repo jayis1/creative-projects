@@ -29,3 +29,7 @@ python3 cli.py tree.nwk
 ```
 
 Internal labels are ignored. Input is a single tree using the documented `name:SEQUENCE` leaf notation.
+
+## Known Issues (Resolved)
+
+Phase 3 reviewed the parser, Fitch recurrence, and CLI. No production defect was reproducibly demonstrated, so no bug fix is claimed. Expanded regression coverage includes hand-calculated constant/single-change/multifurcation scores, ignored internal labels, malformed and misaligned input rejection, and CLI success/error behavior. Unsupported Newick features (quoted names, branch lengths, ambiguity sets) remain intentional limitations.
