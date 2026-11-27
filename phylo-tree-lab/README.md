@@ -18,3 +18,14 @@ print(fitch_score(tree))
 ```
 
 Run tests with `python3 -m unittest -v` from this directory. No third-party packages are required.
+
+## Command line
+
+Pipe a tree or provide a UTF-8 file; the CLI prints the total parsimony score and reports invalid input on stderr with exit status 2:
+
+```sh
+printf '((human:ACGT,chimp:ACGA),gorilla:TCGA);' | python3 cli.py
+python3 cli.py tree.nwk
+```
+
+Internal labels are ignored. Input is a single tree using the documented `name:SEQUENCE` leaf notation.
