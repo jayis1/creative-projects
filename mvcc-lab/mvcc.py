@@ -59,10 +59,21 @@ class Transaction:
     def scan(self, prefix: str = "") -> dict[str, Any]:
         """Return snapshot-visible rows with prefix, overlaid with own writes."""
         self._active()
-        keys = set(self.store.history)
-        keys.update(self.writes)
-        return {key: value for key in sorted(keys) if key.startswith(prefix)
-                if (value := self.get(key)) is not None}
+        rows: dict[str, Any] = {}
+        keys = set(self.store.history) | set(self.writes)
+        for key in sorted(keys):
+            if not key.startswith(prefix):
+                continue
+            staged = self.writes.get(key)
+            if staged is not None:
+                if not staged.deleted:
+                    rows[key] = staged.value
+                continue
+            version = self.store.visible(key, self.snapshot)
+            if version is not None and not version.deleted:
+                # None is a valid JSON value, so presence must not be tested by truthiness.
+                rows[key] = version.value
+        return rows
 
     def put(self, key: str, value: Any) -> None:
         self._active()

@@ -34,6 +34,12 @@ class SnapshotTests(unittest.TestCase):
         ]})
         self.assertEqual(result[0]["rows"], {"a:2": 2, "a:3": 3})
 
+    def test_scan_preserves_rows_whose_json_value_is_null(self):
+        result = run_schedule({"initial": {"nullable": None}, "transactions": [
+            {"name": "t", "ops": [{"scan": ""}, {"commit": True}]},
+        ]})
+        self.assertEqual(result[0]["rows"], {"nullable": None})
+
     def test_invalid_unfinished_schedule_is_rejected(self):
         with self.assertRaises(ScheduleError):
             run_schedule({"transactions": [{"name": "x", "ops": [{"put": ["a", 1]}]}]})
