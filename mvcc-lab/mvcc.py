@@ -160,7 +160,7 @@ def demo() -> dict[str, Any]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=("run", "demo"))
-    parser.add_argument("file", nargs="?", help="JSON schedule for run")
+    parser.add_argument("file", nargs="?", help="JSON schedule for run (use - for stdin)")
     args = parser.parse_args(argv)
     if args.command == "run" and not args.file:
         parser.error("run requires a JSON file")
@@ -170,8 +170,11 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "demo":
             data = demo()
         else:
-            with open(args.file, encoding="utf-8") as source:
-                data = json.load(source)
+            if args.file == "-":
+                data = json.load(sys.stdin)
+            else:
+                with open(args.file, encoding="utf-8") as source:
+                    data = json.load(source)
         print(json.dumps(run_schedule(data), indent=2, ensure_ascii=False))
     except (OSError, json.JSONDecodeError, ScheduleError) as exc:
         print(f"error: {exc}", file=sys.stderr)

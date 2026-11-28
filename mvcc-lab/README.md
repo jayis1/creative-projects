@@ -24,4 +24,4 @@ The JSON input shape is `{"initial": {"account": 10}, "transactions": [{"name": 
 
 ## Examples
 
-`python3 mvcc.py demo` demonstrates two transactions updating the same row: the first commit succeeds and the stale writer aborts. Input and output are JSON for easy inspection.
+`python3 mvcc.py demo` demonstrates two transactions updating the same row: the first commit succeeds and the stale writer aborts. Input and output are JSON for easy inspection. To run a schedule from a pipeline, use `cat schedule.json | python3 mvcc.py run -`; malformed JSON or invalid schedules produce a diagnostic on stderr and a nonzero exit status.

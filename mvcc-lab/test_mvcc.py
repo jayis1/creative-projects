@@ -1,6 +1,8 @@
 import unittest
+from unittest.mock import patch
+from io import StringIO
 
-from mvcc import ScheduleError, run_schedule
+from mvcc import ScheduleError, main, run_schedule
 
 
 class SnapshotTests(unittest.TestCase):
@@ -39,6 +41,13 @@ class SnapshotTests(unittest.TestCase):
             {"name": "t", "ops": [{"scan": ""}, {"commit": True}]},
         ]})
         self.assertEqual(result[0]["rows"], {"nullable": None})
+
+    def test_cli_reads_schedule_from_stdin(self):
+        schedule = '{"transactions": [{"name": "t", "ops": [{"commit": true}]}]}'
+        output = StringIO()
+        with patch("sys.stdin", StringIO(schedule)), patch("sys.stdout", output):
+            self.assertEqual(main(["run", "-"]), 0)
+        self.assertIn('"commit": "committed"', output.getvalue())
 
     def test_invalid_unfinished_schedule_is_rejected(self):
         with self.assertRaises(ScheduleError):
