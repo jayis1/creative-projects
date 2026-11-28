@@ -152,3 +152,4 @@ A monorepo of AI-generated creative coding projects. Each project lives in its o
 | [coverage-path-lab](./coverage-path-lab) | Grid robot coverage sweeps with obstacle-aware A* connectors and connectivity validation (Python stdlib) |
 | [dfa-minimizer](./dfa-minimizer) | Dependency-free DFA completion, Hopcroft minimization, and shortest equivalence witnesses (Python stdlib) |
 | [phylo-tree-lab](./phylo-tree-lab) | Rooted Newick parser and Fitch parsimony scorer for aligned sequences (Python stdlib) |
+| [mvcc-lab](./mvcc-lab) | Deterministic multiversion concurrency control simulator with snapshot reads and optimistic conflict detection (Python stdlib) |
