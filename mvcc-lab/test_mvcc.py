@@ -28,6 +28,12 @@ class SnapshotTests(unittest.TestCase):
         ]})
         self.assertEqual(result[-1]["commit"], "committed")
 
+    def test_snapshot_scan_is_sorted_prefixed_and_overlays_writes(self):
+        result = run_schedule({"initial": {"a:2": 2, "a:1": 1, "b:1": 9}, "transactions": [
+            {"name": "t", "ops": [{"put": ["a:3", 3]}, {"delete": "a:1"}, {"scan": "a:"}, {"commit": True}]},
+        ]})
+        self.assertEqual(result[0]["rows"], {"a:2": 2, "a:3": 3})
+
     def test_invalid_unfinished_schedule_is_rejected(self):
         with self.assertRaises(ScheduleError):
             run_schedule({"transactions": [{"name": "x", "ops": [{"put": ["a", 1]}]}]})

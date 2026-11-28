@@ -35,7 +35,6 @@ class Store:
         return Transaction(self, self.clock)
 
     def visible(self, key: str, snapshot: int) -> Version | None:
-        # Histories are append-only and timestamps are strictly increasing.
         versions = self.history.get(key, ())
         for version in reversed(versions):
             if version.timestamp <= snapshot:
@@ -56,6 +55,14 @@ class Transaction:
             return None if staged.deleted else staged.value
         version = self.store.visible(key, self.snapshot)
         return None if version is None or version.deleted else version.value
+
+    def scan(self, prefix: str = "") -> dict[str, Any]:
+        """Return snapshot-visible rows with prefix, overlaid with own writes."""
+        self._active()
+        keys = set(self.store.history)
+        keys.update(self.writes)
+        return {key: value for key in sorted(keys) if key.startswith(prefix)
+                if (value := self.get(key)) is not None}
 
     def put(self, key: str, value: Any) -> None:
         self._active()
@@ -113,6 +120,8 @@ def run_schedule(data: dict[str, Any]) -> list[dict[str, Any]]:
             action, arg = next(iter(op.items()))
             if action == "get" and isinstance(arg, str):
                 output.append({"transaction": name, "get": arg, "value": tx.get(arg)})
+            elif action == "scan" and isinstance(arg, str):
+                output.append({"transaction": name, "scan": arg, "rows": tx.scan(arg)})
             elif action == "put" and isinstance(arg, list) and len(arg) == 2 and isinstance(arg[0], str):
                 tx.put(arg[0], arg[1])
             elif action == "delete" and isinstance(arg, str):
@@ -147,7 +156,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "demo" and args.file:
         parser.error("demo takes no file")
     try:
-        data = demo() if args.command == "demo" else json.load(open(args.file, encoding="utf-8"))
+        if args.command == "demo":
+            data = demo()
+        else:
+            with open(args.file, encoding="utf-8") as source:
+                data = json.load(source)
         print(json.dumps(run_schedule(data), indent=2, ensure_ascii=False))
     except (OSError, json.JSONDecodeError, ScheduleError) as exc:
         print(f"error: {exc}", file=sys.stderr)
